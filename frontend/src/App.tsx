@@ -19,7 +19,8 @@ import Analytics from "./pages/Analytics";
 import Settings from "./pages/Settings";
 import Admin from "./pages/Admin";
 import CreateStore from "./pages/CreateStore";
-import StoreFrontend from "./pages/StoreFrontend";
+import StoreFrontendNew from "./pages/StoreFrontendNew";
+import OrderConfirmation from "./pages/OrderConfirmation";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -102,7 +103,8 @@ const App = () => (
                   </ProtectedRoute>
                 }
               />
-              <Route path="/store/:subdomain" element={<StoreFrontend />} />
+              <Route path="/store/:subdomain" element={<StoreFrontendNew />} />
+              <Route path="/order-confirmation" element={<OrderConfirmation />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </DataProvider>
