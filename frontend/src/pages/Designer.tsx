@@ -41,11 +41,17 @@ interface Layer {
 const Designer = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const { addProduct, store } = useData();
   const [selectedSide, setSelectedSide] = useState<"front" | "back">("front");
   const [layers, setLayers] = useState<Layer[]>([]);
   const [selectedLayer, setSelectedLayer] = useState<string | null>(null);
   const [textInput, setTextInput] = useState("");
   const [zoom, setZoom] = useState(133);
+  const [productName, setProductName] = useState(`Custom ${id || 'Product'}`);
+  const [price, setPrice] = useState("24.99");
+  const [compareAtPrice, setCompareAtPrice] = useState("");
+  const [showWizard, setShowWizard] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
