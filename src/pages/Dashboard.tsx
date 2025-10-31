@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { CloudUpgradePrompt } from '@/components/CloudUpgradePrompt';
 import { 
   Package, 
   Store, 
@@ -20,12 +21,25 @@ const Dashboard = () => {
   const [products, setProducts] = useState<any[]>([]);
 
   useEffect(() => {
-    // Load saved products from localStorage
-    const savedProducts = localStorage.getItem('shelfmerch_saved_products');
-    if (savedProducts) {
-      const allProducts = JSON.parse(savedProducts);
-      setProducts(allProducts.filter((p: any) => p.userId === user?.id));
-    }
+    const loadProducts = () => {
+      const savedProducts = localStorage.getItem('shelfmerch_saved_products');
+      if (savedProducts) {
+        const allProducts = JSON.parse(savedProducts);
+        setProducts(allProducts.filter((p: any) => p.userId === user?.id));
+      }
+    };
+
+    loadProducts();
+
+    // Listen for real-time updates
+    const handleUpdate = (event: any) => {
+      if (event.detail?.type === 'product') {
+        loadProducts();
+      }
+    };
+
+    window.addEventListener('shelfmerch-data-update', handleUpdate);
+    return () => window.removeEventListener('shelfmerch-data-update', handleUpdate);
   }, [user]);
 
   const stats = [
@@ -116,6 +130,11 @@ const Dashboard = () => {
                 Create New Product
               </Button>
             </Link>
+          </div>
+
+          {/* Cloud Upgrade Prompt */}
+          <div className="mb-8">
+            <CloudUpgradePrompt />
           </div>
 
           {/* Stats Grid */}

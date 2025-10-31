@@ -97,28 +97,45 @@ const Designer = () => {
       return;
     }
     
-    // Save product data
+    // Don't store large base64 images - store simplified data
     const productData = {
       productId: id,
+      name: `Custom ${id}`,
       side: selectedSide,
-      layers,
+      layerCount: layers.length,
+      price: 24.99,
       savedAt: new Date().toISOString(),
     };
-    
-    localStorage.setItem(`product_${id}`, JSON.stringify(productData));
-    toast.success('Product saved successfully!');
-    
-    // Check if user has a store
-    const hasStore = localStorage.getItem('user_store');
-    
-    // Navigate to create store or dashboard
-    setTimeout(() => {
-      if (!hasStore) {
-        navigate('/create-store');
-      } else {
-        navigate('/dashboard');
-      }
-    }, 1000);
+
+    try {
+      // Save to products list
+      const existingProducts = localStorage.getItem('shelfmerch_saved_products');
+      const products = existingProducts ? JSON.parse(existingProducts) : [];
+      products.push(productData);
+      localStorage.setItem('shelfmerch_saved_products', JSON.stringify(products));
+      
+      // Dispatch update event for real-time sync
+      window.dispatchEvent(new CustomEvent('shelfmerch-data-update', { 
+        detail: { type: 'product', data: productData } 
+      }));
+      
+      toast.success('Product saved successfully!');
+      
+      // Check if user has a store
+      const savedStores = localStorage.getItem('shelfmerch_stores');
+      const stores = savedStores ? JSON.parse(savedStores) : [];
+      
+      setTimeout(() => {
+        if (stores.length === 0) {
+          navigate('/create-store');
+        } else {
+          navigate('/dashboard');
+        }
+      }, 1000);
+    } catch (error) {
+      console.error('Storage error:', error);
+      toast.error('Storage full! Please clear some space or upgrade to Cloud.');
+    }
   };
 
   return (

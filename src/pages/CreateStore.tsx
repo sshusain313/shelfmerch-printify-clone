@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -11,6 +12,7 @@ const CreateStore = () => {
   const [storeName, setStoreName] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   const handleCreateStore = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -30,12 +32,21 @@ const CreateStore = () => {
     // Save store data
     const storeData = {
       id: Math.random().toString(36).substr(2, 9),
-      name: storeName,
-      subdomain: `${subdomain}.shelfmerch.com`,
+      storeName,
+      subdomain,
+      userId: user?.id,
       createdAt: new Date().toISOString(),
     };
     
-    localStorage.setItem('user_store', JSON.stringify(storeData));
+    const savedStores = localStorage.getItem('shelfmerch_stores');
+    const allStores = savedStores ? JSON.parse(savedStores) : [];
+    allStores.push(storeData);
+    localStorage.setItem('shelfmerch_stores', JSON.stringify(allStores));
+
+    // Dispatch update event for real-time sync
+    window.dispatchEvent(new CustomEvent('shelfmerch-data-update', { 
+      detail: { type: 'store', data: storeData } 
+    }));
     
     toast.success(
       `Store created! Your store is live at ${subdomain}.shelfmerch.com`,
@@ -43,7 +54,7 @@ const CreateStore = () => {
     );
     
     setIsCreating(false);
-    navigate('/dashboard');
+    navigate('/stores');
   };
 
   return (

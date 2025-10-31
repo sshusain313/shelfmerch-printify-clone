@@ -20,12 +20,25 @@ const Stores = () => {
   const [stores, setStores] = useState<any[]>([]);
 
   useEffect(() => {
-    // Load stores from localStorage
-    const savedStores = localStorage.getItem('shelfmerch_stores');
-    if (savedStores) {
-      const allStores = JSON.parse(savedStores);
-      setStores(allStores.filter((s: any) => s.userId === user?.id));
-    }
+    const loadStores = () => {
+      const savedStores = localStorage.getItem('shelfmerch_stores');
+      if (savedStores) {
+        const allStores = JSON.parse(savedStores);
+        setStores(allStores.filter((s: any) => s.userId === user?.id));
+      }
+    };
+
+    loadStores();
+
+    // Listen for real-time updates
+    const handleUpdate = (event: any) => {
+      if (event.detail?.type === 'store') {
+        loadStores();
+      }
+    };
+
+    window.addEventListener('shelfmerch-data-update', handleUpdate);
+    return () => window.removeEventListener('shelfmerch-data-update', handleUpdate);
   }, [user]);
 
   return (
