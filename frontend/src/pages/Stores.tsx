@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { useData } from '@/contexts/DataContext';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { 
@@ -13,7 +14,6 @@ import {
   Plus,
   ExternalLink
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
 
 const Stores = () => {
   const { user, logout, isAdmin } = useAuth();
