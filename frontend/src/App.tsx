@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext";
+import { DataProvider } from "./contexts/DataContext";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import Index from "./pages/Index";
 import Products from "./pages/Products";
@@ -30,79 +31,81 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <AuthProvider>
-          <Routes>
-            <Route path="/" element={<Index />} />
-            <Route path="/products" element={<Products />} />
-            <Route path="/products/category/:slug" element={<CategoryProducts />} />
-            <Route path="/products/:id" element={<ProductDetail />} />
-            <Route path="/auth" element={<Auth />} />
-            <Route
-              path="/designer/:id"
-              element={
-                <ProtectedRoute>
-                  <Designer />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/dashboard"
-              element={
-                <ProtectedRoute>
-                  <Dashboard />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/orders"
-              element={
-                <ProtectedRoute>
-                  <Orders />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/stores"
-              element={
-                <ProtectedRoute>
-                  <Stores />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/analytics"
-              element={
-                <ProtectedRoute>
-                  <Analytics />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/settings"
-              element={
-                <ProtectedRoute>
-                  <Settings />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin"
-              element={
-                <ProtectedRoute requireAdmin>
-                  <Admin />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/create-store"
-              element={
-                <ProtectedRoute>
-                  <CreateStore />
-                </ProtectedRoute>
-              }
-            />
-            <Route path="/store/:subdomain" element={<StoreFrontend />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
+          <DataProvider>
+            <Routes>
+              <Route path="/" element={<Index />} />
+              <Route path="/products" element={<Products />} />
+              <Route path="/products/category/:slug" element={<CategoryProducts />} />
+              <Route path="/products/:id" element={<ProductDetail />} />
+              <Route path="/auth" element={<Auth />} />
+              <Route
+                path="/designer/:id"
+                element={
+                  <ProtectedRoute>
+                    <Designer />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/dashboard"
+                element={
+                  <ProtectedRoute>
+                    <Dashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/orders"
+                element={
+                  <ProtectedRoute>
+                    <Orders />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/stores"
+                element={
+                  <ProtectedRoute>
+                    <Stores />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/analytics"
+                element={
+                  <ProtectedRoute>
+                    <Analytics />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/settings"
+                element={
+                  <ProtectedRoute>
+                    <Settings />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin"
+                element={
+                  <ProtectedRoute requireAdmin>
+                    <Admin />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/create-store"
+                element={
+                  <ProtectedRoute>
+                    <CreateStore />
+                  </ProtectedRoute>
+                }
+              />
+              <Route path="/store/:subdomain" element={<StoreFrontend />} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </DataProvider>
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>
