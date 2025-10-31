@@ -107,45 +107,57 @@ const Designer = () => {
       toast.error('Please add at least one design element');
       return;
     }
-    
-    // Don't store large base64 images - store simplified data
-    const productData = {
-      productId: id,
-      name: `Custom ${id}`,
-      side: selectedSide,
-      layerCount: layers.length,
-      price: 24.99,
-      savedAt: new Date().toISOString(),
+
+    if (!productName.trim()) {
+      toast.error('Please enter a product name');
+      return;
+    }
+
+    const priceNum = parseFloat(price);
+    if (isNaN(priceNum) || priceNum <= 0) {
+      toast.error('Please enter a valid price');
+      return;
+    }
+
+    if (!user?.id) {
+      toast.error('Please log in to save products');
+      return;
+    }
+
+    const newProduct: Product = {
+      id: Math.random().toString(36).substr(2, 9),
+      userId: user.id,
+      name: productName.trim(),
+      description: `Custom designed ${id} with ${layers.length} design elements`,
+      baseProduct: id || 'custom',
+      price: priceNum,
+      compareAtPrice: compareAtPrice ? parseFloat(compareAtPrice) : undefined,
+      designs: {
+        [selectedSide]: 'mockup-data', // In production, this would be actual design data
+      },
+      variants: {
+        colors: ['White', 'Black', 'Gray'],
+        sizes: ['S', 'M', 'L', 'XL', '2XL'],
+      },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     };
 
     try {
-      // Save to products list
-      const existingProducts = localStorage.getItem('shelfmerch_saved_products');
-      const products = existingProducts ? JSON.parse(existingProducts) : [];
-      products.push(productData);
-      localStorage.setItem('shelfmerch_saved_products', JSON.stringify(products));
-      
-      // Dispatch update event for real-time sync
-      window.dispatchEvent(new CustomEvent('shelfmerch-data-update', { 
-        detail: { type: 'product', data: productData } 
-      }));
-      
+      addProduct(newProduct);
       toast.success('Product saved successfully!');
-      
+
       // Check if user has a store
-      const savedStores = localStorage.getItem('shelfmerch_stores');
-      const stores = savedStores ? JSON.parse(savedStores) : [];
-      
       setTimeout(() => {
-        if (stores.length === 0) {
-          navigate('/create-store');
+        if (!store) {
+          setShowWizard(true);
         } else {
           navigate('/dashboard');
         }
       }, 1000);
     } catch (error) {
       console.error('Storage error:', error);
-      toast.error('Storage full! Please clear some space or upgrade to Cloud.');
+      toast.error('Failed to save product. Please try again.');
     }
   };
 
