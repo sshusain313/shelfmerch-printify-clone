@@ -13,8 +13,10 @@ export default defineConfig(({ mode }) => {
       host: true,
       port: 8080,
 
-      // ✅ Allow the ngrok Host header
-      allowedHosts: TUNNEL_HOST ? [TUNNEL_HOST] : [],
+      // ✅ Allow the ngrok Host header and localhost
+      allowedHosts: TUNNEL_HOST 
+        ? [TUNNEL_HOST, 'localhost', '127.0.0.1', '.localhost']
+        : ['localhost', '127.0.0.1', '.localhost'],
 
       // ✅ Make Vite generate absolute URLs that match your public tunnel
       origin: TUNNEL_HOST ? `https://${TUNNEL_HOST}` : undefined,

@@ -162,12 +162,12 @@ const DashboardNew = () => {
 
           {/* Tabs */}
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-            <TabsList className="grid w-full grid-cols-4 lg:w-[600px]">
+            {/* <TabsList className="grid w-full grid-cols-4 lg:w-[600px]">
               <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="products">Products</TabsTrigger>
               <TabsTrigger value="orders">Orders</TabsTrigger>
               <TabsTrigger value="store">Store</TabsTrigger>
-            </TabsList>
+            </TabsList> */}
 
             {/* Overview Tab */}
             <TabsContent value="overview" className="space-y-6">
