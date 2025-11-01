@@ -42,7 +42,7 @@ const StoreFrontendNew = () => {
     if (foundStore) {
       setStore(foundStore);
       
-      // Load products for this store
+      // Load products for this store - only if not using builder or builder needs products
       const storeProducts = getProducts(foundStore.userId);
       setProducts(storeProducts);
     }
