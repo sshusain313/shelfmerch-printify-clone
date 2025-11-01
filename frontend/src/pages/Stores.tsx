@@ -3,6 +3,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useData } from '@/contexts/DataContext';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import ManageStoreDialog from '@/components/ManageStoreDialog';
 import { 
   Package, 
   Store, 
@@ -14,6 +15,7 @@ import {
   Plus,
   ExternalLink
 } from 'lucide-react';
+import { useState } from 'react';
 
 const Stores = () => {
   const { user, logout, isAdmin } = useAuth();
