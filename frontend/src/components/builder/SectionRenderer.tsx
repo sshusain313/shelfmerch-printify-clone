@@ -109,39 +109,39 @@ const SectionRenderer: React.FC<SectionRendererProps> = ({
 
       return (
         <section style={sectionStyle}>
-          <div className=\"container mx-auto\">
+          <div className="container mx-auto">
             {section.settings.heading && (
-              <h2 className=\"text-3xl font-bold mb-8\" style={{ textAlign: section.styles.textAlign }}>
+              <h2 className="text-3xl font-bold mb-8" style={{ textAlign: section.styles.textAlign }}>
                 {section.settings.heading}
               </h2>
             )}
             <div
-              className=\"grid gap-6\"
+              className="grid gap-6"
               style={{
                 gridTemplateColumns: `repeat(${section.settings.columns || 4}, minmax(0, 1fr))`,
               }}
             >
               {displayProducts.length > 0 ? (
                 displayProducts.map((product) => (
-                  <Card key={product.id} className=\"overflow-hidden group\">
-                    <div className=\"aspect-square bg-muted\">
+                  <Card key={product.id} className="overflow-hidden group">
+                    <div className="aspect-square bg-muted">
                       {product.mockupUrl ? (
                         <img
                           src={product.mockupUrl}
                           alt={product.name}
-                          className=\"w-full h-full object-cover\"
+                          className="w-full h-full object-cover"
                         />
                       ) : (
-                        <div className=\"w-full h-full flex items-center justify-center\">
-                          <Package className=\"h-16 w-16 text-muted-foreground\" />
+                        <div className="w-full h-full flex items-center justify-center">
+                          <Package className="h-16 w-16 text-muted-foreground" />
                         </div>
                       )}
                     </div>
-                    <div className=\"p-4\">
-                      <h3 className=\"font-semibold mb-2\">{product.name}</h3>
+                    <div className="p-4">
+                      <h3 className="font-semibold mb-2">{product.name}</h3>
                       {section.settings.showPrice && (
                         <p
-                          className=\"text-lg font-bold mb-2\"
+                          className="text-lg font-bold mb-2"
                           style={{ color: globalStyles?.primaryColor }}
                         >
                           ${product.price.toFixed(2)}
@@ -149,8 +149,8 @@ const SectionRenderer: React.FC<SectionRendererProps> = ({
                       )}
                       {section.settings.showAddToCart && (
                         <Button
-                          size=\"sm\"
-                          className=\"w-full\"
+                          size="sm"
+                          className="w-full"
                           style={{ backgroundColor: globalStyles?.primaryColor }}
                         >
                           Add to Cart
@@ -160,9 +160,9 @@ const SectionRenderer: React.FC<SectionRendererProps> = ({
                   </Card>
                 ))
               ) : (
-                <div className=\"col-span-full text-center py-12\">
-                  <Package className=\"h-16 w-16 mx-auto text-muted-foreground mb-4\" />
-                  <p className=\"text-muted-foreground\">No products to display</p>
+                <div className="col-span-full text-center py-12">
+                  <Package className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
+                  <p className="text-muted-foreground">No products to display</p>
                 </div>
               )}
             </div>
