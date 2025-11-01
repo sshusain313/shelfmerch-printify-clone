@@ -129,16 +129,18 @@ const Stores = () => {
                 </div>
 
                 <div className="flex gap-2">
-                  <Button variant="default" className="flex-1" asChild>
+                  <Button variant="default" size="sm" asChild>
                     <Link to={`/store/${store.subdomain}`}>
                       <ExternalLink className="h-4 w-4 mr-2" />
-                      Visit Store
+                      Visit
                     </Link>
                   </Button>
-                  <Button variant="outline" className="flex-1" asChild>
-                    <Link to={`/stores/${user?.id}/builder`}>
-                      Visual Builder
-                    </Link>
+                  <Button variant="outline" size="sm" asChild>
+                    <Link to={`/stores/${user?.id}/builder`}>Builder</Link>
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => setManageDialogOpen(true)}>
+                    <Settings className="h-4 w-4 mr-2" />
+                    Manage
                   </Button>
                 </div>
               </Card>
