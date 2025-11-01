@@ -76,22 +76,22 @@ const SectionRenderer: React.FC<SectionRendererProps> = ({
 
     case 'hero':
       return (
-        <section style={sectionStyle} className=\"relative\">
-          <div className=\"container mx-auto\" style={{ textAlign: section.settings.alignment || 'center' }}>
+        <section style={sectionStyle} className="relative">
+          <div className="container mx-auto" style={{ textAlign: section.settings.alignment || 'center' }}>
             <h1
-              className=\"text-5xl font-bold mb-4\"
+              className="text-5xl font-bold mb-4"
               style={{ fontFamily: globalStyles?.headingFont }}
             >
               {section.settings.heading}
             </h1>
             {section.settings.subheading && (
-              <p className=\"text-xl text-gray-600 mb-8 max-w-2xl mx-auto\">
+              <p className="text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
                 {section.settings.subheading}
               </p>
             )}
             {section.settings.buttonText && (
               <Button
-                size=\"lg\"
+                size="lg"
                 style={{ backgroundColor: globalStyles?.primaryColor }}
                 asChild
               >
