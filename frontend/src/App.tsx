@@ -21,6 +21,7 @@ import Admin from "./pages/Admin";
 import CreateStore from "./pages/CreateStore";
 import StoreFrontendNew from "./pages/StoreFrontendNew";
 import OrderConfirmation from "./pages/OrderConfirmation";
+import BuilderDemo from "./pages/BuilderDemo";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -68,6 +69,14 @@ const App = () => (
                 element={
                   <ProtectedRoute>
                     <Stores />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/stores/:storeId/builder"
+                element={
+                  <ProtectedRoute>
+                    <BuilderDemo />
                   </ProtectedRoute>
                 }
               />

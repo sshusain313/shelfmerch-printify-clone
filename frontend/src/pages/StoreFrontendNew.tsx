@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import CartDrawer from '@/components/storefront/CartDrawer';
 import ProductDetailModal from '@/components/storefront/ProductDetailModal';
 import CheckoutModal from '@/components/storefront/CheckoutModal';
+import SectionRenderer from '@/components/builder/SectionRenderer';
 
 const StoreFrontendNew = () => {
   const { subdomain } = useParams<{ subdomain: string }>();
@@ -42,7 +43,7 @@ const StoreFrontendNew = () => {
     if (foundStore) {
       setStore(foundStore);
       
-      // Load products for this store
+      // Load products for this store - only if not using builder or builder needs products
       const storeProducts = getProducts(foundStore.userId);
       setProducts(storeProducts);
     }
@@ -186,6 +187,10 @@ const StoreFrontendNew = () => {
   const theme = getTheme(store.theme);
   const cartItemCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
+  // Check if store is using builder
+  const usingBuilder = store.useBuilder && store.builder;
+  const activePage = usingBuilder ? store.builder!.pages.find(p => p.slug === '/') : null;
+
   return (
     <div className="min-h-screen bg-background">
       {/* Simulated Custom Domain Bar */}
@@ -245,8 +250,28 @@ const StoreFrontendNew = () => {
         </div>
       </header>
 
-      {/* Hero Section */}
-      <section
+      {/* Render Builder Layout or Default Layout */}
+      {usingBuilder && activePage ? (
+        // Builder-based layout
+        <div>
+          {activePage.sections
+            .filter(s => s.visible)
+            .sort((a, b) => a.order - b.order)
+            .map((section) => (
+              <SectionRenderer
+                key={section.id}
+                section={section}
+                products={products}
+                globalStyles={store.builder!.globalStyles}
+                isPreview={false}
+              />
+            ))}
+        </div>
+      ) : (
+        // Default theme-based layout
+        <>
+          {/* Hero Section */}
+          <section
         className="py-20"
         style={{
           background: `linear-gradient(to bottom right, ${theme.colors.primary}15, ${theme.colors.background})`,
@@ -366,6 +391,8 @@ const StoreFrontendNew = () => {
           </p>
         </div>
       </section>
+        </>
+      )}
 
       {/* Footer */}
       <footer className="border-t py-8">

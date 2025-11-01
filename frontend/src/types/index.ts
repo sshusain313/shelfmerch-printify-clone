@@ -81,6 +81,9 @@ export interface Order {
   notes?: string;
 }
 
+import { StoreTheme } from '@/types';
+import { StoreBuilder } from '@/types/builder';
+
 export interface Store {
   id: string;
   userId: string;
@@ -96,6 +99,8 @@ export interface Store {
     primaryColor?: string;
     accentColor?: string;
   };
+  useBuilder?: boolean;
+  builder?: StoreBuilder;
 }
 
 export interface DashboardStats {

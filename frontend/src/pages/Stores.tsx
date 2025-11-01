@@ -3,6 +3,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useData } from '@/contexts/DataContext';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import ManageStoreDialog from '@/components/ManageStoreDialog';
 import { 
   Package, 
   Store, 
@@ -14,10 +15,12 @@ import {
   Plus,
   ExternalLink
 } from 'lucide-react';
+import { useState } from 'react';
 
 const Stores = () => {
   const { user, logout, isAdmin } = useAuth();
   const { store } = useData();
+  const [manageDialogOpen, setManageDialogOpen] = useState(false);
 
   return (
     <div className="min-h-screen bg-background">
@@ -126,14 +129,18 @@ const Stores = () => {
                 </div>
 
                 <div className="flex gap-2">
-                  <Button variant="default" className="flex-1" asChild>
+                  <Button variant="default" size="sm" asChild>
                     <Link to={`/store/${store.subdomain}`}>
                       <ExternalLink className="h-4 w-4 mr-2" />
-                      Visit Store
+                      Visit
                     </Link>
                   </Button>
-                  <Button variant="outline" className="flex-1" asChild>
-                    <Link to="/dashboard">Manage</Link>
+                  <Button variant="outline" size="sm" asChild>
+                    <Link to={`/stores/${user?.id}/builder`}>Builder</Link>
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => setManageDialogOpen(true)}>
+                    <Settings className="h-4 w-4 mr-2" />
+                    Manage
                   </Button>
                 </div>
               </Card>
@@ -154,6 +161,13 @@ const Stores = () => {
           )}
         </div>
       </main>
+
+      {/* Manage Store Dialog */}
+      <ManageStoreDialog
+        open={manageDialogOpen}
+        onClose={() => setManageDialogOpen(false)}
+        store={store}
+      />
     </div>
   );
 };
