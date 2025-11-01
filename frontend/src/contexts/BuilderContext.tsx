@@ -299,27 +299,42 @@ export const BuilderProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const publishBuilder = useCallback(
     (storeId: string) => {
-      // Load store from localStorage
-      const storeKey = `store_${storeId}`;
-      const storeData = localStorage.getItem(storeKey);
-      if (storeData) {
-        const store = JSON.parse(storeData);
-        store.builder = { ...builder, draft: false, lastSaved: new Date().toISOString() };
-        store.useBuilder = true;
-        localStorage.setItem(storeKey, JSON.stringify(store));
+      // Find the store by searching all store keys
+      // (Stores are saved with store_${userId} key, but we have store.id)
+      const allKeys = Object.keys(localStorage).filter((key) => key.startsWith('store_'));
+      
+      for (const key of allKeys) {
+        const storeData = localStorage.getItem(key);
+        if (storeData) {
+          const store = JSON.parse(storeData);
+          // Match by store.id
+          if (store.id === storeId) {
+            // Update store with builder data
+            store.builder = { ...builder, draft: false, lastSaved: new Date().toISOString() };
+            store.useBuilder = true;
+            store.updatedAt = new Date().toISOString();
+            
+            // Save using the correct key (store_${userId})
+            const correctKey = `store_${store.userId}`;
+            localStorage.setItem(correctKey, JSON.stringify(store));
 
-        // Clear draft
-        localStorage.removeItem(`store_builder_draft_${storeId}`);
+            // Clear draft
+            localStorage.removeItem(`store_builder_draft_${storeId}`);
 
-        // Dispatch update event
-        window.dispatchEvent(
-          new CustomEvent('shelfmerch-data-update', {
-            detail: { type: 'store', data: store },
-          })
-        );
+            // Dispatch update event
+            window.dispatchEvent(
+              new CustomEvent('shelfmerch-data-update', {
+                detail: { type: 'store', data: store },
+              })
+            );
 
-        toast.success('Store published!');
+            toast.success('Store published!');
+            return;
+          }
+        }
       }
+      
+      toast.error('Store not found');
     },
     [builder]
   );

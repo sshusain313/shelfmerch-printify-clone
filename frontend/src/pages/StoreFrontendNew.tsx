@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -24,6 +24,20 @@ const StoreFrontendNew = () => {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [productModalOpen, setProductModalOpen] = useState(false);
   
+  // Function to load store data
+  const loadStoreData = useCallback(() => {
+    if (!subdomain) return;
+    
+    const foundStore = getStoreBySubdomain(subdomain);
+    if (foundStore) {
+      setStore(foundStore);
+      
+      // Load products for this store - only if not using builder or builder needs products
+      const storeProducts = getProducts(foundStore.userId);
+      setProducts(storeProducts);
+    }
+  }, [subdomain]);
+
   useEffect(() => {
     if (!subdomain) return;
 
@@ -39,14 +53,28 @@ const StoreFrontendNew = () => {
     }
 
     // Load store data
-    const foundStore = getStoreBySubdomain(subdomain);
-    if (foundStore) {
-      setStore(foundStore);
-      
-      // Load products for this store - only if not using builder or builder needs products
-      const storeProducts = getProducts(foundStore.userId);
-      setProducts(storeProducts);
-    }
+    loadStoreData();
+  }, [subdomain, loadStoreData]);
+
+  // Listen for store updates (when store is published)
+  useEffect(() => {
+    const handleStoreUpdate = (event: CustomEvent) => {
+      if (event.detail.type === 'store' && event.detail.data) {
+        const updatedStore = event.detail.data;
+        // Only reload if this update is for the current store
+        if (updatedStore.subdomain === subdomain) {
+          setStore(updatedStore);
+          // Also reload products in case they changed
+          const storeProducts = getProducts(updatedStore.userId);
+          setProducts(storeProducts);
+        }
+      }
+    };
+
+    window.addEventListener('shelfmerch-data-update', handleStoreUpdate as EventListener);
+    return () => {
+      window.removeEventListener('shelfmerch-data-update', handleStoreUpdate as EventListener);
+    };
   }, [subdomain]);
 
   // Load cart from session storage for this store
