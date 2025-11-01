@@ -161,6 +161,13 @@ const Stores = () => {
           )}
         </div>
       </main>
+
+      {/* Manage Store Dialog */}
+      <ManageStoreDialog
+        open={manageDialogOpen}
+        onClose={() => setManageDialogOpen(false)}
+        store={store}
+      />
     </div>
   );
 };
