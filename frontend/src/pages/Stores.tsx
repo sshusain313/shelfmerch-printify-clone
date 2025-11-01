@@ -20,6 +20,7 @@ import { useState } from 'react';
 const Stores = () => {
   const { user, logout, isAdmin } = useAuth();
   const { store } = useData();
+  const [manageDialogOpen, setManageDialogOpen] = useState(false);
 
   return (
     <div className="min-h-screen bg-background">
