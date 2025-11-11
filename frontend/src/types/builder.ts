@@ -9,7 +9,10 @@ export type SectionType =
   | 'newsletter'
   | 'testimonials'
   | 'footer'
-  | 'custom-html';
+  | 'custom-html'
+  | 'announcement-bar'
+  | 'product-details'
+  | 'product-recommendations';
 
 export interface BuilderSection {
   id: string;
@@ -85,6 +88,7 @@ export interface ComponentDefinition {
   category: 'layout' | 'content' | 'commerce' | 'marketing';
   defaultSettings: Record<string, any>;
   defaultStyles: BuilderSection['styles'];
+  availableOn?: Array<'home' | 'product'>;
 }
 
 export type PreviewMode = 'desktop' | 'tablet' | 'mobile';

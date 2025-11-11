@@ -36,7 +36,7 @@ const Analytics = () => {
 
         <nav className="space-y-2">
           <Button variant="ghost" className="w-full justify-start" asChild>
-            <Link to="/dashboard">
+            <Link to="/products">
               <Package className="mr-2 h-4 w-4" />
               My Products
             </Link>

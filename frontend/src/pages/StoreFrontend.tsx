@@ -57,7 +57,7 @@ const StoreFrontend = () => {
               </h1>
               <nav className="hidden md:flex space-x-6">
                 <a href="#products" className="text-sm hover:text-primary transition-colors">
-                  Products
+                  list
                 </a>
                 <a href="#about" className="text-sm hover:text-primary transition-colors">
                   About
@@ -118,12 +118,14 @@ const StoreFrontend = () => {
 
           {products.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {products.map((product, index) => (
-                <Card key={index} className="overflow-hidden group cursor-pointer hover:shadow-lg transition-all">
+              {products.map((product, index) => {
+                const mockup = product.mockupUrls?.[0] || product.mockupUrl;
+                return (
+                  <Card key={index} className="overflow-hidden group cursor-pointer hover:shadow-lg transition-all">
                   <div className="aspect-square bg-muted relative overflow-hidden">
-                    {product.mockupUrl ? (
+                    {mockup ? (
                       <img
-                        src={product.mockupUrl}
+                        src={mockup}
                         alt={product.name}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                       />
@@ -148,7 +150,8 @@ const StoreFrontend = () => {
                     </div>
                   </div>
                 </Card>
-              ))}
+              );
+              })}
             </div>
           ) : (
             <Card className="p-12 text-center">

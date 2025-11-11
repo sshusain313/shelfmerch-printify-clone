@@ -72,14 +72,18 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({
     // Simulate payment processing
     await new Promise((resolve) => setTimeout(resolve, 2000));
 
-    const orderItems = cart.map((item) => ({
-      productId: item.productId,
-      productName: item.product.name,
-      mockupUrl: item.product.mockupUrl,
-      quantity: item.quantity,
-      price: item.product.price,
-      variant: item.variant,
-    }));
+    const orderItems = cart.map((item) => {
+      const primaryMockup = item.product.mockupUrls?.[0] || item.product.mockupUrl;
+      return {
+        productId: item.productId,
+        productName: item.product.name,
+        mockupUrl: primaryMockup,
+        mockupUrls: item.product.mockupUrls,
+        quantity: item.quantity,
+        price: item.product.price,
+        variant: item.variant,
+      };
+    });
 
     const order: Omit<Order, 'id' | 'userId' | 'createdAt' | 'updatedAt'> = {
       storeId,

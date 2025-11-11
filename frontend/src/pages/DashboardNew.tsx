@@ -225,12 +225,14 @@ const DashboardNew = () => {
             <TabsContent value="products" className="space-y-6">
               {products.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                  {products.map((product) => (
-                    <Card key={product.id} className="overflow-hidden group">
+                  {products.map((product) => {
+                    const mockup = product.mockupUrls?.[0] || product.mockupUrl;
+                    return (
+                      <Card key={product.id} className="overflow-hidden group">
                       <div className="aspect-square bg-muted relative">
-                        {product.mockupUrl ? (
+                        {mockup ? (
                           <img
-                            src={product.mockupUrl}
+                            src={mockup}
                             alt={product.name}
                             className="w-full h-full object-cover"
                           />
@@ -267,7 +269,8 @@ const DashboardNew = () => {
                         </p>
                       </div>
                     </Card>
-                  ))}
+                  );
+                  })}
                 </div>
               ) : (
                 <Card className="p-12 text-center">

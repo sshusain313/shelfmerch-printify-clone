@@ -48,62 +48,68 @@ const CartDrawer: React.FC<CartDrawerProps> = ({
           <>
             <ScrollArea className="flex-1 -mx-6 px-6">
               <div className="space-y-4 py-4">
-                {cart.map((item) => (
-                  <div key={`${item.productId}-${item.variant.color}-${item.variant.size}`} className="flex gap-4">
-                    <div className="w-20 h-20 bg-muted rounded-md flex-shrink-0">
-                      {item.product.mockupUrl ? (
-                        <img
-                          src={item.product.mockupUrl}
-                          alt={item.product.name}
-                          className="w-full h-full object-cover rounded-md"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-muted-foreground">
-                          <ShoppingCart className="h-8 w-8" />
+                {cart.map((item) => {
+                  const mockup = item.product.mockupUrls?.[0] || item.product.mockupUrl;
+                  return (
+                    <div
+                      key={`${item.productId}-${item.variant.color}-${item.variant.size}`}
+                      className="flex gap-4"
+                    >
+                      <div className="w-20 h-20 bg-muted rounded-md flex-shrink-0">
+                        {mockup ? (
+                          <img
+                            src={mockup}
+                            alt={item.product.name}
+                            className="w-full h-full object-cover rounded-md"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-muted-foreground">
+                            <ShoppingCart className="h-8 w-8" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-semibold truncate">{item.product.name}</h4>
+                        <p className="text-sm text-muted-foreground">
+                          {item.variant.color} / {item.variant.size}
+                        </p>
+                        <p className="font-semibold text-primary">${item.product.price.toFixed(2)}</p>
+
+                        <div className="flex items-center gap-2 mt-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 w-8 p-0"
+                            onClick={() =>
+                              onUpdateQuantity(item.productId, item.variant, Math.max(0, item.quantity - 1))
+                            }
+                          >
+                            <Minus className="h-3 w-3" />
+                          </Button>
+                          <span className="w-8 text-center">{item.quantity}</span>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 w-8 p-0"
+                            onClick={() =>
+                              onUpdateQuantity(item.productId, item.variant, item.quantity + 1)
+                            }
+                          >
+                            <Plus className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 w-8 p-0 ml-auto text-destructive"
+                            onClick={() => onRemove(item.productId, item.variant)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
                         </div>
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <h4 className="font-semibold truncate">{item.product.name}</h4>
-                      <p className="text-sm text-muted-foreground">
-                        {item.variant.color} / {item.variant.size}
-                      </p>
-                      <p className="font-semibold text-primary">${item.product.price.toFixed(2)}</p>
-                      
-                      <div className="flex items-center gap-2 mt-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-8 w-8 p-0"
-                          onClick={() =>
-                            onUpdateQuantity(item.productId, item.variant, Math.max(0, item.quantity - 1))
-                          }
-                        >
-                          <Minus className="h-3 w-3" />
-                        </Button>
-                        <span className="w-8 text-center">{item.quantity}</span>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-8 w-8 p-0"
-                          onClick={() =>
-                            onUpdateQuantity(item.productId, item.variant, item.quantity + 1)
-                          }
-                        >
-                          <Plus className="h-3 w-3" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-8 w-8 p-0 ml-auto text-destructive"
-                          onClick={() => onRemove(item.productId, item.variant)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </ScrollArea>
 

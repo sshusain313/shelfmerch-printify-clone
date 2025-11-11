@@ -11,6 +11,7 @@ export interface Product {
   price: number;
   compareAtPrice?: number;
   mockupUrl?: string;
+  mockupUrls?: string[];
   designs: {
     front?: string;
     back?: string;
@@ -54,6 +55,7 @@ export interface OrderItem {
   productId: string;
   productName: string;
   mockupUrl?: string;
+  mockupUrls?: string[];
   quantity: number;
   price: number;
   variant: {

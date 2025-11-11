@@ -6,6 +6,7 @@ import { GripVertical, Edit, Trash2, Eye, EyeOff } from 'lucide-react';
 import { BuilderSection } from '@/types/builder';
 import SectionRenderer from './SectionRenderer';
 import { Product } from '@/types';
+import { cn } from '@/lib/utils';
 
 interface DraggableSectionItemProps {
   section: BuilderSection;
@@ -14,6 +15,8 @@ interface DraggableSectionItemProps {
   onEdit: (section: BuilderSection) => void;
   onRemove: (sectionId: string) => void;
   onToggleVisibility: (sectionId: string) => void;
+  onSelect?: (section: BuilderSection) => void;
+  isSelected?: boolean;
 }
 
 const DraggableSectionItem: React.FC<DraggableSectionItemProps> = ({
@@ -23,6 +26,8 @@ const DraggableSectionItem: React.FC<DraggableSectionItemProps> = ({
   onEdit,
   onRemove,
   onToggleVisibility,
+  onSelect,
+  isSelected = false,
 }) => {
   const {
     attributes,
@@ -43,7 +48,11 @@ const DraggableSectionItem: React.FC<DraggableSectionItemProps> = ({
     <div
       ref={setNodeRef}
       style={style}
-      className="relative group border-2 border-dashed border-transparent hover:border-primary rounded-lg transition-all"
+      className={cn(
+        'relative group border-2 border-dashed border-transparent hover:border-primary rounded-xl transition-all',
+        isSelected && 'border-primary shadow-lg'
+      )}
+      onClick={() => onSelect?.(section)}
     >
       {/* Section Content */}
       <div className={section.visible ? '' : 'opacity-50'}>

@@ -35,71 +35,120 @@ const BuilderContext = createContext<BuilderContextType | undefined>(undefined);
 
 const MAX_HISTORY = 50;
 
+const ensureSystemPages = (builderData: StoreBuilder): StoreBuilder => {
+  const pages = [...builderData.pages];
+
+  const ensurePage = (slug: string, name: string) => {
+    const existing = pages.find((page) => page.slug === slug);
+    if (!existing) {
+      pages.push({
+        id: `${slug.replace(/\W+/g, '')}-${Math.random().toString(36).slice(2, 8)}`,
+        name,
+        slug,
+        isSystemPage: true,
+        sections: [],
+      });
+    }
+  };
+
+  ensurePage('/', 'Home');
+  ensurePage('/product', 'Product Page');
+
+  const activePageId =
+    builderData.activePageId && pages.some((page) => page.id === builderData.activePageId)
+      ? builderData.activePageId
+      : pages[0]?.id;
+
+  return {
+    ...builderData,
+    pages,
+    activePageId,
+  };
+};
+
 function builderReducer(history: BuilderHistory, action: BuilderAction): BuilderHistory {
   const { past, present, future } = history;
 
   switch (action.type) {
     case 'ADD_SECTION': {
-      const newBuilder = { ...present };
-      const pageIndex = newBuilder.pages.findIndex((p) => p.id === action.pageId);
-      if (pageIndex >= 0) {
-        newBuilder.pages[pageIndex].sections.push(action.section);
-      }
+      const newPages = present.pages.map((page) =>
+        page.id === action.pageId
+          ? {
+              ...page,
+              sections: [...page.sections, action.section],
+            }
+          : page
+      );
       return {
         past: [...past.slice(-MAX_HISTORY + 1), present],
-        present: newBuilder,
+        present: {
+          ...present,
+          pages: newPages,
+        },
         future: [],
       };
     }
 
     case 'REMOVE_SECTION': {
-      const newBuilder = { ...present };
-      const pageIndex = newBuilder.pages.findIndex((p) => p.id === action.pageId);
-      if (pageIndex >= 0) {
-        newBuilder.pages[pageIndex].sections = newBuilder.pages[pageIndex].sections.filter(
-          (s) => s.id !== action.sectionId
-        );
-      }
+      const newPages = present.pages.map((page) =>
+        page.id === action.pageId
+          ? {
+              ...page,
+              sections: page.sections.filter((section) => section.id !== action.sectionId),
+            }
+          : page
+      );
       return {
         past: [...past.slice(-MAX_HISTORY + 1), present],
-        present: newBuilder,
+        present: {
+          ...present,
+          pages: newPages,
+        },
         future: [],
       };
     }
 
     case 'UPDATE_SECTION': {
-      const newBuilder = { ...present };
-      const pageIndex = newBuilder.pages.findIndex((p) => p.id === action.pageId);
-      if (pageIndex >= 0) {
-        const sectionIndex = newBuilder.pages[pageIndex].sections.findIndex(
-          (s) => s.id === action.sectionId
-        );
-        if (sectionIndex >= 0) {
-          newBuilder.pages[pageIndex].sections[sectionIndex] = {
-            ...newBuilder.pages[pageIndex].sections[sectionIndex],
-            ...action.updates,
-          };
-        }
-      }
+      const newPages = present.pages.map((page) =>
+        page.id === action.pageId
+          ? {
+              ...page,
+              sections: page.sections.map((section) =>
+                section.id === action.sectionId
+                  ? { ...section, ...action.updates }
+                  : section
+              ),
+            }
+          : page
+      );
       return {
         past: [...past.slice(-MAX_HISTORY + 1), present],
-        present: newBuilder,
+        present: {
+          ...present,
+          pages: newPages,
+        },
         future: [],
       };
     }
 
     case 'REORDER_SECTIONS': {
-      const newBuilder = { ...present };
-      const pageIndex = newBuilder.pages.findIndex((p) => p.id === action.pageId);
-      if (pageIndex >= 0) {
-        newBuilder.pages[pageIndex].sections = action.sections.map((s, idx) => ({
-          ...s,
-          order: idx,
-        }));
-      }
+      const newPages = present.pages.map((page) =>
+        page.id === action.pageId
+          ? {
+              ...page,
+              sections: action.sections.map((section, index) => ({
+                ...section,
+                order: index,
+              })),
+            }
+          : page
+      );
       return {
         past: [...past.slice(-MAX_HISTORY + 1), present],
-        present: newBuilder,
+        present: {
+          ...present,
+          pages: newPages,
+        },
         future: [],
       };
     }
@@ -204,7 +253,7 @@ function builderReducer(history: BuilderHistory, action: BuilderAction): Builder
 export const BuilderProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [history, dispatch] = useReducer(builderReducer, {
     past: [],
-    present: createDefaultBuilder(),
+    present: ensureSystemPages(createDefaultBuilder()),
     future: [],
   });
 
@@ -340,7 +389,7 @@ export const BuilderProvider: React.FC<{ children: React.ReactNode }> = ({ child
   );
 
   const loadBuilder = useCallback((builderData: StoreBuilder) => {
-    dispatch({ type: 'LOAD_BUILDER', builder: builderData });
+    dispatch({ type: 'LOAD_BUILDER', builder: ensureSystemPages(builderData) });
   }, []);
 
   const resetBuilder = useCallback(() => {

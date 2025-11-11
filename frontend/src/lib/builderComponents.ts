@@ -1,4 +1,4 @@
-import { ComponentDefinition } from '@/types/builder';
+import { ComponentDefinition, StoreBuilder } from '@/types/builder';
 
 export const componentLibrary: ComponentDefinition[] = [
   {
@@ -20,6 +20,26 @@ export const componentLibrary: ComponentDefinition[] = [
     defaultStyles: {
       backgroundColor: '#ffffff',
       padding: { top: 16, right: 32, bottom: 16, left: 32 },
+    },
+  },
+  {
+    type: 'announcement-bar',
+    name: 'Announcement bar',
+    description: 'Display a short message or promotion above the header',
+    icon: 'Megaphone',
+    category: 'layout',
+    availableOn: ['home', 'product'],
+    defaultSettings: {
+      message: 'Free shipping on orders over $75',
+      linkLabel: '',
+      linkUrl: '',
+      showClose: true,
+      alignment: 'center',
+    },
+    defaultStyles: {
+      backgroundColor: '#111827',
+      textAlign: 'center',
+      padding: { top: 8, right: 16, bottom: 8, left: 16 },
     },
   },
   {
@@ -216,6 +236,51 @@ export const componentLibrary: ComponentDefinition[] = [
       padding: { top: 32, right: 32, bottom: 32, left: 32 },
     },
   },
+  {
+    type: 'product-details',
+    name: 'Product details',
+    description: 'Showcase product information, price, and purchase actions',
+    icon: 'Shirt',
+    category: 'commerce',
+    availableOn: ['product'],
+    defaultSettings: {
+      badgeText: 'Bestseller',
+      showBadge: true,
+      showRating: true,
+      ratingValue: 4.8,
+      ratingCount: 128,
+      tagline: 'Premium quality you can feel',
+      showTrustBadges: true,
+      trustBadges: [
+        { icon: 'Truck', title: 'Fast fulfillment', text: 'Ships in 2-3 business days' },
+        { icon: 'ShieldCheck', title: 'Quality guarantee', text: '30-day hassle-free returns' },
+      ],
+      showReviews: true,
+      showSizeChart: true,
+    },
+    defaultStyles: {
+      backgroundColor: '#ffffff',
+      padding: { top: 48, right: 32, bottom: 48, left: 32 },
+    },
+  },
+  {
+    type: 'product-recommendations',
+    name: 'You may also like',
+    description: 'Suggest other products related to the current item',
+    icon: 'Sparkles',
+    category: 'commerce',
+    availableOn: ['product'],
+    defaultSettings: {
+      heading: 'You may also like',
+      subheading: 'Complete the look with these hand-picked items.',
+      maxItems: 4,
+      layout: 'grid',
+    },
+    defaultStyles: {
+      backgroundColor: '#ffffff',
+      padding: { top: 48, right: 32, bottom: 48, left: 32 },
+    },
+  },
 ];
 
 export const getComponentDefinition = (type: string): ComponentDefinition | undefined => {
@@ -242,6 +307,13 @@ export const createDefaultBuilder = (): StoreBuilder => ({
       id: 'home',
       name: 'Home',
       slug: '/',
+      isSystemPage: true,
+      sections: [],
+    },
+    {
+      id: 'product',
+      name: 'Product Page',
+      slug: '/product',
       isSystemPage: true,
       sections: [],
     },

@@ -44,6 +44,8 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     onClose();
   };
 
+  const primaryMockup = product.mockupUrls?.[0] || product.mockupUrl;
+
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
@@ -54,9 +56,9 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           {/* Product Image */}
           <div className="aspect-square bg-muted rounded-lg overflow-hidden">
-            {product.mockupUrl ? (
+            {primaryMockup ? (
               <img
-                src={product.mockupUrl}
+                src={primaryMockup}
                 alt={product.name}
                 className="w-full h-full object-cover"
               />

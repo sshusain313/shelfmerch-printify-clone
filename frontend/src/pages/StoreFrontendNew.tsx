@@ -9,8 +9,6 @@ import { getStoreBySubdomain, getProducts } from '@/lib/localStorage';
 import { getTheme } from '@/lib/themes';
 import { toast } from 'sonner';
 import CartDrawer from '@/components/storefront/CartDrawer';
-import ProductDetailModal from '@/components/storefront/ProductDetailModal';
-import CheckoutModal from '@/components/storefront/CheckoutModal';
 import SectionRenderer from '@/components/builder/SectionRenderer';
 
 const StoreFrontendNew = () => {
@@ -20,9 +18,6 @@ const StoreFrontendNew = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
-  const [checkoutOpen, setCheckoutOpen] = useState(false);
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [productModalOpen, setProductModalOpen] = useState(false);
   
   // Function to load store data
   const loadStoreData = useCallback(() => {
@@ -106,6 +101,7 @@ const StoreFrontendNew = () => {
       const newCart = [...cart];
       newCart[existingIndex].quantity += quantity;
       setCart(newCart);
+      toast.success('Updated cart quantity');
     } else {
       setCart([
         ...cart,
@@ -116,6 +112,7 @@ const StoreFrontendNew = () => {
           variant,
         },
       ]);
+      toast.success('Added to cart');
     }
   };
 
@@ -150,50 +147,14 @@ const StoreFrontendNew = () => {
   };
 
   const handleProductClick = (product: Product) => {
-    setSelectedProduct(product);
-    setProductModalOpen(true);
+    if (!store) return;
+    navigate(`/store/${store.subdomain}/product/${product.id}`);
   };
 
   const handleCheckout = () => {
+    if (!store) return;
     setCartOpen(false);
-    setCheckoutOpen(true);
-  };
-
-  const handlePlaceOrder = (orderData: any) => {
-    // Create complete order
-    const order = {
-      id: Math.random().toString(36).substr(2, 9),
-      userId: store?.userId || '',
-      ...orderData,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-
-    // Save order to localStorage for the store owner
-    if (store) {
-      const ordersKey = `orders_${store.userId}`;
-      const existingOrders = localStorage.getItem(ordersKey);
-      const orders = existingOrders ? JSON.parse(existingOrders) : [];
-      orders.push(order);
-      localStorage.setItem(ordersKey, JSON.stringify(orders));
-
-      // Dispatch event for real-time sync
-      window.dispatchEvent(
-        new CustomEvent('shelfmerch-data-update', {
-          detail: { type: 'order', data: order },
-        })
-      );
-    }
-
-    // Clear cart
-    setCart([]);
-    sessionStorage.removeItem(`cart_${store?.id}`);
-
-    // Close checkout modal
-    setCheckoutOpen(false);
-
-    // Navigate to confirmation page
-    navigate('/order-confirmation', { state: { order } });
+    navigate(`/store/${store.subdomain}/checkout`);
   };
 
   if (!store) {
@@ -283,7 +244,7 @@ const StoreFrontendNew = () => {
         // Builder-based layout
         <div>
           {activePage.sections
-            .filter(s => s.visible)
+            .filter((s) => s.visible)
             .sort((a, b) => a.order - b.order)
             .map((section) => (
               <SectionRenderer
@@ -292,6 +253,7 @@ const StoreFrontendNew = () => {
                 products={products}
                 globalStyles={store.builder!.globalStyles}
                 isPreview={false}
+                onProductClick={handleProductClick}
               />
             ))}
         </div>
@@ -339,16 +301,18 @@ const StoreFrontendNew = () => {
 
           {products.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {products.map((product) => (
+              {products.map((product) => {
+                const mockup = product.mockupUrls?.[0] || product.mockupUrl;
+                return (
                 <Card
                   key={product.id}
                   className="overflow-hidden group cursor-pointer hover:shadow-lg transition-all"
                   onClick={() => handleProductClick(product)}
                 >
                   <div className="aspect-square bg-muted relative overflow-hidden">
-                    {product.mockupUrl ? (
+                    {mockup ? (
                       <img
-                        src={product.mockupUrl}
+                        src={mockup}
                         alt={product.name}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                       />
@@ -394,7 +358,8 @@ const StoreFrontendNew = () => {
                     </div>
                   </div>
                 </Card>
-              ))}
+              );
+              })}
             </div>
           ) : (
             <Card className="p-12 text-center">
@@ -444,22 +409,6 @@ const StoreFrontendNew = () => {
         onCheckout={handleCheckout}
       />
 
-      {/* Product Detail Modal */}
-      <ProductDetailModal
-        open={productModalOpen}
-        onClose={() => setProductModalOpen(false)}
-        product={selectedProduct}
-        onAddToCart={handleAddToCart}
-      />
-
-      {/* Checkout Modal */}
-      <CheckoutModal
-        open={checkoutOpen}
-        onClose={() => setCheckoutOpen(false)}
-        cart={cart}
-        onPlaceOrder={handlePlaceOrder}
-        storeId={store.id}
-      />
     </div>
   );
 };

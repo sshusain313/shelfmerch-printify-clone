@@ -132,6 +132,7 @@ const Designer = () => {
       baseProduct: id || 'custom',
       price: priceNum,
       compareAtPrice: compareAtPrice ? parseFloat(compareAtPrice) : undefined,
+      mockupUrls: [],
       designs: {
         [selectedSide]: 'mockup-data', // In production, this would be actual design data
       },

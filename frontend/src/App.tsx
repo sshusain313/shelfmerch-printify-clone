@@ -12,7 +12,7 @@ import CategoryProducts from "./pages/CategoryProducts";
 import ProductDetail from "./pages/ProductDetail";
 import Designer from "./pages/Designer";
 import Auth from "./pages/Auth";
-import DashboardNew from "./pages/DashboardNew";
+import Dashboard from "./pages/Dashboard";
 import Orders from "./pages/Orders";
 import Stores from "./pages/Stores";
 import Analytics from "./pages/Analytics";
@@ -20,9 +20,12 @@ import Settings from "./pages/Settings";
 import Admin from "./pages/Admin";
 import CreateStore from "./pages/CreateStore";
 import StoreFrontendNew from "./pages/StoreFrontendNew";
+import StoreProductPage from "./pages/StoreProductPage";
+import StoreCheckoutPage from "./pages/StoreCheckoutPage";
 import OrderConfirmation from "./pages/OrderConfirmation";
 import BuilderDemo from "./pages/BuilderDemo";
 import NotFound from "./pages/NotFound";
+import ProductCreation from "./pages/ProductCreation";
 
 const queryClient = new QueryClient();
 
@@ -52,7 +55,15 @@ const App = () => (
                 path="/dashboard"
                 element={
                   <ProtectedRoute>
-                    <DashboardNew />
+                    <Dashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/dashboard/products/:productId"
+                element={
+                  <ProtectedRoute>
+                    <ProductCreation />
                   </ProtectedRoute>
                 }
               />
@@ -113,6 +124,8 @@ const App = () => (
                 }
               />
               <Route path="/store/:subdomain" element={<StoreFrontendNew />} />
+              <Route path="/store/:subdomain/product/:productId" element={<StoreProductPage />} />
+              <Route path="/store/:subdomain/checkout" element={<StoreCheckoutPage />} />
               <Route path="/order-confirmation" element={<OrderConfirmation />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
