@@ -68,7 +68,10 @@ import {
   Activity,
   Clock,
   ChevronRight,
+  Wallet
 } from 'lucide-react';
+import { WalletManagement } from '@/components/admin/WalletManagement';
+import { InvoiceManagement } from '@/components/admin/InvoiceManagement';
 
 const Admin = () => {
   const { user, logout } = useAuth();
@@ -285,6 +288,22 @@ const Admin = () => {
           >
             <Truck className="mr-2 h-4 w-4" />
             Fulfillment
+          </Button>
+          <Button 
+            variant={activeTab === 'wallets' ? 'secondary' : 'ghost'} 
+            className="w-full justify-start"
+            onClick={() => setActiveTab('wallets')}
+          >
+            <Wallet className="mr-2 h-4 w-4" />
+            Wallets
+          </Button>
+          <Button 
+            variant={activeTab === 'invoices' ? 'secondary' : 'ghost'} 
+            className="w-full justify-start"
+            onClick={() => setActiveTab('invoices')}
+          >
+            <FileText className="mr-2 h-4 w-4" />
+            Invoices
           </Button>
           <Button 
             variant={activeTab === 'support' ? 'secondary' : 'ghost'} 
@@ -1265,6 +1284,12 @@ const Admin = () => {
               </Card>
             </>
           )}
+
+          {/* Wallets Tab */}
+          {activeTab === 'wallets' && <WalletManagement />}
+
+          {/* Invoices Tab */}
+          {activeTab === 'invoices' && <InvoiceManagement />}
 
           {/* Settings Tab */}
           {activeTab === 'settings' && (
