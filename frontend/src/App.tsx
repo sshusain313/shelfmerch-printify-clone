@@ -23,7 +23,7 @@ import StoreFrontendNew from "./pages/StoreFrontendNew";
 import StoreProductPage from "./pages/StoreProductPage";
 import StoreCheckoutPage from "./pages/StoreCheckoutPage";
 import OrderConfirmation from "./pages/OrderConfirmation";
-import BuilderDemo from "./pages/BuilderDemo";
+import VisualBuilder from "./pages/VisualBuilder";
 import NotFound from "./pages/NotFound";
 import ProductCreation from "./pages/ProductCreation";
 
@@ -87,7 +87,7 @@ const App = () => (
                 path="/stores/:storeId/builder"
                 element={
                   <ProtectedRoute>
-                    <BuilderDemo />
+                    <VisualBuilder />
                   </ProtectedRoute>
                 }
               />
