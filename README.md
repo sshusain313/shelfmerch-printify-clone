@@ -38,14 +38,33 @@ A modern print-on-demand platform clone inspired by Printify, built with React, 
    cd backend
    ```
 
-2. Install Python dependencies:
+2. Install Node.js dependencies:
    ```bash
-   pip install -r requirements.txt
+   npm install
    ```
 
-3. Run the server:
+3. Create a `.env` file in the `backend` directory:
    ```bash
-   python server.py
+   cp .env.example .env
+   ```
+   
+   Update the `.env` file with your MongoDB connection string:
+   ```
+   MONGO_URL=mongodb://localhost:27017
+   DB_NAME=shelfmerch
+   PORT=8000
+   CORS_ORIGINS=http://localhost:5173,http://localhost:3000
+   ```
+
+4. Run the development server:
+   ```bash
+   npm run dev
+   ```
+   
+   Or build and run in production:
+   ```bash
+   npm run build
+   npm start
    ```
 
 ## Features
@@ -68,7 +87,9 @@ A modern print-on-demand platform clone inspired by Printify, built with React, 
 - Lucide Icons
 
 **Backend:**
-- Python Flask
+- Node.js + Express
+- TypeScript
+- MongoDB with Mongoose
 
 ## Development
 
