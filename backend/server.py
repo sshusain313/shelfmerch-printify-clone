@@ -38,10 +38,63 @@ class StatusCheckCreate(BaseModel):
     client_name: str
 
 # Wallet Models
+class StoreType(str, Enum):
+    connected = "connected"
+    popup = "popup"
+
+class PayoutSchedule(str, Enum):
+    monthly = "monthly"
+    on_demand = "on_demand"
+
+class BankAccount(BaseModel):
+    accountHolderName: str
+    accountNumber: str  # Should be encrypted in production
+    routingNumber: str  # Should be encrypted in production
+    accountType: str = "checking"  # checking or savings
+    bankName: str
+    country: str = "US"
+    currency: str = "USD"
+
+class PayoutSettings(BaseModel):
+    bankAccount: Optional[BankAccount] = None
+    paypalEmail: Optional[str] = None
+    payoutSchedule: PayoutSchedule = PayoutSchedule.monthly
+    minimumPayoutAmount: float = 25.00
+    nextScheduledPayout: Optional[datetime] = None
+
+class WalletMetadata(BaseModel):
+    totalTopUps: float = 0.0
+    totalSpent: float = 0.0
+    totalPayoutsReceived: float = 0.0
+    lastTopUpDate: Optional[datetime] = None
+    lastPayoutDate: Optional[datetime] = None
+    lastTransactionDate: Optional[datetime] = None
+
 class Wallet(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     userId: str
+    storeId: Optional[str] = None
+    storeType: StoreType = StoreType.connected
+    
+    # Fulfillment balance
     balance: float = 0.0
+    currency: str = "USD"
+    lowBalanceThreshold: float = 20.0
+    
+    # Payout balance (for popup stores)
+    payoutBalance: float = 0.0
+    pendingPayoutBalance: float = 0.0
+    lifetimeEarnings: float = 0.0
+    
+    # Payout settings
+    payoutSettings: Optional[PayoutSettings] = None
+    
+    # Auto recharge
+    autoRecharge: dict = {"enabled": False, "amount": 0.0, "triggerThreshold": 0.0}
+    
+    status: str = "active"
+    metadata: WalletMetadata = Field(default_factory=WalletMetadata)
+    
     createdAt: datetime = Field(default_factory=datetime.utcnow)
     updatedAt: datetime = Field(default_factory=datetime.utcnow)
 
@@ -49,20 +102,139 @@ class TransactionType(str, Enum):
     credit = "credit"
     debit = "debit"
 
+class TransactionCategory(str, Enum):
+    fulfillment = "fulfillment"
+    top_up = "top_up"
+    payout = "payout"
+    customer_payment = "customer_payment"
+    refund = "refund"
+    adjustment = "adjustment"
+    platform_fee = "platform_fee"
+
+class BalanceAffected(str, Enum):
+    wallet = "wallet"
+    payout = "payout"
+    both = "both"
+
 class WalletTransaction(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    transactionId: str = Field(default_factory=lambda: f"TXN-{uuid.uuid4().hex[:12].upper()}")
     walletId: str
     userId: str
+    storeId: Optional[str] = None
+    
+    category: TransactionCategory
     type: TransactionType
     amount: float
+    balanceBefore: float = 0.0
+    balanceAfter: float = 0.0
+    
+    affectsBalance: BalanceAffected = BalanceAffected.wallet
+    
+    orderId: Optional[str] = None
+    paymentMethodId: Optional[str] = None
+    payoutId: Optional[str] = None
+    escrowTransactionId: Optional[str] = None
+    
+    status: str = "completed"
     description: str
+    failureReason: Optional[str] = None
+    
+    metadata: dict = {}
+    
     createdAt: datetime = Field(default_factory=datetime.utcnow)
+    completedAt: Optional[datetime] = None
     adminId: Optional[str] = None
 
 class WalletCreditDebit(BaseModel):
     amount: float
     description: str
     adminId: str
+    category: TransactionCategory = TransactionCategory.adjustment
+
+# Escrow Models (for popup stores)
+class PaymentStatus(str, Enum):
+    pending = "pending"
+    captured = "captured"
+    refunded = "refunded"
+    failed = "failed"
+
+class FulfillmentPaymentStatus(str, Enum):
+    pending = "pending"
+    completed = "completed"
+    failed = "failed"
+
+class PayoutStatusEnum(str, Enum):
+    in_escrow = "in_escrow"
+    released = "released"
+    paid_out = "paid_out"
+
+class EscrowTransaction(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    orderId: str
+    storeId: str
+    userId: str
+    
+    customerPaymentAmount: float
+    fulfillmentCost: float
+    platformFee: float
+    storePayout: float
+    
+    customerPaymentStatus: PaymentStatus = PaymentStatus.pending
+    fulfillmentPaymentStatus: FulfillmentPaymentStatus = FulfillmentPaymentStatus.pending
+    payoutStatus: PayoutStatusEnum = PayoutStatusEnum.in_escrow
+    
+    stripePaymentIntentId: Optional[str] = None
+    stripeTransferId: Optional[str] = None
+    
+    releasedToPayoutAt: Optional[datetime] = None
+    paidOutAt: Optional[datetime] = None
+    
+    createdAt: datetime = Field(default_factory=datetime.utcnow)
+    updatedAt: datetime = Field(default_factory=datetime.utcnow)
+
+# Payout Models
+class PayoutMethod(str, Enum):
+    bank_transfer = "bank_transfer"
+    paypal = "paypal"
+
+class PayoutStatus(str, Enum):
+    pending = "pending"
+    processing = "processing"
+    completed = "completed"
+    failed = "failed"
+    cancelled = "cancelled"
+
+class Payout(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    payoutId: str = Field(default_factory=lambda: f"PO-{datetime.utcnow().strftime('%Y%m')}-{uuid.uuid4().hex[:5].upper()}")
+    userId: str
+    storeId: str
+    
+    amount: float
+    currency: str = "USD"
+    
+    payoutMethod: PayoutMethod
+    bankAccount: Optional[dict] = None
+    
+    status: PayoutStatus = PayoutStatus.pending
+    
+    orderIds: List[str] = []
+    
+    scheduledDate: Optional[datetime] = None
+    processedDate: Optional[datetime] = None
+    completedDate: Optional[datetime] = None
+    
+    failureReason: Optional[str] = None
+    stripePayoutId: Optional[str] = None
+    
+    createdAt: datetime = Field(default_factory=datetime.utcnow)
+    updatedAt: datetime = Field(default_factory=datetime.utcnow)
+
+class PayoutCreate(BaseModel):
+    amount: float
+    payoutMethod: PayoutMethod
+    bankAccountId: Optional[str] = None
 
 # Invoice Models
 class InvoiceStatus(str, Enum):
@@ -163,10 +335,39 @@ async def get_status_checks():
 
 # Wallet Routes
 @api_router.get("/wallets")
-async def get_wallets(userId: Optional[str] = None):
-    query = {"userId": userId} if userId else {}
+async def get_wallets(
+    userId: Optional[str] = None,
+    storeId: Optional[str] = None,
+    storeType: Optional[str] = None
+):
+    query = {}
+    if userId:
+        query["userId"] = userId
+    if storeId:
+        query["storeId"] = storeId
+    if storeType:
+        query["storeType"] = storeType
+    
     wallets = await db.wallets.find(query).to_list(1000)
     return [Wallet(**wallet) for wallet in wallets]
+
+@api_router.get("/wallets/{userId}/balance")
+async def get_wallet_balance(userId: str, storeId: Optional[str] = None):
+    query = {"userId": userId}
+    if storeId:
+        query["storeId"] = storeId
+    
+    wallet = await db.wallets.find_one(query)
+    if not wallet:
+        return {"balance": 0.0, "payoutBalance": 0.0, "pendingPayoutBalance": 0.0}
+    
+    return {
+        "balance": wallet.get("balance", 0.0),
+        "payoutBalance": wallet.get("payoutBalance", 0.0),
+        "pendingPayoutBalance": wallet.get("pendingPayoutBalance", 0.0),
+        "lifetimeEarnings": wallet.get("lifetimeEarnings", 0.0),
+        "currency": wallet.get("currency", "USD")
+    }
 
 @api_router.post("/wallets/{userId}/credit")
 async def credit_wallet(userId: str, credit_data: WalletCreditDebit, request: Request):
@@ -188,10 +389,15 @@ async def credit_wallet(userId: str, credit_data: WalletCreditDebit, request: Re
     transaction = WalletTransaction(
         walletId=wallet["id"],
         userId=userId,
+        storeId=wallet.get("storeId"),
+        category=credit_data.category,
         type=TransactionType.credit,
         amount=credit_data.amount,
+        balanceBefore=wallet["balance"],
+        balanceAfter=new_balance,
         description=credit_data.description,
-        adminId=credit_data.adminId
+        adminId=credit_data.adminId,
+        completedAt=datetime.utcnow()
     )
     await db.wallet_transactions.insert_one(transaction.dict())
     
@@ -234,10 +440,15 @@ async def debit_wallet(userId: str, debit_data: WalletCreditDebit, request: Requ
     transaction = WalletTransaction(
         walletId=wallet["id"],
         userId=userId,
+        storeId=wallet.get("storeId"),
+        category=debit_data.category,
         type=TransactionType.debit,
         amount=debit_data.amount,
+        balanceBefore=wallet["balance"],
+        balanceAfter=new_balance,
         description=debit_data.description,
-        adminId=debit_data.adminId
+        adminId=debit_data.adminId,
+        completedAt=datetime.utcnow()
     )
     await db.wallet_transactions.insert_one(transaction.dict())
     
@@ -259,9 +470,212 @@ async def debit_wallet(userId: str, debit_data: WalletCreditDebit, request: Requ
     return {"success": True, "newBalance": new_balance}
 
 @api_router.get("/wallets/{userId}/transactions")
-async def get_wallet_transactions(userId: str):
-    transactions = await db.wallet_transactions.find({"userId": userId}).sort("createdAt", -1).to_list(1000)
+async def get_wallet_transactions(
+    userId: str,
+    category: Optional[str] = None,
+    storeId: Optional[str] = None,
+    affectsBalance: Optional[str] = None
+):
+    query = {"userId": userId}
+    if category:
+        query["category"] = category
+    if storeId:
+        query["storeId"] = storeId
+    if affectsBalance:
+        query["affectsBalance"] = affectsBalance
+    
+    transactions = await db.wallet_transactions.find(query).sort("createdAt", -1).to_list(1000)
     return [WalletTransaction(**txn) for txn in transactions]
+
+# Escrow Routes (for popup stores)
+@api_router.post("/escrow/create")
+async def create_escrow_transaction(escrow_data: EscrowTransaction, request: Request):
+    await db.escrow_transactions.insert_one(escrow_data.dict())
+    return {"success": True, "escrowId": escrow_data.id}
+
+@api_router.get("/escrow/{order_id}")
+async def get_escrow_transaction(order_id: str):
+    escrow = await db.escrow_transactions.find_one({"orderId": order_id})
+    if not escrow:
+        return {"error": "Escrow transaction not found"}
+    return EscrowTransaction(**escrow)
+
+@api_router.post("/escrow/{escrow_id}/release")
+async def release_escrow_to_payout(escrow_id: str, request: Request):
+    escrow = await db.escrow_transactions.find_one({"id": escrow_id})
+    if not escrow:
+        return {"success": False, "error": "Escrow not found"}
+    
+    # Update wallet payout balance
+    wallet = await db.wallets.find_one({"userId": escrow["userId"], "storeId": escrow["storeId"]})
+    if wallet:
+        new_payout_balance = wallet.get("payoutBalance", 0.0) + escrow["storePayout"]
+        new_lifetime_earnings = wallet.get("lifetimeEarnings", 0.0) + escrow["storePayout"]
+        
+        await db.wallets.update_one(
+            {"id": wallet["id"]},
+            {
+                "$set": {
+                    "payoutBalance": new_payout_balance,
+                    "pendingPayoutBalance": wallet.get("pendingPayoutBalance", 0.0) - escrow["storePayout"],
+                    "lifetimeEarnings": new_lifetime_earnings,
+                    "updatedAt": datetime.utcnow()
+                }
+            }
+        )
+        
+        # Create transaction record
+        transaction = WalletTransaction(
+            walletId=wallet["id"],
+            userId=escrow["userId"],
+            storeId=escrow["storeId"],
+            category=TransactionCategory.customer_payment,
+            type=TransactionType.credit,
+            amount=escrow["storePayout"],
+            balanceBefore=wallet.get("payoutBalance", 0.0),
+            balanceAfter=new_payout_balance,
+            affectsBalance=BalanceAffected.payout,
+            orderId=escrow["orderId"],
+            escrowTransactionId=escrow_id,
+            description=f"Payout from order {escrow['orderId']}",
+            completedAt=datetime.utcnow()
+        )
+        await db.wallet_transactions.insert_one(transaction.dict())
+    
+    # Update escrow status
+    await db.escrow_transactions.update_one(
+        {"id": escrow_id},
+        {
+            "$set": {
+                "payoutStatus": PayoutStatusEnum.released,
+                "releasedToPayoutAt": datetime.utcnow(),
+                "updatedAt": datetime.utcnow()
+            }
+        }
+    )
+    
+    return {"success": True, "newPayoutBalance": new_payout_balance}
+
+# Payout Routes
+@api_router.get("/payouts")
+async def get_payouts(
+    userId: Optional[str] = None,
+    storeId: Optional[str] = None,
+    status: Optional[str] = None
+):
+    query = {}
+    if userId:
+        query["userId"] = userId
+    if storeId:
+        query["storeId"] = storeId
+    if status:
+        query["status"] = status
+    
+    payouts = await db.payouts.find(query).sort("createdAt", -1).to_list(1000)
+    return [Payout(**payout) for payout in payouts]
+
+@api_router.post("/payouts/request")
+async def request_payout(payout_data: PayoutCreate, userId: str, storeId: str, request: Request):
+    # Get wallet
+    wallet = await db.wallets.find_one({"userId": userId, "storeId": storeId})
+    if not wallet:
+        return {"success": False, "error": "Wallet not found"}
+    
+    # Check minimum payout amount
+    min_payout = wallet.get("payoutSettings", {}).get("minimumPayoutAmount", 25.0)
+    if payout_data.amount < min_payout:
+        return {"success": False, "error": f"Minimum payout amount is ${min_payout}"}
+    
+    # Check sufficient balance
+    if wallet.get("payoutBalance", 0.0) < payout_data.amount:
+        return {"success": False, "error": "Insufficient payout balance"}
+    
+    # Create payout record
+    payout = Payout(
+        userId=userId,
+        storeId=storeId,
+        amount=payout_data.amount,
+        payoutMethod=payout_data.payoutMethod,
+        bankAccount=wallet.get("payoutSettings", {}).get("bankAccount", {}) if payout_data.payoutMethod == PayoutMethod.bank_transfer else None,
+        scheduledDate=datetime.utcnow()
+    )
+    await db.payouts.insert_one(payout.dict())
+    
+    # Deduct from payout balance
+    new_payout_balance = wallet["payoutBalance"] - payout_data.amount
+    await db.wallets.update_one(
+        {"id": wallet["id"]},
+        {
+            "$set": {
+                "payoutBalance": new_payout_balance,
+                "updatedAt": datetime.utcnow()
+            }
+        }
+    )
+    
+    # Create transaction
+    transaction = WalletTransaction(
+        walletId=wallet["id"],
+        userId=userId,
+        storeId=storeId,
+        category=TransactionCategory.payout,
+        type=TransactionType.debit,
+        amount=payout_data.amount,
+        balanceBefore=wallet["payoutBalance"],
+        balanceAfter=new_payout_balance,
+        affectsBalance=BalanceAffected.payout,
+        payoutId=payout.id,
+        description=f"Payout to {payout_data.payoutMethod}",
+        completedAt=datetime.utcnow()
+    )
+    await db.wallet_transactions.insert_one(transaction.dict())
+    
+    return {"success": True, "payoutId": payout.payoutId, "newPayoutBalance": new_payout_balance}
+
+@api_router.patch("/payouts/{payout_id}/status")
+async def update_payout_status(payout_id: str, status: PayoutStatus, failureReason: Optional[str] = None):
+    update_data = {
+        "status": status,
+        "updatedAt": datetime.utcnow()
+    }
+    
+    if status == PayoutStatus.processing:
+        update_data["processedDate"] = datetime.utcnow()
+    elif status == PayoutStatus.completed:
+        update_data["completedDate"] = datetime.utcnow()
+    elif status == PayoutStatus.failed:
+        update_data["failureReason"] = failureReason
+    
+    result = await db.payouts.update_one(
+        {"payoutId": payout_id},
+        {"$set": update_data}
+    )
+    
+    if result.modified_count == 0:
+        return {"success": False, "error": "Payout not found"}
+    
+    return {"success": True}
+
+@api_router.patch("/wallets/{userId}/payout-settings")
+async def update_payout_settings(userId: str, settings: PayoutSettings, storeId: Optional[str] = None):
+    query = {"userId": userId}
+    if storeId:
+        query["storeId"] = storeId
+    
+    result = await db.wallets.update_one(
+        query,
+        {
+            "$set": {
+                "payoutSettings": settings.dict(),
+                "updatedAt": datetime.utcnow()
+            }
+        }
+    )
+    
+    if result.modified_count == 0:
+        return {"success": False, "error": "Wallet not found"}
+    
+    return {"success": True}
 
 # Invoice Routes
 @api_router.get("/invoices")
