@@ -74,6 +74,7 @@ import {
 import { WalletManagement } from '@/components/admin/WalletManagement';
 import { InvoiceManagement } from '@/components/admin/InvoiceManagement';
 import { AuditLogs } from '@/components/admin/AuditLogs';
+import { PayoutManagement } from '@/components/admin/PayoutManagement';
 
 const Admin = () => {
   const { user, logout } = useAuth();
