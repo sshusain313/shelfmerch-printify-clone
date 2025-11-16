@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Product, Order, Store as StoreType } from '@/types';
@@ -82,6 +82,8 @@ const Admin = () => {
   const [activeTab, setActiveTab] = useState('overview');
   const [selectedTimeRange, setSelectedTimeRange] = useState('month');
   const [announcementText, setAnnouncementText] = useState('');
+  const [totalUsers, setTotalUsers] = useState<number>(0);
+  const [isLoadingUsers, setIsLoadingUsers] = useState(true);
 
   // Admin sees ALL data across platform (from localStorage)
   const allStores = JSON.parse(localStorage.getItem('shelfmerch_all_stores') || '[]') as StoreType[];
@@ -93,6 +95,36 @@ const Admin = () => {
   const activeStores = allStores.length;
   const totalProducts = allProducts.length;
   const pendingOrders = allOrders.filter(o => o.status === 'on-hold').length;
+
+  // Fetch total user count from backend
+  useEffect(() => {
+    const fetchUserCount = async () => {
+      try {
+        const { authApi } = await import('@/lib/api');
+        const response = await authApi.getUserCount();
+        // The apiRequest returns the full response object for auth endpoints
+        if (response && typeof response.count === 'number') {
+          setTotalUsers(response.count);
+        } else if (response && response.success && typeof response.count === 'number') {
+          setTotalUsers(response.count);
+        }
+      } catch (error) {
+        console.error('Failed to fetch user count:', error);
+        // Fallback to stores length if API fails
+        setTotalUsers(allStores.length);
+      } finally {
+        setIsLoadingUsers(false);
+      }
+    };
+
+    if (user?.role === 'admin') {
+      fetchUserCount();
+    } else {
+      // If not admin, just show stores length
+      setTotalUsers(allStores.length);
+      setIsLoadingUsers(false);
+    }
+  }, [user?.role, allStores.length]);
 
   const stats = [
     { 
@@ -623,7 +655,9 @@ const Admin = () => {
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-sm text-muted-foreground">Total Users</p>
-                        <p className="text-2xl font-bold mt-1">{allStores.length}</p>
+                        <p className="text-2xl font-bold mt-1">
+                          {isLoadingUsers ? '...' : totalUsers}
+                        </p>
                       </div>
                       <Users className="h-8 w-8 text-primary" />
                     </div>
@@ -715,7 +749,7 @@ const Admin = () => {
                   </p>
                 </div>
                 <Button asChild>
-                  <Link to="/admin/products/new">Add Base Product</Link>
+                  <Link to="/admin/products/new">Add Fake Product</Link>
                 </Button>
               </div>
 

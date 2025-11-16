@@ -16,6 +16,10 @@ export interface Product {
     front?: string;
     back?: string;
   };
+  designBoundaries?: {
+    front?: { x: number; y: number; width: number; height: number };
+    back?: { x: number; y: number; width: number; height: number };
+  };
   variants: {
     colors: string[];
     sizes: string[];

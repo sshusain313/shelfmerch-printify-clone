@@ -1,7 +1,7 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ArrowLeft, Plus, X } from 'lucide-react';
+import { ArrowLeft, Plus, X, Move, Maximize2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -10,6 +10,261 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Product } from '@/types';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+
+interface BoundaryEditorProps {
+  imageUrl: string;
+  boundary: { x: number; y: number; width: number; height: number } | null;
+  onBoundaryChange: (boundary: { x: number; y: number; width: number; height: number } | null) => void;
+  onClose: () => void;
+}
+
+const BoundaryEditor = ({ imageUrl, boundary, onBoundaryChange, onClose }: BoundaryEditorProps) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const imageRef = useRef<HTMLImageElement>(null);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [startPos, setStartPos] = useState<{ x: number; y: number } | null>(null);
+  const [currentBoundary, setCurrentBoundary] = useState<{ x: number; y: number; width: number; height: number } | null>(boundary);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
+  const [isResizing, setIsResizing] = useState(false);
+  const [resizeHandle, setResizeHandle] = useState<string | null>(null);
+  const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
+
+  useEffect(() => {
+    setCurrentBoundary(boundary);
+  }, [boundary]);
+
+  const getRelativePosition = (e: React.MouseEvent | MouseEvent) => {
+    if (!containerRef.current) return { x: 0, y: 0 };
+    const rect = containerRef.current.getBoundingClientRect();
+    return {
+      x: ((e.clientX - rect.left) / rect.width) * 100,
+      y: ((e.clientY - rect.top) / rect.height) * 100,
+    };
+  };
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (!containerRef.current) return;
+    const pos = getRelativePosition(e);
+    
+    // Check if clicking on existing boundary
+    if (currentBoundary) {
+      const { x, y, width, height } = currentBoundary;
+      if (pos.x >= x && pos.x <= x + width && pos.y >= y && pos.y <= y + height) {
+        // Check if clicking on resize handle
+        const handleSize = 8;
+        const handles = [
+          { name: 'nw', x: x, y: y },
+          { name: 'ne', x: x + width, y: y },
+          { name: 'sw', x: x, y: y + height },
+          { name: 'se', x: x + width, y: y + height },
+        ];
+        
+        for (const handle of handles) {
+          if (Math.abs(pos.x - handle.x) < handleSize && Math.abs(pos.y - handle.y) < handleSize) {
+            setIsResizing(true);
+            setResizeHandle(handle.name);
+            setDragStart({ x: handle.x, y: handle.y });
+            return;
+          }
+        }
+        
+        // Dragging the boundary
+        setIsDragging(true);
+        setDragStart({ x: pos.x - x, y: pos.y - y });
+        return;
+      }
+    }
+    
+    // Start drawing new boundary
+    setIsDrawing(true);
+    setStartPos(pos);
+    setCurrentBoundary({ x: pos.x, y: pos.y, width: 0, height: 0 });
+  };
+
+  const handleMouseMove = (e: React.MouseEvent | MouseEvent) => {
+    if (!containerRef.current) return;
+    const pos = getRelativePosition(e);
+    
+    // Update hover position for cursor feedback
+    if (!isDrawing && !isDragging && !isResizing) {
+      setHoverPos(pos);
+    }
+
+    if (isDrawing && startPos) {
+      const x = Math.min(startPos.x, pos.x);
+      const y = Math.min(startPos.y, pos.y);
+      const width = Math.abs(pos.x - startPos.x);
+      const height = Math.abs(pos.y - startPos.y);
+      setCurrentBoundary({ x, y, width, height });
+    } else if (isDragging && currentBoundary && dragStart) {
+      const newX = Math.max(0, Math.min(100 - currentBoundary.width, pos.x - dragStart.x));
+      const newY = Math.max(0, Math.min(100 - currentBoundary.height, pos.y - dragStart.y));
+      setCurrentBoundary({ ...currentBoundary, x: newX, y: newY });
+    } else if (isResizing && currentBoundary && dragStart && resizeHandle) {
+      let newBoundary = { ...currentBoundary };
+      
+      switch (resizeHandle) {
+        case 'nw':
+          newBoundary.width = currentBoundary.x + currentBoundary.width - pos.x;
+          newBoundary.height = currentBoundary.y + currentBoundary.height - pos.y;
+          newBoundary.x = Math.max(0, pos.x);
+          newBoundary.y = Math.max(0, pos.y);
+          break;
+        case 'ne':
+          newBoundary.width = pos.x - currentBoundary.x;
+          newBoundary.height = currentBoundary.y + currentBoundary.height - pos.y;
+          newBoundary.y = Math.max(0, pos.y);
+          newBoundary.width = Math.min(100 - newBoundary.x, newBoundary.width);
+          break;
+        case 'sw':
+          newBoundary.width = currentBoundary.x + currentBoundary.width - pos.x;
+          newBoundary.height = pos.y - currentBoundary.y;
+          newBoundary.x = Math.max(0, pos.x);
+          newBoundary.height = Math.min(100 - newBoundary.y, newBoundary.height);
+          break;
+        case 'se':
+          newBoundary.width = pos.x - currentBoundary.x;
+          newBoundary.height = pos.y - currentBoundary.y;
+          newBoundary.width = Math.min(100 - newBoundary.x, newBoundary.width);
+          newBoundary.height = Math.min(100 - newBoundary.y, newBoundary.height);
+          break;
+      }
+      
+      if (newBoundary.width > 0 && newBoundary.height > 0) {
+        setCurrentBoundary(newBoundary);
+      }
+    }
+  };
+
+  const handleMouseUp = () => {
+    setIsDrawing(false);
+    setIsDragging(false);
+    setIsResizing(false);
+    setResizeHandle(null);
+    setStartPos(null);
+    setDragStart(null);
+  };
+
+  useEffect(() => {
+    if (isDrawing || isDragging || isResizing) {
+      const handleMove = (e: MouseEvent) => handleMouseMove(e);
+      const handleUp = () => handleMouseUp();
+      
+      window.addEventListener('mousemove', handleMove);
+      window.addEventListener('mouseup', handleUp);
+      
+      return () => {
+        window.removeEventListener('mousemove', handleMove);
+        window.removeEventListener('mouseup', handleUp);
+      };
+    }
+  }, [isDrawing, isDragging, isResizing, startPos, dragStart, currentBoundary, resizeHandle]);
+
+  const handleSave = () => {
+    onBoundaryChange(currentBoundary);
+    onClose();
+  };
+
+  const handleClear = () => {
+    setCurrentBoundary(null);
+    onBoundaryChange(null);
+  };
+
+  return (
+    <div className="space-y-4">
+      <div
+        ref={containerRef}
+        className="relative w-full bg-muted rounded-lg overflow-hidden cursor-crosshair"
+        style={{ aspectRatio: '1', maxHeight: '600px' }}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseLeave={() => setHoverPos(null)}
+      >
+        <img
+          ref={imageRef}
+          src={imageUrl}
+          alt="Design area"
+          className="w-full h-full object-contain"
+          draggable={false}
+        />
+        {currentBoundary && (
+          <>
+            <div
+              className={`absolute border-2 border-dashed shadow-lg bg-white/10 transition-all ${
+                hoverPos && 
+                hoverPos.x >= currentBoundary.x && 
+                hoverPos.x <= currentBoundary.x + currentBoundary.width &&
+                hoverPos.y >= currentBoundary.y && 
+                hoverPos.y <= currentBoundary.y + currentBoundary.height &&
+                !isDrawing && !isDragging && !isResizing
+                  ? 'border-blue-400 bg-blue-400/20 cursor-move'
+                  : 'border-white'
+              }`}
+              style={{
+                left: `${currentBoundary.x}%`,
+                top: `${currentBoundary.y}%`,
+                width: `${currentBoundary.width}%`,
+                height: `${currentBoundary.height}%`,
+                pointerEvents: 'none',
+              }}
+            />
+            {/* Resize handles */}
+            {['nw', 'ne', 'sw', 'se'].map((handle) => {
+              const positions: Record<string, { left: string; top: string }> = {
+                nw: { left: `${currentBoundary.x}%`, top: `${currentBoundary.y}%` },
+                ne: { left: `${currentBoundary.x + currentBoundary.width}%`, top: `${currentBoundary.y}%` },
+                sw: { left: `${currentBoundary.x}%`, top: `${currentBoundary.y + currentBoundary.height}%` },
+                se: { left: `${currentBoundary.x + currentBoundary.width}%`, top: `${currentBoundary.y + currentBoundary.height}%` },
+              };
+              return (
+                <div
+                  key={handle}
+                  className="absolute w-4 h-4 bg-white border-2 border-primary rounded-full cursor-nwse-resize transform -translate-x-1/2 -translate-y-1/2 z-10"
+                  style={{
+                    ...positions[handle],
+                    pointerEvents: 'auto',
+                    cursor: handle === 'nw' || handle === 'se' ? 'nwse-resize' : 'nesw-resize',
+                  }}
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                    setIsResizing(true);
+                    setResizeHandle(handle);
+                    const pos = getRelativePosition(e);
+                    setDragStart({ x: pos.x, y: pos.y });
+                  }}
+                />
+              );
+            })}
+          </>
+        )}
+      </div>
+      <div className="flex items-center justify-between">
+        <div className="text-sm text-muted-foreground">
+          {currentBoundary
+            ? `Boundary: ${currentBoundary.width.toFixed(1)}% × ${currentBoundary.height.toFixed(1)}%`
+            : 'Click and drag to draw a boundary'}
+        </div>
+        <div className="flex gap-2">
+          {currentBoundary && (
+            <Button variant="outline" onClick={handleClear}>
+              Clear
+            </Button>
+          )}
+          <Button onClick={handleSave}>Save Boundary</Button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const AdminProductCreation = () => {
   const navigate = useNavigate();
@@ -24,6 +279,10 @@ const AdminProductCreation = () => {
   const [mockupImages, setMockupImages] = useState<string[]>([]);
   const [designAreaFront, setDesignAreaFront] = useState('');
   const [designAreaBack, setDesignAreaBack] = useState('');
+  const [frontBoundary, setFrontBoundary] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const [backBoundary, setBackBoundary] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const [isEditingFront, setIsEditingFront] = useState(false);
+  const [isEditingBack, setIsEditingBack] = useState(false);
   const mockupInputRef = useRef<HTMLInputElement>(null);
   const frontDesignRef = useRef<HTMLInputElement>(null);
   const backDesignRef = useRef<HTMLInputElement>(null);
@@ -55,14 +314,21 @@ const AdminProductCreation = () => {
 
   const handleDesignAreaUpload = async (
     file: File | null,
-    setter: (url: string) => void
+    setter: (url: string) => void,
+    side: 'front' | 'back'
   ) => {
     if (!file) return;
 
     const reader = new FileReader();
     reader.onload = () => {
       setter((reader.result as string) || '');
-      toast.success('Design area uploaded');
+      toast.success(`${side === 'front' ? 'Front' : 'Back'} design area uploaded`);
+      // Reset boundary when new image is uploaded
+      if (side === 'front') {
+        setFrontBoundary(null);
+      } else {
+        setBackBoundary(null);
+      }
     };
     reader.onerror = () => toast.error('Failed to upload design area');
     reader.readAsDataURL(file);
@@ -122,6 +388,10 @@ const AdminProductCreation = () => {
       designs: {
         front: designAreaFront || undefined,
         back: designAreaBack || undefined,
+      },
+      designBoundaries: {
+        front: frontBoundary || undefined,
+        back: backBoundary || undefined,
       },
       variants: {
         sizes: selectedSizes,
@@ -270,19 +540,45 @@ const AdminProductCreation = () => {
               <CardHeader>
                 <CardTitle>Design Areas (Optional)</CardTitle>
                 <CardDescription>
-                  Upload design area templates for front and back
+                  Upload mockup images and define printable area boundaries for front and back
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
                   <Label>Front Design Area</Label>
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => frontDesignRef.current?.click()}
-                  >
-                    {designAreaFront ? 'Change Front Design' : 'Upload Front Design'}
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      className="flex-1"
+                      onClick={() => frontDesignRef.current?.click()}
+                    >
+                      {designAreaFront ? 'Change Mockup' : 'Upload Mockup'}
+                    </Button>
+                    {designAreaFront && (
+                      <Dialog open={isEditingFront} onOpenChange={setIsEditingFront}>
+                        <DialogTrigger asChild>
+                          <Button variant="outline" className="gap-2">
+                            <Maximize2 className="h-4 w-4" />
+                            {frontBoundary ? 'Edit Boundary' : 'Set Boundary'}
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-4xl">
+                          <DialogHeader>
+                            <DialogTitle>Define Front Design Boundary</DialogTitle>
+                            <DialogDescription>
+                              Draw a rectangle to define the printable area on the mockup
+                            </DialogDescription>
+                          </DialogHeader>
+                          <BoundaryEditor
+                            imageUrl={designAreaFront}
+                            boundary={frontBoundary}
+                            onBoundaryChange={setFrontBoundary}
+                            onClose={() => setIsEditingFront(false)}
+                          />
+                        </DialogContent>
+                      </Dialog>
+                    )}
+                  </div>
                   <input
                     ref={frontDesignRef}
                     type="file"
@@ -290,27 +586,66 @@ const AdminProductCreation = () => {
                     className="hidden"
                     onChange={(e) =>
                       e.target.files &&
-                      handleDesignAreaUpload(e.target.files[0], setDesignAreaFront)
+                      handleDesignAreaUpload(e.target.files[0], setDesignAreaFront, 'front')
                     }
                   />
                   {designAreaFront && (
-                    <img
-                      src={designAreaFront}
-                      alt="Front design area"
-                      className="w-full h-32 object-contain rounded border"
-                    />
+                    <div className="relative w-full rounded border overflow-hidden bg-muted">
+                      <img
+                        src={designAreaFront}
+                        alt="Front design area"
+                        className="w-full h-48 object-contain"
+                      />
+                      {frontBoundary && (
+                        <div
+                          className="absolute border-2 border-dashed border-white shadow-lg pointer-events-none"
+                          style={{
+                            left: `${frontBoundary.x}%`,
+                            top: `${frontBoundary.y}%`,
+                            width: `${frontBoundary.width}%`,
+                            height: `${frontBoundary.height}%`,
+                          }}
+                        />
+                      )}
+                    </div>
                   )}
                 </div>
 
                 <div className="space-y-2">
                   <Label>Back Design Area</Label>
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => backDesignRef.current?.click()}
-                  >
-                    {designAreaBack ? 'Change Back Design' : 'Upload Back Design'}
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      className="flex-1"
+                      onClick={() => backDesignRef.current?.click()}
+                    >
+                      {designAreaBack ? 'Change Mockup' : 'Upload Mockup'}
+                    </Button>
+                    {designAreaBack && (
+                      <Dialog open={isEditingBack} onOpenChange={setIsEditingBack}>
+                        <DialogTrigger asChild>
+                          <Button variant="outline" className="gap-2">
+                            <Maximize2 className="h-4 w-4" />
+                            {backBoundary ? 'Edit Boundary' : 'Set Boundary'}
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-4xl">
+                          <DialogHeader>
+                            <DialogTitle>Define Back Design Boundary</DialogTitle>
+                            <DialogDescription>
+                              Draw a rectangle to define the printable area on the mockup
+                            </DialogDescription>
+                          </DialogHeader>
+                          <BoundaryEditor
+                            imageUrl={designAreaBack}
+                            boundary={backBoundary}
+                            onBoundaryChange={setBackBoundary}
+                            onClose={() => setIsEditingBack(false)}
+                          />
+                        </DialogContent>
+                      </Dialog>
+                    )}
+                  </div>
                   <input
                     ref={backDesignRef}
                     type="file"
@@ -318,15 +653,28 @@ const AdminProductCreation = () => {
                     className="hidden"
                     onChange={(e) =>
                       e.target.files &&
-                      handleDesignAreaUpload(e.target.files[0], setDesignAreaBack)
+                      handleDesignAreaUpload(e.target.files[0], setDesignAreaBack, 'back')
                     }
                   />
                   {designAreaBack && (
-                    <img
-                      src={designAreaBack}
-                      alt="Back design area"
-                      className="w-full h-32 object-contain rounded border"
-                    />
+                    <div className="relative w-full rounded border overflow-hidden bg-muted">
+                      <img
+                        src={designAreaBack}
+                        alt="Back design area"
+                        className="w-full h-48 object-contain"
+                      />
+                      {backBoundary && (
+                        <div
+                          className="absolute border-2 border-dashed border-white shadow-lg pointer-events-none"
+                          style={{
+                            left: `${backBoundary.x}%`,
+                            top: `${backBoundary.y}%`,
+                            width: `${backBoundary.width}%`,
+                            height: `${backBoundary.height}%`,
+                          }}
+                        />
+                      )}
+                    </div>
                   )}
                 </div>
               </CardContent>

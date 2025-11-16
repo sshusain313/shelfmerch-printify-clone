@@ -184,7 +184,7 @@ export const AddProductDialog = ({ onProductAdded }: AddProductDialogProps) => {
       <DialogTrigger asChild>
         <Button className="gap-2">
           <Plus className="h-4 w-4" />
-          Add Base Product
+          Add Fake Product
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
