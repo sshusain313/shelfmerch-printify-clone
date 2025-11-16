@@ -119,9 +119,9 @@ const App = () => (
               <Route
                 path="/admin/products/new"
                 element={
-                  <ProtectedRoute >
+                  // <ProtectedRoute >
                     <AdminProductCreation />
-                  </ProtectedRoute>
+                  // </ProtectedRoute>
                 }
               />
               <Route
