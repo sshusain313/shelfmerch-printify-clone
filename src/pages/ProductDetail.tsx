@@ -7,6 +7,7 @@ import { Footer } from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import {
   Dialog,
   DialogContent,
@@ -1004,6 +1005,32 @@ const ProductDetail = () => {
             </div>
           </div>
         )}
+      </div>
+
+      {/* FAQ's */}
+      <div className="container mx-auto mt-10 mb-10 lg:mt-12 lg:mb-12">
+        <div className="grid grid-cols-1 md:grid-cols-1 lg:grid-cols-1 gap-4 lg:gap-1">
+          {/* <h2 className="text-2xl lg:text-3xl font-bold flex items-center gap-2">
+            <TrendingUp className="w-6 h-6 text-primary" />
+            FAQ's
+          </h2> */}
+          
+            <Accordion type="multiple" className="w-full">
+            {product.faqs?.map((faq: any, index: number)=>{
+                return (
+            <AccordionItem value={`faq-${index}`} key={faq._id} >
+              <AccordionTrigger>
+              <h3 className="text-lg font-semibold">{faq.question}</h3>
+              </AccordionTrigger>
+            <AccordionContent>
+                <div key={faq._id}>
+                  <p className="text-sm text-muted-foreground">{faq.answer}</p>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+            )})}
+            </Accordion>
+        </div>
       </div>
 
       {/* Image Modal */}

@@ -52,7 +52,7 @@ router.post('/', protect, authorize('admin'), async (req, res) => {
     });
   } catch (error) {
     console.error('Error creating variant:', error);
-    
+
     // Handle duplicate key errors
     if (error.code === 11000) {
       const field = Object.keys(error.keyPattern)[0];
@@ -61,7 +61,7 @@ router.post('/', protect, authorize('admin'), async (req, res) => {
         message: `Duplicate ${field}. This ${field} already exists.`
       });
     }
-    
+
     // Handle Mongoose validation errors
     if (error.name === 'ValidationError') {
       const messages = Object.values(error.errors).map(err => err.message);
@@ -121,7 +121,7 @@ router.post('/bulk', protect, authorize('admin'), async (req, res) => {
     });
   } catch (error) {
     console.error('Error creating bulk variants:', error);
-    
+
     // Handle bulk write errors
     if (error.name === 'MongoBulkWriteError') {
       const insertedCount = error.result?.nInserted || 0;
@@ -145,8 +145,8 @@ router.post('/bulk', protect, authorize('admin'), async (req, res) => {
 // @access  Private
 router.get('/product/:productId', protect, async (req, res) => {
   try {
-    const variants = await ProductVariant.find({ 
-      productId: req.params.productId 
+    const variants = await ProductVariant.find({
+      productId: req.params.productId
     }).sort({ size: 1, color: 1 });
 
     res.json({
@@ -226,7 +226,7 @@ router.put('/:id', protect, authorize('admin'), async (req, res) => {
     });
   } catch (error) {
     console.error('Error updating variant:', error);
-    
+
     // Handle duplicate key errors
     if (error.code === 11000) {
       const field = Object.keys(error.keyPattern)[0];
@@ -282,8 +282,8 @@ router.delete('/:id', protect, authorize('admin'), async (req, res) => {
 // @access  Private/Admin
 router.delete('/product/:productId', protect, authorize('admin'), async (req, res) => {
   try {
-    const result = await ProductVariant.deleteMany({ 
-      productId: req.params.productId 
+    const result = await ProductVariant.deleteMany({
+      productId: req.params.productId
     });
 
     console.log(`Deleted ${result.deletedCount} variants for product ${req.params.productId}`);

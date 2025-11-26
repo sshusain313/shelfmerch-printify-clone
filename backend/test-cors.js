@@ -3,7 +3,7 @@ const http = require('http');
 
 const options = {
   hostname: 'localhost',
-  port: 8000,
+  port: 5000,
   path: '/api/auth/register',
   method: 'OPTIONS',
   headers: {

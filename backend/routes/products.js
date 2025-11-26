@@ -10,12 +10,12 @@ const { protect, authorize } = require('../middleware/auth');
 router.post('/', protect, authorize('admin'), async (req, res) => {
   // Set a longer timeout for product creation (30 seconds)
   req.setTimeout(30000);
-  
+
   try {
     console.log('Product creation request received');
     console.log('Request body keys:', Object.keys(req.body));
     console.log('User ID:', req.user?.id);
-    
+
     const {
       catalogue,
       details,
@@ -27,7 +27,8 @@ router.post('/', protect, authorize('admin'), async (req, res) => {
       variants,
       availableSizes,
       availableColors,
-      galleryImages
+      galleryImages,
+      faqs
     } = req.body;
 
     console.log('Catalogue:', catalogue ? 'present' : 'missing');
@@ -125,7 +126,7 @@ router.post('/', protect, authorize('admin'), async (req, res) => {
         mockupImageUrl: v.mockupImageUrl,
         placeholders: Array.isArray(v.placeholders) ? v.placeholders : []
       }));
-    
+
     if (filteredViews.length === 0) {
       return res.status(400).json({
         success: false,
@@ -134,7 +135,7 @@ router.post('/', protect, authorize('admin'), async (req, res) => {
     }
 
     console.log('Creating product in database...');
-    
+
     // Create product (without embedded variants)
     const product = await Product.create({
       catalogue,
@@ -150,6 +151,7 @@ router.post('/', protect, authorize('admin'), async (req, res) => {
       availableSizes: Array.isArray(availableSizes) ? availableSizes : [],
       availableColors: Array.isArray(availableColors) ? availableColors : [],
       galleryImages: Array.isArray(galleryImages) ? galleryImages : [],
+      faqs: Array.isArray(faqs) ? faqs : [],
       createdBy: req.user.id,
       isActive: true
     });
@@ -164,7 +166,7 @@ router.post('/', protect, authorize('admin'), async (req, res) => {
         ...v,
         productId: product._id
       }));
-      
+
       try {
         createdVariants = await ProductVariant.insertMany(variantsWithProductId, {
           ordered: false // Continue on duplicate key errors
@@ -193,7 +195,7 @@ router.post('/', protect, authorize('admin'), async (req, res) => {
     if (error.stack) {
       console.error('Error stack:', error.stack);
     }
-    
+
     // Don't try to stringify the entire request body if it has large images
     const bodySummary = {
       catalogue: req.body.catalogue ? { name: req.body.catalogue.name } : null,
@@ -205,7 +207,7 @@ router.post('/', protect, authorize('admin'), async (req, res) => {
       galleryImagesCount: req.body.galleryImages?.length || 0
     };
     console.error('Request body summary:', JSON.stringify(bodySummary, null, 2));
-    
+
     // Handle Mongoose validation errors
     if (error.name === 'ValidationError') {
       const messages = Object.values(error.errors).map(err => err.message);
@@ -252,7 +254,7 @@ router.get('/', protect, async (req, res) => {
     if (isActive !== undefined && isActive !== 'undefined') {
       query.isActive = isActive === 'true';
     }
-    
+
     // Handle search - use regex for partial matching
     let searchQuery;
     if (search && String(search).trim()) {
@@ -328,14 +330,14 @@ router.get('/catalog/active', async (req, res) => {
     // Build query - ONLY active products (isActive === true)
     // This ensures that only products with active status appear in the public catalog
     // Products with isActive === false will NOT appear here
-    
+
     // Filter by visibility option
     // Visibility: 'everywhere' = catalog + search, 'catalog' = catalog only, 'search' = search only, 'nowhere' = hidden
     // If search parameter is present: show 'everywhere' and 'search' (exclude 'catalog' and 'nowhere')
     // If no search parameter (catalog view): show 'everywhere' and 'catalog' (exclude 'search' and 'nowhere')
     // If options.visibility doesn't exist, default to 'everywhere' behavior (show it for backward compatibility)
     const isSearchQuery = search && String(search).trim();
-    
+
     // Build visibility filter - EXCLUDE 'nowhere' always
     // Catalog view (no search): show 'everywhere' and 'catalog' only
     // Search view (with search): show 'everywhere' and 'search' only
@@ -347,17 +349,17 @@ router.get('/catalog/active', async (req, res) => {
         // Explicitly excluded: 'nowhere' (never shown), and opposite context
       ]
     };
-    
+
     console.log('Visibility filter:', JSON.stringify(visibilityFilter, null, 2));
     console.log('Search query present:', isSearchQuery);
     console.log('Context:', isSearchQuery ? 'SEARCH' : 'CATALOG');
-    
+
     // Combine all filters using $and to ensure visibility filter is applied correctly
     const andConditions = [
       { isActive: true },  // Must be active
       visibilityFilter     // Must match visibility rules (excludes 'nowhere')
     ];
-    
+
     // Add category filter if provided (case-insensitive)
     if (category && String(category).trim()) {
       const categoryTerm = String(category).trim();
@@ -366,19 +368,19 @@ router.get('/catalog/active', async (req, res) => {
       });
       console.log('Applied category filter:', categoryTerm);
     }
-    
+
     // Add subcategory filter if provided (searches in subcategoryIds array)
     if (subcategory && String(subcategory).trim()) {
       const subcategoryTerm = String(subcategory).trim();
       const escapedTerm = subcategoryTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       andConditions.push({
-        'catalogue.subcategoryIds': { 
+        'catalogue.subcategoryIds': {
           $in: [new RegExp(`^${escapedTerm}$`, 'i')]
         }
       });
       console.log('Applied subcategory filter:', subcategoryTerm);
     }
-    
+
     // Handle search text matching - add to andConditions if search term exists
     if (isSearchQuery) {
       const searchTerm = String(search).trim();
@@ -390,12 +392,12 @@ router.get('/catalog/active', async (req, res) => {
         ]
       });
     }
-    
+
     // Build final query with $and
     const finalQuery = { $and: andConditions };
-    
+
     console.log('Final query:', JSON.stringify(finalQuery, null, 2));
-    
+
     // Execute query
     const searchQuery = Product.find(finalQuery);
 
@@ -494,6 +496,7 @@ router.put('/:id', protect, authorize('admin'), async (req, res) => {
       availableSizes,
       availableColors,
       galleryImages,
+      faqs,
       isActive
     } = req.body;
 
@@ -507,6 +510,7 @@ router.put('/:id', protect, authorize('admin'), async (req, res) => {
     if (availableSizes) product.availableSizes = availableSizes;
     if (availableColors) product.availableColors = availableColors;
     if (galleryImages) product.galleryImages = galleryImages;
+    if (faqs !== undefined) product.faqs = Array.isArray(faqs) ? faqs : [];
     if (isActive !== undefined) product.isActive = isActive;
 
     product.updatedAt = Date.now();
@@ -519,17 +523,17 @@ router.put('/:id', protect, authorize('admin'), async (req, res) => {
     let updatedVariants = [];
     if (variants && Array.isArray(variants)) {
       console.log(`Updating variants for product ${product._id}...`);
-      
+
       // Delete existing variants for this product
       await ProductVariant.deleteMany({ productId: product._id });
-      
+
       // Create new variants
       if (variants.length > 0) {
         const variantsWithProductId = variants.map(v => ({
           ...v,
           productId: product._id
         }));
-        
+
         try {
           updatedVariants = await ProductVariant.insertMany(variantsWithProductId, {
             ordered: false
@@ -580,8 +584,8 @@ router.delete('/:id', protect, authorize('admin'), async (req, res) => {
     }
 
     // Delete all variants associated with this product
-    const variantDeleteResult = await ProductVariant.deleteMany({ 
-      productId: req.params.id 
+    const variantDeleteResult = await ProductVariant.deleteMany({
+      productId: req.params.id
     });
     console.log(`Deleted ${variantDeleteResult.deletedCount} variants for product ${req.params.id}`);
 

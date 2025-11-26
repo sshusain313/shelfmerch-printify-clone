@@ -4,6 +4,8 @@ import { CanvasMockup } from './CanvasMockup';
 import { PlaceholderControls } from './PlaceholderControls';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ViewKey, Placeholder, ViewConfig } from '@/types/product';
+import { uploadApi } from '@/lib/api';
+import { useToast } from '@/hooks/use-toast';
 
 interface ProductImageConfiguratorProps {
   views: ViewConfig[];
@@ -23,6 +25,8 @@ export const ProductImageConfigurator = ({
   unit = 'in',
 }: ProductImageConfiguratorProps) => {
   const [activeView, setActiveView] = useState<ViewKey>('front');
+  const [uploadingViews, setUploadingViews] = useState<Set<ViewKey>>(new Set());
+  const { toast } = useToast();
 
   const currentView = views.find(v => v.key === activeView) || {
     key: activeView,
@@ -30,13 +34,16 @@ export const ProductImageConfigurator = ({
     placeholders: [],
   };
 
-  const handleImageUpload = useCallback((view: ViewKey, file: File) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const imageUrl = e.target?.result as string;
+  const handleImageUpload = useCallback(async (view: ViewKey, file: File) => {
+    setUploadingViews(prev => new Set(prev).add(view));
+    
+    try {
+      // Upload to S3
+      const s3Url = await uploadApi.uploadImage(file, 'mockups');
+      
       const updatedViews = views.map(v =>
         v.key === view
-          ? { ...v, mockupImageUrl: imageUrl }
+          ? { ...v, mockupImageUrl: s3Url }
           : v
       );
       
@@ -44,15 +51,32 @@ export const ProductImageConfigurator = ({
       if (!views.find(v => v.key === view)) {
         updatedViews.push({
           key: view,
-          mockupImageUrl: imageUrl,
+          mockupImageUrl: s3Url,
           placeholders: [],
         });
       }
       
       onViewsChange(updatedViews);
-    };
-    reader.readAsDataURL(file);
-  }, [views, onViewsChange]);
+      
+      toast({
+        title: 'Upload successful',
+        description: `Mockup image for ${view} view uploaded to S3 successfully`,
+      });
+    } catch (error) {
+      console.error('Error uploading mockup image:', error);
+      toast({
+        title: 'Upload failed',
+        description: `Failed to upload mockup image: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        variant: 'destructive',
+      });
+    } finally {
+      setUploadingViews(prev => {
+        const next = new Set(prev);
+        next.delete(view);
+        return next;
+      });
+    }
+  }, [views, onViewsChange, toast]);
 
   const handleImageRemove = useCallback((view: ViewKey) => {
     const updatedViews = views.map(v =>
@@ -152,6 +176,7 @@ export const ProductImageConfigurator = ({
         onViewChange={setActiveView}
         onImageUpload={handleImageUpload}
         onImageRemove={handleImageRemove}
+        uploadingViews={uploadingViews}
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-4">

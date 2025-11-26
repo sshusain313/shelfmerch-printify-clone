@@ -26,6 +26,7 @@ const productRoutes = require('./routes/products');
 const variantRoutes = require('./routes/variants');
 const variantOptionsRoutes = require('./routes/variantOptions');
 const catalogueFieldsRoutes = require('./routes/catalogueFields');
+const uploadRoutes = require('./routes/upload');
 
 // Initialize Express app
 const app = express();
@@ -35,7 +36,14 @@ const corsOptions = {
   origin: function (origin, callback) {
     const allowedOrigins = process.env.CORS_ORIGINS 
       ? process.env.CORS_ORIGINS.split(',').map(o => o.trim())
-      : ['http://localhost:5173', 'http://localhost:3000', 'http://localhost:8080', 'http://localhost:5174'];
+      : [
+          'http://localhost:5173', 
+          'http://localhost:3000', 
+          'http://localhost:8080', 
+          'http://localhost:5174',
+          'http://localhost:5175',
+          'http://localhost:4173'
+        ];
     
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
@@ -43,14 +51,16 @@ const corsOptions = {
     // In development, allow all localhost origins
     if (process.env.NODE_ENV === 'development' || !process.env.NODE_ENV) {
       if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
+        console.log(`✓ CORS allowed for origin: ${origin}`);
         return callback(null, true);
       }
     }
     
     if (allowedOrigins.indexOf(origin) !== -1) {
+      console.log(`✓ CORS allowed for origin: ${origin}`);
       callback(null, true);
     } else {
-      console.warn(`CORS blocked origin: ${origin}`);
+      console.warn(`❌ CORS blocked origin: ${origin}`);
       callback(new Error('Not allowed by CORS'));
     }
   },
@@ -135,6 +145,7 @@ app.use('/api/products', productRoutes);
 app.use('/api/variants', variantRoutes);
 app.use('/api/variant-options', variantOptionsRoutes);
 app.use('/api/catalogue-fields', catalogueFieldsRoutes);
+app.use('/api/upload', uploadRoutes);
 
 // 404 handler
 app.use((req, res) => {
@@ -240,15 +251,28 @@ process.on('uncaughtException', (err) => {
 });
 
 // Start server
-const PORT = process.env.PORT || 8000;
+const PORT = process.env.PORT || 5000;
 
 const startServer = async () => {
   try {
     await connectDB();
     
-    const server = app.listen(PORT, () => {
-      console.log(`Server running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
-      console.log(`Health check: http://localhost:${PORT}/health`);
+    const server = app.listen(PORT, 'localhost', () => {
+      const address = server.address();
+      console.log(`✅ Server running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
+      console.log(`✅ Health check: http://localhost:${PORT}/health`);
+      console.log(`✅ Server listening on: ${JSON.stringify(address)}`);
+    });
+
+    // Handle server errors
+    server.on('error', (error) => {
+      if (error.code === 'EADDRINUSE') {
+        console.error(`❌ Port ${PORT} is already in use!`);
+        process.exit(1);
+      } else {
+        console.error('❌ Server error:', error);
+        throw error;
+      }
     });
 
     // Increase server timeout for large requests

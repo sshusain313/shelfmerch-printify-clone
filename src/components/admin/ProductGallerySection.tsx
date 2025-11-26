@@ -12,9 +12,11 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Upload, X, Star, GripVertical, MoreVertical, Eye, Edit2, Trash2, Image as ImageIcon } from 'lucide-react';
+import { Upload, X, Star, GripVertical, MoreVertical, Eye, Edit2, Trash2, Image as ImageIcon, Loader2 } from 'lucide-react';
 import { ProductGalleryImage } from '@/types/product';
 import { cn } from '@/lib/utils';
+import { uploadApi } from '@/lib/api';
+import { useToast } from '@/hooks/use-toast';
 
 interface ProductGallerySectionProps {
   images: ProductGalleryImage[];
@@ -38,34 +40,87 @@ export const ProductGallerySection = ({ images, onChange }: ProductGallerySectio
   const [editingImage, setEditingImage] = useState<ProductGalleryImage | null>(null);
   const [editingAltText, setEditingAltText] = useState('');
   const [isDragging, setIsDragging] = useState(false);
+  const [uploadingFiles, setUploadingFiles] = useState<Set<string>>(new Set());
+  const { toast } = useToast();
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    Array.from(files).forEach((file) => {
-      if (!file.type.startsWith('image/')) {
-        return;
-      }
+    const fileArray = Array.from(files).filter(file => file.type.startsWith('image/'));
+    
+    if (fileArray.length === 0) {
+      toast({
+        title: 'Invalid file type',
+        description: 'Please select image files only',
+        variant: 'destructive',
+      });
+      return;
+    }
 
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const imageUrl = event.target?.result as string;
-        const newImage: ProductGalleryImage = {
-          id: `gallery-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          url: imageUrl,
-          position: images.length,
-          isPrimary: images.length === 0,
-          imageType: 'other',
-          altText: '',
-        };
+    // Upload all files to S3
+    try {
+      const uploadPromises = fileArray.map(async (file) => {
+        const fileId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        setUploadingFiles(prev => new Set(prev).add(fileId));
+        
+        try {
+          // Upload to S3
+          const s3Url = await uploadApi.uploadImage(file, 'gallery');
+          
+          const newImage: ProductGalleryImage = {
+            id: `gallery-${fileId}`,
+            url: s3Url,
+            position: images.length + fileArray.indexOf(file),
+            isPrimary: images.length === 0 && fileArray.indexOf(file) === 0,
+            imageType: 'other',
+            altText: '',
+          };
 
+          setUploadingFiles(prev => {
+            const next = new Set(prev);
+            next.delete(fileId);
+            return next;
+          });
+
+          return newImage;
+        } catch (error) {
+          console.error('Error uploading image:', error);
+          setUploadingFiles(prev => {
+            const next = new Set(prev);
+            next.delete(fileId);
+            return next;
+          });
+          toast({
+            title: 'Upload failed',
+            description: `Failed to upload ${file.name}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            variant: 'destructive',
+          });
+          return null;
+        }
+      });
+
+      const uploadedImages = await Promise.all(uploadPromises);
+      const validImages = uploadedImages.filter((img): img is ProductGalleryImage => img !== null);
+
+      if (validImages.length > 0) {
+        // Mark first image as primary if no images exist
         const updatedImages = images.map((img) => ({ ...img, isPrimary: false }));
-        onChange([...updatedImages, newImage]);
-      };
-      // Read as data URL without compression
-      reader.readAsDataURL(file);
-    });
+        onChange([...updatedImages, ...validImages]);
+        
+        toast({
+          title: 'Upload successful',
+          description: `${validImages.length} image(s) uploaded to S3 successfully`,
+        });
+      }
+    } catch (error) {
+      console.error('Error uploading images:', error);
+      toast({
+        title: 'Upload failed',
+        description: 'Failed to upload images. Please try again.',
+        variant: 'destructive',
+      });
+    }
 
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -178,9 +233,19 @@ export const ProductGallerySection = ({ images, onChange }: ProductGallerySectio
           variant="outline"
           onClick={() => fileInputRef.current?.click()}
           className="gap-2"
+          disabled={uploadingFiles.size > 0}
         >
-          <Upload className="h-4 w-4" />
-          Upload Images
+          {uploadingFiles.size > 0 ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Uploading to S3...
+            </>
+          ) : (
+            <>
+              <Upload className="h-4 w-4" />
+              Upload Images
+            </>
+          )}
         </Button>
       </div>
 

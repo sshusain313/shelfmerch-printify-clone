@@ -14,7 +14,8 @@ import { ProductPricingSection } from '@/components/admin/ProductPricingSection'
 import { ProductStocksSection } from '@/components/admin/ProductStocksSection';
 import { ProductOptionsSection } from '@/components/admin/ProductOptionsSection';
 import { ProductDetailsSection } from '@/components/admin/ProductDetailsSection';
-import { ProductFormData, ProductCatalogueData, ProductDesignData, ProductShippingData, ProductPricingData, ProductStocksData, ProductOptionsData, ProductDetailsData, ProductVariant, ProductGalleryImage, ViewConfig } from '@/types/product';
+import { ProductFAQSection } from '@/components/admin/ProductFAQSection';
+import { ProductFormData, ProductCatalogueData, ProductDesignData, ProductShippingData, ProductPricingData, ProductStocksData, ProductOptionsData, ProductDetailsData, ProductVariant, ProductGalleryImage, ProductFAQ, ViewConfig } from '@/types/product';
 import { productApi } from '@/lib/api';
 
 const AdminProductCreation = () => {
@@ -63,6 +64,9 @@ const AdminProductCreation = () => {
   // SECTION E: Product Gallery Images (Customer-facing display images)
   const [galleryImages, setGalleryImages] = useState<ProductGalleryImage[]>([]);
 
+  // SECTION F: Product FAQs (Frequently Asked Questions)
+  const [faqs, setFaqs] = useState<ProductFAQ[]>([]);
+
   // SECTION F: Shipping & Packaging Data
   const [shippingData, setShippingData] = useState<ProductShippingData>({
     packageLengthCm: 0,
@@ -78,10 +82,6 @@ const AdminProductCreation = () => {
     taxRate: 0,
     retailPriceTaxIncl: 0,
     costPriceTaxExcl: 0,
-    displayPricePerUnit: false,
-    pricePerUnitTaxExcl: 0,
-    pricePerUnitTaxIncl: 0,
-    unit: '',
   });
 
   // SECTION H: Stocks/Inventory Data
@@ -196,6 +196,10 @@ const AdminProductCreation = () => {
             setGalleryImages(product.galleryImages);
           }
 
+          if (product.faqs) {
+            setFaqs(product.faqs);
+          }
+
           if (product.pricing) {
             setPricingData(product.pricing);
           }
@@ -279,6 +283,7 @@ const AdminProductCreation = () => {
       availableSizes,
       availableColors,
       galleryImages,
+      faqs: faqs.length > 0 ? faqs : undefined,
     };
 
     try {
@@ -368,7 +373,7 @@ const AdminProductCreation = () => {
         <Card>
           <CardContent className="pt-6">
             <Tabs value={activeStep} onValueChange={setActiveStep} className="w-full">
-              <TabsList className="grid w-full grid-cols-4 md:grid-cols-9 mb-6">
+              <TabsList className="grid w-full grid-cols-4 md:grid-cols-10 mb-6">
                 <TabsTrigger value="catalogue" className="flex items-center gap-2">
                   <span className="hidden sm:inline">1.</span> Catalogue
                 </TabsTrigger>
@@ -395,6 +400,9 @@ const AdminProductCreation = () => {
                 </TabsTrigger>
                 <TabsTrigger value="shipping" className="flex items-center gap-2">
                   <span className="hidden sm:inline">9.</span> Shipping
+                </TabsTrigger>
+                <TabsTrigger value="faq" className="flex items-center gap-2">
+                  <span className="hidden sm:inline">10.</span> FAQ
                 </TabsTrigger>
               </TabsList>
 
@@ -665,6 +673,37 @@ const AdminProductCreation = () => {
                   <Button
                     variant="outline"
                     onClick={() => setActiveStep('options')}
+                    className="gap-2"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    Back
+                  </Button>
+                  <Button
+                    onClick={() => setActiveStep('faq')}
+                    className="gap-2"
+                  >
+                    Next: FAQ
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </TabsContent>
+
+              {/* Step 10: Product FAQs */}
+              <TabsContent value="faq" className="space-y-4">
+                <div>
+                  <h2 className="text-xl font-semibold mb-1">Step 10: Frequently Asked Questions</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Add common questions and answers to help customers understand the product better
+                  </p>
+                </div>
+                <ProductFAQSection
+                  faqs={faqs}
+                  onChange={setFaqs}
+                />
+                <div className="flex justify-between pt-4">
+                  <Button
+                    variant="outline"
+                    onClick={() => setActiveStep('shipping')}
                     className="gap-2"
                   >
                     <ChevronLeft className="h-4 w-4" />

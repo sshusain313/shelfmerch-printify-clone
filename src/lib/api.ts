@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 interface ApiResponse<T = any> {
   success: boolean;
@@ -142,7 +142,7 @@ const apiRequest = async <T = any>(
   if (data.success !== undefined && (data.token !== undefined || data.user !== undefined || typeof (data as any).count === 'number')) {
     return data as T;
   }
-  
+
   return (data.data || data.user || data) as T;
 };
 
@@ -159,7 +159,7 @@ export const authApi = {
     if (!password || password.length < 6) {
       throw new ApiError('Password must be at least 6 characters', 400);
     }
-    
+
     const response = await apiRequest<{
       success: boolean;
       user: {
@@ -173,10 +173,10 @@ export const authApi = {
       refreshToken: string;
     }>('/auth/register', {
       method: 'POST',
-      body: JSON.stringify({ 
-        name: name.trim(), 
+      body: JSON.stringify({
+        name: name.trim(),
         email: email.trim().toLowerCase().replace(/^@+/, ''), // Remove any leading @ that might have been added
-        password 
+        password
       }),
     });
 
@@ -254,13 +254,13 @@ export const authApi = {
     });
   },
 
-  getUserCount: async ()=>{
+  getUserCount: async () => {
     return apiRequest<{
-        success: boolean;
-        count: number;
+      success: boolean;
+      count: number;
     }>('/auth/users/count');
   },
-  
+
 };
 
 // Product API methods
@@ -332,14 +332,14 @@ export const productApi = {
     if (params?.isActive === true || params?.isActive === false) {
       queryParams.append('isActive', params.isActive.toString());
     }
-    
+
     const query = queryParams.toString();
     const token = getToken();
-    
+
     // Create AbortController for timeout
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout for list requests
-    
+
     try {
       // Use apiRequest but get the raw response to preserve pagination
       const response = await fetch(`${API_BASE_URL}/products${query ? `?${query}` : ''}`, {
@@ -351,7 +351,7 @@ export const productApi = {
         },
         signal: controller.signal, // Add abort signal
       });
-      
+
       clearTimeout(timeoutId);
 
       // Handle 401 with token refresh
@@ -361,7 +361,7 @@ export const productApi = {
           // Create new controller for retry
           const retryController = new AbortController();
           const retryTimeoutId = setTimeout(() => retryController.abort(), 15000);
-          
+
           try {
             const retryResponse = await fetch(`${API_BASE_URL}/products${query ? `?${query}` : ''}`, {
               method: 'GET',
@@ -372,9 +372,9 @@ export const productApi = {
               },
               signal: retryController.signal,
             });
-            
+
             clearTimeout(retryTimeoutId);
-            
+
             if (!retryResponse.ok) {
               const errorData = await retryResponse.json().catch(() => ({}));
               throw new ApiError(
@@ -440,11 +440,11 @@ export const productApi = {
   getById: async (id: string) => {
     // Make direct fetch to preserve full response structure
     const token = getToken();
-    
+
     // Create AbortController for timeout
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
-    
+
     try {
       const response = await fetch(`${API_BASE_URL}/products/${id}`, {
         method: 'GET',
@@ -465,7 +465,7 @@ export const productApi = {
           // Create new controller for retry
           const retryController = new AbortController();
           const retryTimeoutId = setTimeout(() => retryController.abort(), 10000);
-          
+
           try {
             const retryResponse = await fetch(`${API_BASE_URL}/products/${id}`, {
               method: 'GET',
@@ -476,9 +476,9 @@ export const productApi = {
               credentials: 'include',
               signal: retryController.signal,
             });
-            
+
             clearTimeout(retryTimeoutId);
-            
+
             if (!retryResponse.ok) {
               const errorData = await retryResponse.json().catch(() => ({}));
               throw new ApiError(
@@ -596,10 +596,10 @@ export const productApi = {
     if (params?.category) queryParams.append('category', params.category);
     if (params?.subcategory) queryParams.append('subcategory', params.subcategory);
     if (params?.search) queryParams.append('search', params.search);
-    
+
     const queryString = queryParams.toString();
     const url = `/products/catalog/active${queryString ? `?${queryString}` : ''}`;
-    
+
     // Public endpoint - no auth required
     const response = await fetch(`${API_BASE_URL}${url}`, {
       method: 'GET',
@@ -709,10 +709,10 @@ export const variantOptionsApi = {
     if (params?.categoryId) queryParams.append('categoryId', params.categoryId);
     if (params?.subcategoryId) queryParams.append('subcategoryId', params.subcategoryId);
     if (params?.optionType) queryParams.append('optionType', params.optionType);
-    
+
     const queryString = queryParams.toString();
     const url = `/variant-options${queryString ? `?${queryString}` : ''}`;
-    
+
     return apiRequest(url, { method: 'GET' });
   },
 
@@ -760,10 +760,10 @@ export const catalogueFieldsApi = {
     const queryParams = new URLSearchParams();
     if (params?.categoryId) queryParams.append('categoryId', params.categoryId);
     if (params?.subcategoryId) queryParams.append('subcategoryId', params.subcategoryId);
-    
+
     const queryString = queryParams.toString();
     const url = `/catalogue-fields${queryString ? `?${queryString}` : ''}`;
-    
+
     return apiRequest(url, { method: 'GET' });
   },
 
@@ -809,6 +809,145 @@ export const catalogueFieldsApi = {
   // Get statistics about catalogue fields
   getStats: async () => {
     return apiRequest('/catalogue-fields/stats', { method: 'GET' });
+  },
+};
+
+// Image Upload API
+export const uploadApi = {
+  /**
+   * Upload a single image file to S3
+   * @param file - File object to upload
+   * @param folder - Folder path in S3 (e.g., 'gallery', 'mockups')
+   * @returns Promise with the S3 URL
+   */
+  uploadImage: async (file: File, folder: string = 'uploads'): Promise<string> => {
+    const token = getToken();
+    const formData = new FormData();
+    formData.append('image', file);
+    formData.append('folder', folder);
+
+    const response = await fetch(`${API_BASE_URL}/upload/image`, {
+      method: 'POST',
+      headers: {
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+      },
+      credentials: 'include',
+      body: formData,
+    });
+
+    // Handle 401 with token refresh
+    if (response.status === 401 && token) {
+      const newToken = await refreshAccessToken();
+      if (newToken) {
+        const retryResponse = await fetch(`${API_BASE_URL}/upload/image`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${newToken}`,
+          },
+          credentials: 'include',
+          body: formData,
+        });
+        if (!retryResponse.ok) {
+          const errorData = await retryResponse.json().catch(() => ({}));
+          throw new ApiError(
+            errorData.message || 'Failed to upload image',
+            retryResponse.status
+          );
+        }
+        const data = await retryResponse.json();
+        return data.url;
+      } else {
+        removeTokens();
+        throw new ApiError('Session expired. Please login again.', 401);
+      }
+    }
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new ApiError(
+        errorData.message || 'Failed to upload image',
+        response.status
+      );
+    }
+
+    const data = await response.json();
+    return data.url;
+  },
+
+  /**
+   * Upload a base64 image to S3 (for backward compatibility)
+   * @param base64 - Base64 encoded image string
+   * @param fileName - Original filename
+   * @param folder - Folder path in S3
+   * @returns Promise with the S3 URL
+   */
+  uploadBase64: async (base64: string, fileName: string = 'image.jpg', folder: string = 'uploads'): Promise<string> => {
+    return apiRequest<{ success: boolean; url: string }>('/upload/base64', {
+      method: 'POST',
+      body: JSON.stringify({ base64, fileName, folder }),
+    }).then(response => response.url);
+  },
+
+  /**
+   * Upload multiple images to S3
+   * @param files - Array of File objects
+   * @param folder - Folder path in S3
+   * @returns Promise with array of S3 URLs
+   */
+  uploadBatch: async (files: File[], folder: string = 'uploads'): Promise<string[]> => {
+    const token = getToken();
+    const formData = new FormData();
+    files.forEach(file => {
+      formData.append('images', file);
+    });
+    formData.append('folder', folder);
+
+    const response = await fetch(`${API_BASE_URL}/upload/batch`, {
+      method: 'POST',
+      headers: {
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+      },
+      credentials: 'include',
+      body: formData,
+    });
+
+    // Handle 401 with token refresh
+    if (response.status === 401 && token) {
+      const newToken = await refreshAccessToken();
+      if (newToken) {
+        const retryResponse = await fetch(`${API_BASE_URL}/upload/batch`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${newToken}`,
+          },
+          credentials: 'include',
+          body: formData,
+        });
+        if (!retryResponse.ok) {
+          const errorData = await retryResponse.json().catch(() => ({}));
+          throw new ApiError(
+            errorData.message || 'Failed to upload images',
+            retryResponse.status
+          );
+        }
+        const data = await retryResponse.json();
+        return data.urls;
+      } else {
+        removeTokens();
+        throw new ApiError('Session expired. Please login again.', 401);
+      }
+    }
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new ApiError(
+        errorData.message || 'Failed to upload images',
+        response.status
+      );
+    }
+
+    const data = await response.json();
+    return data.urls;
   },
 };
 

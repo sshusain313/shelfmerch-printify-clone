@@ -1,7 +1,7 @@
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Upload, X } from 'lucide-react';
+import { Upload, X, Loader2 } from 'lucide-react';
 import { ViewKey, Placeholder } from '@/types/product';
 
 interface ViewTabsProps {
@@ -12,6 +12,7 @@ interface ViewTabsProps {
   onViewChange: (view: ViewKey) => void;
   onImageUpload: (view: ViewKey, file: File) => void;
   onImageRemove: (view: ViewKey) => void;
+  uploadingViews?: Set<ViewKey>;
 }
 
 export const ViewTabs = ({
@@ -22,6 +23,7 @@ export const ViewTabs = ({
   onViewChange,
   onImageUpload,
   onImageRemove,
+  uploadingViews = new Set(),
 }: ViewTabsProps) => {
   const handleFileChange = (view: ViewKey, e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -44,6 +46,7 @@ export const ViewTabs = ({
     <div className="grid grid-cols-4 gap-2">
       {views.map((view) => {
         const isActive = activeView === view;
+        const isUploading = uploadingViews.has(view);
         return (
           <div key={view} className="space-y-2">
             <div className="flex items-center justify-between">
@@ -57,7 +60,7 @@ export const ViewTabs = ({
                   </Badge>
                 )}
               </div>
-              {viewImages[view] && (
+              {viewImages[view] && !isUploading && (
                 <Button
                   variant="ghost"
                   size="icon"
@@ -74,6 +77,7 @@ export const ViewTabs = ({
               onChange={(e) => handleFileChange(view, e)}
               className="hidden"
               id={`file-input-${view}`}
+              disabled={isUploading}
             />
             <Button
               variant={isActive ? 'default' : 'outline'}
@@ -85,12 +89,18 @@ export const ViewTabs = ({
               }`}
               onClick={() => {
                 onViewChange(view);
-                if (!viewImages[view]) {
+                if (!viewImages[view] && !isUploading) {
                   document.getElementById(`file-input-${view}`)?.click();
                 }
               }}
+              disabled={isUploading}
             >
-              {viewImages[view] ? (
+              {isUploading ? (
+                <>
+                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                  <span className="text-xs">Uploading...</span>
+                </>
+              ) : viewImages[view] ? (
                 <span className={`text-xs ${isActive ? 'font-bold' : ''}`}>
                   ✓ {getViewLabel(view)}
                 </span>

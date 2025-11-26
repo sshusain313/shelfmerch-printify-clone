@@ -136,6 +136,14 @@ export interface ProductGalleryImage {
   altText?: string; // Alt text for accessibility
 }
 
+// Product FAQ (Frequently Asked Questions)
+export interface ProductFAQ {
+  id: string;
+  question: string;
+  answer: string;
+  order: number; // Display order (0, 1, 2, ...)
+}
+
 // Complete Product Form Data
 export interface ProductFormData {
   // Section A: Catalogue
@@ -159,5 +167,7 @@ export interface ProductFormData {
   availableColors: string[];
   // Product Gallery Images (customer-facing display images)
   galleryImages: ProductGalleryImage[];
+  // Product FAQs (Frequently Asked Questions)
+  faqs?: ProductFAQ[];
 }
 
