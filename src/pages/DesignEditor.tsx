@@ -195,6 +195,7 @@ const DesignEditor: React.FC = () => {
   const [imageSize, setImageSize] = useState({ width: 0, height: 0, x: 0, y: 0 });
   const [selectedColors, setSelectedColors] = useState<string[]>([]);
   const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
+  const [primaryColorHex, setPrimaryColorHex] = useState<string | null>(null);
   const [isPublishing, setIsPublishing] = useState(false);
   const [displacementSettings, setDisplacementSettings] = useState<DisplacementSettings>({
     scaleX: 20,
@@ -1390,6 +1391,7 @@ const DesignEditor: React.FC = () => {
                     }
                   }}
                   previewMode={previewMode}
+                  garmentTintHex={primaryColorHex}
                 />
 
                 {/* Konva Overlay - Just for Grid & Rulers now */}
@@ -1716,6 +1718,7 @@ const DesignEditor: React.FC = () => {
                   selectedSizes={selectedSizes}
                   onColorToggle={handleColorToggle}
                   onSizeToggle={handleSizeToggle}
+                  onPrimaryColorHexChange={setPrimaryColorHex}
                 />
               </TabsContent>
 

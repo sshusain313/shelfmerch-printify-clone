@@ -618,7 +618,10 @@ export const RealisticWebGLPreview: React.FC<RealisticWebGLPreviewProps> = ({
         designSprite.y = phScreenY + phScreenH / 2;
 
         // Multiply blend to make design integrate with garment colors.
-        (designSprite as any).blendMode = 'multiply';
+        // This ensures the design's colors blend realistically with the T-shirt's fabric color.
+        // MULTIPLY blend mode multiplies the design's color with the T-shirt color,
+        // ensuring the design takes on the color properties of the fabric (shading, tint, etc.)
+        designSprite.blendMode = 'multiply';
         designSprite.alpha = 0.9;
 
         // Build mask matching placeholder shape.
