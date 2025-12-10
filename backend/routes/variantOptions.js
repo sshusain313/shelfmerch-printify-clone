@@ -48,8 +48,8 @@ router.get('/', protect, async (req, res) => {
 
 // @route   POST /api/variant-options
 // @desc    Create a new custom variant option
-// @access  Private/Admin
-router.post('/', protect, authorize('admin'), async (req, res) => {
+// @access  Private (any authenticated user can add options)
+router.post('/', protect, async (req, res) => {
   try {
     const { categoryId, subcategoryId, optionType, value, colorHex } = req.body;
     
@@ -123,7 +123,7 @@ router.post('/', protect, authorize('admin'), async (req, res) => {
 // @route   PUT /api/variant-options/:id
 // @desc    Update a custom variant option
 // @access  Private/Admin
-router.put('/:id', protect, authorize('admin'), async (req, res) => {
+router.put('/:id', protect, authorize('superadmin'), async (req, res) => {
   try {
     const { value, colorHex, isActive } = req.body;
     
@@ -161,7 +161,7 @@ router.put('/:id', protect, authorize('admin'), async (req, res) => {
 // @route   DELETE /api/variant-options/:id
 // @desc    Delete a custom variant option
 // @access  Private/Admin
-router.delete('/:id', protect, authorize('admin'), async (req, res) => {
+router.delete('/:id', protect, authorize('superadmin'), async (req, res) => {
   try {
     const option = await VariantOptionTemplate.findById(req.params.id);
     
@@ -193,7 +193,7 @@ router.delete('/:id', protect, authorize('admin'), async (req, res) => {
 // @route   GET /api/variant-options/stats
 // @desc    Get statistics about variant options usage
 // @access  Private/Admin
-router.get('/stats', protect, authorize('admin'), async (req, res) => {
+router.get('/stats', protect, authorize('superadmin'), async (req, res) => {
   try {
     const stats = await VariantOptionTemplate.aggregate([
       { $match: { isActive: true } },

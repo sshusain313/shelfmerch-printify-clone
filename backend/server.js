@@ -27,6 +27,9 @@ const variantRoutes = require('./routes/variants');
 const variantOptionsRoutes = require('./routes/variantOptions');
 const catalogueFieldsRoutes = require('./routes/catalogueFields');
 const uploadRoutes = require('./routes/upload');
+const assetsRoutes = require('./routes/assets');
+const storeRoutes = require('./routes/stores');
+const storeProductsRoutes = require('./routes/storeProducts');
 
 // Initialize Express app
 const app = express();
@@ -146,6 +149,9 @@ app.use('/api/variants', variantRoutes);
 app.use('/api/variant-options', variantOptionsRoutes);
 app.use('/api/catalogue-fields', catalogueFieldsRoutes);
 app.use('/api/upload', uploadRoutes);
+app.use('/api/assets', assetsRoutes);
+app.use('/api/stores', storeRoutes);
+app.use('/api/store-products', storeProductsRoutes);
 
 // 404 handler
 app.use((req, res) => {

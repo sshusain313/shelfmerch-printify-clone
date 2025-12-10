@@ -5,6 +5,7 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ShoppingCart, Search, Menu } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { storeApi } from '@/lib/api';
 
 const StoreFrontend = () => {
   const { subdomain } = useParams<{ subdomain: string }>();
@@ -12,21 +13,26 @@ const StoreFrontend = () => {
   const [products, setProducts] = useState<any[]>([]);
 
   useEffect(() => {
-    // Load store data
-    const savedStores = localStorage.getItem('shelfmerch_stores');
-    if (savedStores) {
-      const stores = JSON.parse(savedStores);
-      const foundStore = stores.find((s: any) => s.subdomain === subdomain);
-      setStore(foundStore);
-    }
+    const loadStore = async () => {
+      if (!subdomain) return;
+      try {
+        const response = await storeApi.getBySubdomain(subdomain);
+        if (response.success && response.data) {
+          setStore(response.data);
+        } else {
+          setStore(null);
+        }
+      } catch (error) {
+        console.error('Error loading store by subdomain:', error);
+        setStore(null);
+      }
+    };
 
-    // Load products for this store
-    const savedProducts = localStorage.getItem('shelfmerch_saved_products');
-    if (savedProducts) {
-      const allProducts = JSON.parse(savedProducts);
-      // In a real app, filter by store/user
-      setProducts(allProducts.slice(0, 8));
-    }
+    loadStore();
+
+    // TODO: Load products for this store from backend (StoreProducts)
+    // For now, keep empty list
+    setProducts([]);
   }, [subdomain]);
 
   if (!store) {

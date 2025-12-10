@@ -14,6 +14,15 @@ const PlaceholderSchema = new mongoose.Schema({
   rotationDeg: { type: Number, default: 0 },
   scale: { type: Number, default: 1.0 }, // Visual scale multiplier
   lockSize: { type: Boolean, default: false }, // Lock print size flag
+  // Polygon / magnetic lasso support
+  shapeType: { type: String, enum: ['rect', 'polygon'], default: 'rect' },
+  polygonPoints: {
+    type: [{
+      xIn: { type: Number, required: true },
+      yIn: { type: Number, required: true },
+    }],
+    default: undefined,
+  },
 }, { _id: false });
 
 const ViewConfigSchema = new mongoose.Schema({
@@ -79,6 +88,12 @@ const ProductCatalogueSchema = new mongoose.Schema({
 const ProductDesignSchema = new mongoose.Schema({
   views: [ViewConfigSchema],
   dpi: { type: Number, default: 300 },
+  // Optional physical dimensions of the printable product area (in inches)
+  physicalDimensions: {
+    width: { type: Number },   // Total printable width in inches (e.g. garment width)
+    height: { type: Number },  // Total printable height in inches
+    length: { type: Number },  // Optional length/depth for left/right views
+  },
 }, { _id: false });
 
 const ProductShippingSchema = new mongoose.Schema({

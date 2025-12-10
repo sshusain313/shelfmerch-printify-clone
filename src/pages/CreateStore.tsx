@@ -7,6 +7,8 @@ import { Label } from '@/components/ui/label';
 import { Card } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { Store, Check, Loader2 } from 'lucide-react';
+import { storeApi } from '@/lib/api';
+import type { Store as StoreType } from '@/types';
 
 const CreateStore = () => {
   const [storeName, setStoreName] = useState('');
@@ -22,39 +24,44 @@ const CreateStore = () => {
       return;
     }
 
-    const subdomain = storeName.toLowerCase().replace(/[^a-z0-9]/g, '-');
+    if (!user?.id) {
+      toast.error('You must be logged in to create a store');
+      return;
+    }
+
+    const subdomain = storeName
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '');
     
     setIsCreating(true);
-    
-    // Simulate store creation
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    // Save store data
-    const storeData = {
-      id: Math.random().toString(36).substr(2, 9),
-      storeName,
-      subdomain,
-      userId: user?.id,
-      createdAt: new Date().toISOString(),
-    };
-    
-    const savedStores = localStorage.getItem('shelfmerch_stores');
-    const allStores = savedStores ? JSON.parse(savedStores) : [];
-    allStores.push(storeData);
-    localStorage.setItem('shelfmerch_stores', JSON.stringify(allStores));
 
-    // Dispatch update event for real-time sync
-    window.dispatchEvent(new CustomEvent('shelfmerch-data-update', { 
-      detail: { type: 'store', data: storeData } 
-    }));
-    
-    toast.success(
-      `Store created! Your store is live at ${subdomain}.shelfmerch.com`,
-      { duration: 5000 }
-    );
-    
-    setIsCreating(false);
-    navigate('/stores');
+    try {
+      // Create store in backend
+      const response = await storeApi.create({
+        name: storeName.trim(),
+        theme: 'modern',
+      });
+
+      if (!response.success || !response.data) {
+        throw new Error(response.message || 'Failed to create store');
+      }
+
+      const backendStore = response.data as StoreType;
+
+      toast.success(
+        `Store created! Your store is live at ${backendStore.subdomain}.shelfmerch.com`,
+        { duration: 5000 }
+      );
+
+      navigate('/stores');
+    } catch (error: any) {
+      console.error('Error creating store:', error);
+      toast.error(error.message || 'Failed to create store. Please try again.');
+    } finally {
+      setIsCreating(false);
+    }
   };
 
   return (

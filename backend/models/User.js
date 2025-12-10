@@ -27,8 +27,20 @@ const userSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['merchant', 'admin'],
-    default: 'merchant'
+    enum: ['superadmin', 'merchant', 'staff'],
+    default: 'merchant',
+    required: true
+  },
+  // For staff: which stores they can access
+  assignedStores: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Store'
+  }],
+  // For staff: permissions (optional, can be expanded)
+  permissions: {
+    canManageProducts: { type: Boolean, default: false },
+    canManageOrders: { type: Boolean, default: false },
+    canViewAnalytics: { type: Boolean, default: false }
   },
   isEmailVerified: {
     type: Boolean,

@@ -1,13 +1,13 @@
 const express = require('express');
 const router = express.Router();
-const Product = require('../models/Product');
-const ProductVariant = require('../models/ProductVariant');
+const CatalogProduct = require('../models/CatalogProduct');
+const CatalogProductVariant = require('../models/CatalogProductVariant');
 const { protect, authorize } = require('../middleware/auth');
 
 // @route   POST /api/products
 // @desc    Create a new base product (Admin only)
 // @access  Private/Admin
-router.post('/', protect, authorize('admin'), async (req, res) => {
+router.post('/', protect, authorize('superadmin'), async (req, res) => {
   // Set a longer timeout for product creation (30 seconds)
   req.setTimeout(30000);
 
@@ -134,54 +134,80 @@ router.post('/', protect, authorize('admin'), async (req, res) => {
       });
     }
 
-    console.log('Creating product in database...');
+    console.log('Creating catalog product in database...');
 
-    // Create product (without embedded variants)
-    const product = await Product.create({
-      catalogue,
-      details: details || undefined,
+    // Transform data from old structure (catalogue.*) to new structure (flat fields)
+    // Old: catalogue.name, catalogue.description, catalogue.basePrice, etc.
+    // New: name, description, basePrice, etc.
+    const catalogProductData = {
+      name: catalogue.name,
+      description: catalogue.description,
+      categoryId: catalogue.categoryId,
+      subcategoryIds: Array.isArray(catalogue.subcategoryIds) ? catalogue.subcategoryIds : [],
+      productTypeCode: catalogue.productTypeCode,
+      tags: Array.isArray(catalogue.tags) ? catalogue.tags : [],
+      attributes: catalogue.attributes || new Map(),
+      basePrice: catalogue.basePrice,
       design: {
         views: filteredViews,
-        dpi: design.dpi || 300
+        dpi: design.dpi || 300,
+        physicalDimensions: design.physicalDimensions
       },
       shipping,
-      pricing: pricing || undefined,
-      stocks: stocks || undefined,
-      options: options || undefined,
-      availableSizes: Array.isArray(availableSizes) ? availableSizes : [],
-      availableColors: Array.isArray(availableColors) ? availableColors : [],
       galleryImages: Array.isArray(galleryImages) ? galleryImages : [],
       faqs: Array.isArray(faqs) ? faqs : [],
+      details: details || {},
       createdBy: req.user.id,
-      isActive: true
-    });
+      isActive: true,
+      isPublished: true // Auto-publish for now (can be changed later)
+    };
+
+    // Create catalog product
+    const product = await CatalogProduct.create(catalogProductData);
 
     console.log('Product created successfully:', product._id);
 
     // Create variants in separate collection if provided
     let createdVariants = [];
     if (Array.isArray(variants) && variants.length > 0) {
-      console.log(`Creating ${variants.length} variants for product ${product._id}...`);
-      const variantsWithProductId = variants.map(v => ({
-        ...v,
-        productId: product._id
+      console.log(`Creating ${variants.length} catalog variants for product ${product._id}...`);
+      const catalogVariants = variants.map(v => ({
+        catalogProductId: product._id,
+        size: v.size,
+        color: v.color,
+        colorHex: v.colorHex,
+        skuTemplate: v.sku || `${catalogue.productTypeCode}-${v.size}-${v.color}`,
+        isActive: v.isActive !== false
       }));
 
       try {
-        createdVariants = await ProductVariant.insertMany(variantsWithProductId, {
+        createdVariants = await CatalogProductVariant.insertMany(catalogVariants, {
           ordered: false // Continue on duplicate key errors
         });
-        console.log(`Successfully created ${createdVariants.length} variants`);
+        console.log(`Successfully created ${createdVariants.length} catalog variants`);
       } catch (variantError) {
-        console.error('Error creating variants:', variantError);
+        console.error('Error creating catalog variants:', variantError);
         // Log the error but don't fail the product creation
         // Variants can be added later via the variants API
       }
     }
 
-    // Return product with variants included (for backward compatibility)
+    // Transform response to old structure for backward compatibility with frontend
     const productResponse = product.toObject();
+    // Add catalogue wrapper for backward compatibility
+    productResponse.catalogue = {
+      name: product.name,
+      description: product.description,
+      categoryId: product.categoryId,
+      subcategoryIds: product.subcategoryIds,
+      productTypeCode: product.productTypeCode,
+      tags: product.tags,
+      attributes: product.attributes,
+      basePrice: product.basePrice
+    };
     productResponse.variants = createdVariants;
+    productResponse.availableSizes = [...new Set(createdVariants.map(v => v.size))];
+    productResponse.availableColors = [...new Set(createdVariants.map(v => v.color))];
 
     res.status(201).json({
       success: true,
@@ -255,19 +281,19 @@ router.get('/', protect, async (req, res) => {
       query.isActive = isActive === 'true';
     }
 
-    // Handle search - use regex for partial matching
+    // Handle search - use regex for partial matching (new field names)
     let searchQuery;
     if (search && String(search).trim()) {
       const searchTerm = String(search).trim();
-      searchQuery = Product.find({
+      searchQuery = CatalogProduct.find({
         ...query,
         $or: [
-          { 'catalogue.name': { $regex: searchTerm, $options: 'i' } },
-          { 'catalogue.description': { $regex: searchTerm, $options: 'i' } }
+          { name: { $regex: searchTerm, $options: 'i' } },
+          { description: { $regex: searchTerm, $options: 'i' } }
         ]
       });
     } else {
-      searchQuery = Product.find(query);
+      searchQuery = CatalogProduct.find(query);
     }
 
     const products = await searchQuery
@@ -276,6 +302,43 @@ router.get('/', protect, async (req, res) => {
       .skip(skip)
       .limit(parseInt(String(limit)));
 
+    // Transform products to old structure for backward compatibility
+    // Fetch variants for all products in one query
+    const productIds = products.map(p => p._id);
+    const allVariants = await CatalogProductVariant.find({
+      catalogProductId: { $in: productIds }
+    }).sort({ size: 1, color: 1 });
+
+    // Group variants by product ID
+    const variantsByProduct = {};
+    allVariants.forEach(v => {
+      if (!variantsByProduct[v.catalogProductId]) {
+        variantsByProduct[v.catalogProductId] = [];
+      }
+      variantsByProduct[v.catalogProductId].push(v);
+    });
+
+    const transformedProducts = products.map(p => {
+      const productObj = p.toObject();
+      const variants = variantsByProduct[p._id] || [];
+      return {
+        ...productObj,
+        catalogue: {
+          name: p.name,
+          description: p.description,
+          categoryId: p.categoryId,
+          subcategoryIds: p.subcategoryIds,
+          productTypeCode: p.productTypeCode,
+          tags: p.tags,
+          attributes: p.attributes,
+          basePrice: p.basePrice
+        },
+        variants: variants,
+        availableSizes: [...new Set(variants.map(v => v.size))],
+        availableColors: [...new Set(variants.map(v => v.color))]
+      };
+    });
+
     // Count total matching documents
     let countQuery = query;
     if (search && String(search).trim()) {
@@ -283,18 +346,18 @@ router.get('/', protect, async (req, res) => {
       countQuery = {
         ...query,
         $or: [
-          { 'catalogue.name': { $regex: searchTerm, $options: 'i' } },
-          { 'catalogue.description': { $regex: searchTerm, $options: 'i' } }
+          { name: { $regex: searchTerm, $options: 'i' } },
+          { description: { $regex: searchTerm, $options: 'i' } }
         ]
       };
     }
-    const total = await Product.countDocuments(countQuery);
+    const total = await CatalogProduct.countDocuments(countQuery);
 
-    console.log(`Found ${products.length} products out of ${total} total`);
+    console.log(`Found ${transformedProducts.length} products out of ${total} total`);
 
     res.json({
       success: true,
-      data: products,
+      data: transformedProducts,
       pagination: {
         page: parseInt(String(page)),
         limit: parseInt(String(limit)),
@@ -327,71 +390,51 @@ router.get('/catalog/active', async (req, res) => {
     console.log('Query params:', { page, limit, category, subcategory, search });
     const skip = (parseInt(String(page)) - 1) * parseInt(String(limit));
 
-    // Build query - ONLY active products (isActive === true)
-    // This ensures that only products with active status appear in the public catalog
-    // Products with isActive === false will NOT appear here
-
-    // Filter by visibility option
-    // Visibility: 'everywhere' = catalog + search, 'catalog' = catalog only, 'search' = search only, 'nowhere' = hidden
-    // If search parameter is present: show 'everywhere' and 'search' (exclude 'catalog' and 'nowhere')
-    // If no search parameter (catalog view): show 'everywhere' and 'catalog' (exclude 'search' and 'nowhere')
-    // If options.visibility doesn't exist, default to 'everywhere' behavior (show it for backward compatibility)
+    // Build query - ONLY active and published products
+    // CatalogProduct doesn't have options.visibility, so we only filter by isActive and isPublished
     const isSearchQuery = search && String(search).trim();
 
-    // Build visibility filter - EXCLUDE 'nowhere' always
-    // Catalog view (no search): show 'everywhere' and 'catalog' only
-    // Search view (with search): show 'everywhere' and 'search' only
-    const visibilityFilter = {
-      $or: [
-        { 'options.visibility': { $exists: false } }, // No visibility set = show (backward compatibility)
-        { 'options.visibility': 'everywhere' },       // Show everywhere
-        { 'options.visibility': isSearchQuery ? 'search' : 'catalog' } // Show based on context
-        // Explicitly excluded: 'nowhere' (never shown), and opposite context
-      ]
-    };
-
-    console.log('Visibility filter:', JSON.stringify(visibilityFilter, null, 2));
-    console.log('Search query present:', isSearchQuery);
-    console.log('Context:', isSearchQuery ? 'SEARCH' : 'CATALOG');
-
-    // Combine all filters using $and to ensure visibility filter is applied correctly
+    // Combine all filters using $and
     const andConditions = [
-      { isActive: true },  // Must be active
-      visibilityFilter     // Must match visibility rules (excludes 'nowhere')
+      { isActive: true },   // Must be active
+      { isPublished: true } // Must be published to appear in catalog
     ];
 
-    // Add category filter if provided (case-insensitive)
+    // Add category filter if provided (case-insensitive) - new field name
     if (category && String(category).trim()) {
       const categoryTerm = String(category).trim();
       andConditions.push({
-        'catalogue.categoryId': { $regex: new RegExp(`^${categoryTerm}$`, 'i') }
+        categoryId: { $regex: new RegExp(`^${categoryTerm}$`, 'i') }
       });
       console.log('Applied category filter:', categoryTerm);
     }
 
-    // Add subcategory filter if provided (searches in subcategoryIds array)
+    // Add subcategory filter if provided (searches in subcategoryIds array) - new field name
     if (subcategory && String(subcategory).trim()) {
       const subcategoryTerm = String(subcategory).trim();
       const escapedTerm = subcategoryTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       andConditions.push({
-        'catalogue.subcategoryIds': {
+        subcategoryIds: {
           $in: [new RegExp(`^${escapedTerm}$`, 'i')]
         }
       });
       console.log('Applied subcategory filter:', subcategoryTerm);
     }
 
-    // Handle search text matching - add to andConditions if search term exists
+    // Handle search text matching - add to andConditions if search term exists (new field names)
     if (isSearchQuery) {
       const searchTerm = String(search).trim();
       andConditions.push({
         $or: [
-          { 'catalogue.name': { $regex: searchTerm, $options: 'i' } },
-          { 'catalogue.description': { $regex: searchTerm, $options: 'i' } },
-          { 'catalogue.tags': { $regex: searchTerm, $options: 'i' } }
+          { name: { $regex: searchTerm, $options: 'i' } },
+          { description: { $regex: searchTerm, $options: 'i' } },
+          { tags: { $regex: searchTerm, $options: 'i' } }
         ]
       });
     }
+
+    // Add isPublished filter - only show published products in catalog
+    andConditions.push({ isPublished: true });
 
     // Build final query with $and
     const finalQuery = { $and: andConditions };
@@ -399,7 +442,7 @@ router.get('/catalog/active', async (req, res) => {
     console.log('Final query:', JSON.stringify(finalQuery, null, 2));
 
     // Execute query
-    const searchQuery = Product.find(finalQuery);
+    const searchQuery = CatalogProduct.find(finalQuery);
 
     const products = await searchQuery
       .select('-createdBy -updatedAt -__v') // Exclude admin fields
@@ -407,14 +450,51 @@ router.get('/catalog/active', async (req, res) => {
       .skip(skip)
       .limit(parseInt(String(limit)));
 
-    // Count total matching documents (use same query structure)
-    const total = await Product.countDocuments(finalQuery);
+    // Transform products to old structure for backward compatibility
+    // Fetch variants for all products in one query
+    const productIds = products.map(p => p._id);
+    const allVariants = await CatalogProductVariant.find({
+      catalogProductId: { $in: productIds }
+    }).sort({ size: 1, color: 1 });
 
-    console.log(`Found ${products.length} active catalog products out of ${total} total`);
+    // Group variants by product ID
+    const variantsByProduct = {};
+    allVariants.forEach(v => {
+      if (!variantsByProduct[v.catalogProductId]) {
+        variantsByProduct[v.catalogProductId] = [];
+      }
+      variantsByProduct[v.catalogProductId].push(v);
+    });
+
+    const transformedProducts = products.map(p => {
+      const productObj = p.toObject();
+      const variants = variantsByProduct[p._id] || [];
+      return {
+        ...productObj,
+        catalogue: {
+          name: p.name,
+          description: p.description,
+          categoryId: p.categoryId,
+          subcategoryIds: p.subcategoryIds,
+          productTypeCode: p.productTypeCode,
+          tags: p.tags,
+          attributes: p.attributes,
+          basePrice: p.basePrice
+        },
+        variants: variants,
+        availableSizes: [...new Set(variants.map(v => v.size))],
+        availableColors: [...new Set(variants.map(v => v.color))]
+      };
+    });
+
+    // Count total matching documents (use same query structure)
+    const total = await CatalogProduct.countDocuments(finalQuery);
+
+    console.log(`Found ${transformedProducts.length} active catalog products out of ${total} total`);
 
     res.json({
       success: true,
-      data: products,
+      data: transformedProducts,
       pagination: {
         page: parseInt(String(page)),
         limit: parseInt(String(limit)),
@@ -437,7 +517,7 @@ router.get('/catalog/active', async (req, res) => {
 // @access  Private
 router.get('/:id', protect, async (req, res) => {
   try {
-    const product = await Product.findById(req.params.id)
+    const product = await CatalogProduct.findById(req.params.id)
       .populate('createdBy', 'name email');
 
     if (!product) {
@@ -448,12 +528,24 @@ router.get('/:id', protect, async (req, res) => {
     }
 
     // Fetch variants from separate collection
-    const variants = await ProductVariant.find({ productId: product._id })
+    const variants = await CatalogProductVariant.find({ catalogProductId: product._id })
       .sort({ size: 1, color: 1 });
 
-    // Add variants to product response (for backward compatibility)
+    // Transform to old structure for backward compatibility
     const productResponse = product.toObject();
+    productResponse.catalogue = {
+      name: product.name,
+      description: product.description,
+      categoryId: product.categoryId,
+      subcategoryIds: product.subcategoryIds,
+      productTypeCode: product.productTypeCode,
+      tags: product.tags,
+      attributes: product.attributes,
+      basePrice: product.basePrice
+    };
     productResponse.variants = variants;
+    productResponse.availableSizes = [...new Set(variants.map(v => v.size))];
+    productResponse.availableColors = [...new Set(variants.map(v => v.color))];
 
     res.json({
       success: true,
@@ -472,9 +564,9 @@ router.get('/:id', protect, async (req, res) => {
 // @route   PUT /api/products/:id
 // @desc    Update product
 // @access  Private/Admin
-router.put('/:id', protect, authorize('admin'), async (req, res) => {
+router.put('/:id', protect, authorize('superadmin'), async (req, res) => {
   try {
-    const product = await Product.findById(req.params.id);
+    const product = await CatalogProduct.findById(req.params.id);
 
     if (!product) {
       return res.status(404).json({
@@ -483,37 +575,37 @@ router.put('/:id', protect, authorize('admin'), async (req, res) => {
       });
     }
 
-    // Update fields
+    // Update fields - transform from old structure (catalogue.*) to new structure
     const {
       catalogue,
       details,
       design,
       shipping,
-      pricing,
-      stocks,
-      options,
       variants,
-      availableSizes,
-      availableColors,
       galleryImages,
       faqs,
-      isActive
+      isActive,
+      isPublished
     } = req.body;
 
-    if (catalogue) product.catalogue = catalogue;
+    // Update flat fields from catalogue object
+    if (catalogue) {
+      if (catalogue.name !== undefined) product.name = catalogue.name;
+      if (catalogue.description !== undefined) product.description = catalogue.description;
+      if (catalogue.categoryId !== undefined) product.categoryId = catalogue.categoryId;
+      if (catalogue.subcategoryIds !== undefined) product.subcategoryIds = catalogue.subcategoryIds;
+      if (catalogue.productTypeCode !== undefined) product.productTypeCode = catalogue.productTypeCode;
+      if (catalogue.tags !== undefined) product.tags = catalogue.tags;
+      if (catalogue.attributes !== undefined) product.attributes = catalogue.attributes;
+      if (catalogue.basePrice !== undefined) product.basePrice = catalogue.basePrice;
+    }
     if (details !== undefined) product.details = details;
     if (design) product.design = design;
     if (shipping) product.shipping = shipping;
-    if (pricing !== undefined) product.pricing = pricing;
-    if (stocks !== undefined) product.stocks = stocks;
-    if (options !== undefined) product.options = options;
-    if (availableSizes) product.availableSizes = availableSizes;
-    if (availableColors) product.availableColors = availableColors;
     if (galleryImages) product.galleryImages = galleryImages;
     if (faqs !== undefined) product.faqs = Array.isArray(faqs) ? faqs : [];
     if (isActive !== undefined) product.isActive = isActive;
-
-    product.updatedAt = Date.now();
+    if (isPublished !== undefined) product.isPublished = isPublished;
 
     await product.save();
 
@@ -522,36 +614,52 @@ router.put('/:id', protect, authorize('admin'), async (req, res) => {
     // This code maintains backward compatibility for bulk updates
     let updatedVariants = [];
     if (variants && Array.isArray(variants)) {
-      console.log(`Updating variants for product ${product._id}...`);
+      console.log(`Updating catalog variants for product ${product._id}...`);
 
       // Delete existing variants for this product
-      await ProductVariant.deleteMany({ productId: product._id });
+      await CatalogProductVariant.deleteMany({ catalogProductId: product._id });
 
       // Create new variants
       if (variants.length > 0) {
-        const variantsWithProductId = variants.map(v => ({
-          ...v,
-          productId: product._id
+        const catalogVariants = variants.map(v => ({
+          catalogProductId: product._id,
+          size: v.size,
+          color: v.color,
+          colorHex: v.colorHex,
+          skuTemplate: v.sku || `${product.productTypeCode}-${v.size}-${v.color}`,
+          isActive: v.isActive !== false
         }));
 
         try {
-          updatedVariants = await ProductVariant.insertMany(variantsWithProductId, {
+          updatedVariants = await CatalogProductVariant.insertMany(catalogVariants, {
             ordered: false
           });
-          console.log(`Successfully updated ${updatedVariants.length} variants`);
+          console.log(`Successfully updated ${updatedVariants.length} catalog variants`);
         } catch (variantError) {
-          console.error('Error updating variants:', variantError);
+          console.error('Error updating catalog variants:', variantError);
         }
       }
     } else {
       // Fetch existing variants if not updating them
-      updatedVariants = await ProductVariant.find({ productId: product._id })
+      updatedVariants = await CatalogProductVariant.find({ catalogProductId: product._id })
         .sort({ size: 1, color: 1 });
     }
 
-    // Return product with variants included (for backward compatibility)
+    // Transform to old structure for backward compatibility
     const productResponse = product.toObject();
+    productResponse.catalogue = {
+      name: product.name,
+      description: product.description,
+      categoryId: product.categoryId,
+      subcategoryIds: product.subcategoryIds,
+      productTypeCode: product.productTypeCode,
+      tags: product.tags,
+      attributes: product.attributes,
+      basePrice: product.basePrice
+    };
     productResponse.variants = updatedVariants;
+    productResponse.availableSizes = [...new Set(updatedVariants.map(v => v.size))];
+    productResponse.availableColors = [...new Set(updatedVariants.map(v => v.color))];
 
     res.json({
       success: true,
@@ -572,9 +680,9 @@ router.put('/:id', protect, authorize('admin'), async (req, res) => {
 // @desc    Delete product permanently from database
 // @desc    This is different from toggle - delete removes the product completely
 // @access  Private/Admin
-router.delete('/:id', protect, authorize('admin'), async (req, res) => {
+router.delete('/:id', protect, authorize('superadmin'), async (req, res) => {
   try {
-    const product = await Product.findById(req.params.id);
+    const product = await CatalogProduct.findById(req.params.id);
 
     if (!product) {
       return res.status(404).json({
@@ -584,13 +692,13 @@ router.delete('/:id', protect, authorize('admin'), async (req, res) => {
     }
 
     // Delete all variants associated with this product
-    const variantDeleteResult = await ProductVariant.deleteMany({
-      productId: req.params.id
+    const variantDeleteResult = await CatalogProductVariant.deleteMany({
+      catalogProductId: req.params.id
     });
-    console.log(`Deleted ${variantDeleteResult.deletedCount} variants for product ${req.params.id}`);
+    console.log(`Deleted ${variantDeleteResult.deletedCount} catalog variants for product ${req.params.id}`);
 
     // Permanently delete the product from database
-    await Product.findByIdAndDelete(req.params.id);
+    await CatalogProduct.findByIdAndDelete(req.params.id);
 
     console.log(`Product ${req.params.id} deleted permanently from database`);
 

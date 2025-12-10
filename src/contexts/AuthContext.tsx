@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { authApi, ApiError } from '@/lib/api';
 
-export type UserRole = 'admin' | 'merchant' | 'user';
+export type UserRole = 'superadmin' | 'merchant' | 'user';
 
 export interface User {
   id: string;
@@ -145,8 +145,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         login,
         signup,
         logout,
-        isAdmin: user?.role === 'admin',
-        isMerchant: user?.role === 'merchant' || user?.role === 'admin',
+        isAdmin: user?.role === 'superadmin',
+        isMerchant: user?.role === 'merchant' || user?.role === 'superadmin',
         refreshUser,
       }}
     >

@@ -40,7 +40,7 @@ router.get('/', async (req, res) => {
 // @route   POST /api/catalogue-fields
 // @desc    Create a new catalogue field template
 // @access  Private/Admin
-router.post('/', protect, authorize('admin'), async (req, res) => {
+router.post('/', protect, authorize('superadmin'), async (req, res) => {
   try {
     const { categoryId, subcategoryId, key, label, type, options, required, placeholder, unit } = req.body;
     
@@ -98,7 +98,7 @@ router.post('/', protect, authorize('admin'), async (req, res) => {
 // @route   PUT /api/catalogue-fields/:id
 // @desc    Update a catalogue field template
 // @access  Private/Admin
-router.put('/:id', protect, authorize('admin'), async (req, res) => {
+router.put('/:id', protect, authorize('superadmin'), async (req, res) => {
   try {
     const { label, type, options, required, placeholder, unit, isActive } = req.body;
     
@@ -140,7 +140,7 @@ router.put('/:id', protect, authorize('admin'), async (req, res) => {
 // @route   DELETE /api/catalogue-fields/:id
 // @desc    Delete a catalogue field template
 // @access  Private/Admin
-router.delete('/:id', protect, authorize('admin'), async (req, res) => {
+router.delete('/:id', protect, authorize('superadmin'), async (req, res) => {
   try {
     const field = await CatalogueFieldTemplate.findById(req.params.id);
     
@@ -170,7 +170,7 @@ router.delete('/:id', protect, authorize('admin'), async (req, res) => {
 // @route   GET /api/catalogue-fields/stats
 // @desc    Get statistics about catalogue field templates
 // @access  Private/Admin
-router.get('/stats', protect, authorize('admin'), async (req, res) => {
+router.get('/stats', protect, authorize('superadmin'), async (req, res) => {
   try {
     const totalFields = await CatalogueFieldTemplate.countDocuments();
     const activeFields = await CatalogueFieldTemplate.countDocuments({ isActive: true });

@@ -4,16 +4,16 @@ import { Navbar } from '@/components/Navbar';
 import { Footer } from '@/components/Footer';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Search, ArrowLeft, Filter } from 'lucide-react';
+import { Search, ArrowLeft, Filter, ChevronDown, Plus, Minus } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetFooter, SheetClose } from "@/components/ui/sheet";
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { productApi } from '@/lib/api';
 import { variantOptionsApi } from '@/lib/api';
 import { getColorHex } from '@/config/productVariantOptions';
-import { getFieldDefinitions, FieldDefinition } from '@/config/productFieldDefinitions';
+import { getFieldDefinitions, FieldDefinition, FIELD_DEFINITIONS } from '@/config/productFieldDefinitions';
 import { categories } from '@/data/products';
 import { Package } from 'lucide-react';
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -177,6 +177,12 @@ const CategoryProducts = () => {
   const [availableSizes, setAvailableSizes] = useState<any[]>([]);
   const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [availableAttributes, setAvailableAttributes] = useState<Record<string, { label: string, options: string[], type: string, fieldDef: FieldDefinition, hasProducts: Set<string> }>>({});
+  // Real color options and hex codes from backend
+  const [colorOptionsFromDB, setColorOptionsFromDB] = useState<Array<{ value: string; colorHex?: string }>>([]);
+  const [colorHexMapFromDB, setColorHexMapFromDB] = useState<Record<string, string>>({});
+  const [colorsWithHex, setColorsWithHex] = useState<Array<{ value: string; colorHex?: string }>>([]);
+  // Map of product ID -> color name -> colorHex from variants
+  const [productColorHexMap, setProductColorHexMap] = useState<Record<string, Record<string, string>>>({});
 
   const [selectedColors, setSelectedColors] = useState<string[]>([]);
   const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
@@ -317,6 +323,20 @@ const CategoryProducts = () => {
 
           console.log('API response for subcategory:', subcategory, response);
 
+           // Build available colors with hex from variants returned by backend
+           const variants: Array<any> = Array.isArray(response.data.variants) ? response.data.variants : [];
+           const colorMapUnique: Record<string, string | undefined> = {};
+           variants.forEach((v) => {
+             if (v && typeof v.color === 'string') {
+               const key = v.color;
+               if (colorMapUnique[key] === undefined) {
+                 colorMapUnique[key] = v.colorHex || undefined;
+               }
+             }
+           });
+           const colorsArr = Object.entries(colorMapUnique).map(([value, hex]) => ({ value, colorHex: hex || getColorHex(value) }));
+           setColorsWithHex(colorsArr);
+
           if (response && response.success && Array.isArray(response.data)) {
             setProducts(response.data);
           } else {
@@ -335,55 +355,101 @@ const CategoryProducts = () => {
     fetchProducts();
   }, [slug, subcategory, isMainCategory]);
 
+  // Store parent category ID for use in other hooks
+  const [parentCategoryId, setParentCategoryId] = useState<string | undefined>(undefined);
+
+  // Fetch real color options (and hex) from backend for this category/subcategory
+  useEffect(() => {
+    const fetchColorOptions = async () => {
+      if (!parentCategoryId) return;
+      try {
+        const resp = await variantOptionsApi.getAll({
+          categoryId: parentCategoryId,
+          subcategoryId: subcategory || undefined,
+          optionType: 'color',
+        });
+        if (resp && (resp as any).success !== false && Array.isArray((resp as any).data)) {
+          const colors = (resp as any).data
+            .filter((opt: any) => opt.optionType === 'color')
+            .map((opt: any) => ({ value: opt.value as string, colorHex: opt.colorHex as string | undefined }));
+          const hexMap: Record<string, string> = {};
+          colors.forEach(c => { if (c.colorHex) hexMap[c.value] = c.colorHex; });
+          setColorOptionsFromDB(colors);
+          setColorHexMapFromDB(hexMap);
+        } else {
+          setColorOptionsFromDB([]);
+          setColorHexMapFromDB({});
+        }
+      } catch (e) {
+        console.warn('Failed to fetch color options for filters:', e);
+        setColorOptionsFromDB([]);
+        setColorHexMapFromDB({});
+      }
+    };
+    fetchColorOptions();
+  }, [parentCategoryId, subcategory]);
+
   // Extract filter options from loaded products and field definitions
   useEffect(() => {
     // Determine parent category ID for field definitions
-    let parentCategoryId: string | undefined = undefined;
+    let categoryId: string | undefined = undefined;
     
     if (isMainCategory) {
       // For main categories, use the slug directly
-      parentCategoryId = slug || undefined;
+      categoryId = slug || undefined;
     } else {
       // For subcategories, look up the parent category
       // Try exact match first
-      parentCategoryId = categorySlugToParentCategory[slug || ''];
+      categoryId = categorySlugToParentCategory[slug || ''];
       
       // If not found, try variations (singular/plural)
-      if (!parentCategoryId && slug) {
+      if (!categoryId && slug) {
         // Try adding 's' (e.g., 'hoodie' -> 'hoodies')
         const pluralSlug = slug + 's';
-        parentCategoryId = categorySlugToParentCategory[pluralSlug];
+        categoryId = categorySlugToParentCategory[pluralSlug];
         
         // Try removing 's' if it ends with 's' (e.g., 'hoodies' -> 'hoodie')
-        if (!parentCategoryId && slug.endsWith('s')) {
+        if (!categoryId && slug.endsWith('s')) {
           const singularSlug = slug.slice(0, -1);
-          parentCategoryId = categorySlugToParentCategory[singularSlug];
+          categoryId = categorySlugToParentCategory[singularSlug];
         }
       }
       
       // If still not found, try to find by subcategory name
-      if (!parentCategoryId && subcategory) {
+      if (!categoryId && subcategory) {
         // Reverse lookup: find which parent category has this subcategory
         // First, try to find the slug that maps to this subcategory
         for (const [catSlug, mappedSubcategory] of Object.entries(categorySlugToSubcategory)) {
           if (mappedSubcategory === subcategory) {
             // Found the slug, now get its parent category
-            parentCategoryId = categorySlugToParentCategory[catSlug];
-            if (parentCategoryId) break;
+            categoryId = categorySlugToParentCategory[catSlug];
+            if (categoryId) break;
           }
         }
         
       }
     }
 
+    // Update parent category ID state
+    setParentCategoryId(categoryId);
+
     // Get field definitions - always fetch them regardless of products
-    const fieldDefinitions = parentCategoryId
-      ? getFieldDefinitions(parentCategoryId as any, subcategory ? [subcategory] : [])
+    const fieldDefinitions = categoryId
+      ? getFieldDefinitions(categoryId as any, subcategory ? [subcategory] : [])
       : [];
+    
+    // Also get subcategory-specific attributes directly from bySubcategory
+    let subcategorySpecificAttributes: FieldDefinition[] = [];
+    if (categoryId && subcategory && FIELD_DEFINITIONS[categoryId as keyof typeof FIELD_DEFINITIONS]) {
+      const categoryDef = FIELD_DEFINITIONS[categoryId as keyof typeof FIELD_DEFINITIONS];
+      if (categoryDef.bySubcategory && categoryDef.bySubcategory[subcategory]) {
+        subcategorySpecificAttributes = categoryDef.bySubcategory[subcategory];
+      }
+    }
     
     // Debug logging
     if (fieldDefinitions.length === 0) {
-      console.warn('No field definitions found', { parentCategoryId, slug, subcategory, isMainCategory });
+      console.warn('No field definitions found', { categoryId, slug, subcategory, isMainCategory });
     }
 
     // Initialize product-specific data
@@ -392,25 +458,78 @@ const CategoryProducts = () => {
     const tagsSet = new Set();
     const attributesMap: Record<string, Set<string>> = {};
 
-    // Initialize attributes map from field definitions
+    // Initialize attributes map from field definitions (including subcategory-specific)
     fieldDefinitions.forEach(def => {
       attributesMap[def.key] = new Set();
     });
+    
+    // Also initialize from subcategory-specific attributes
+    subcategorySpecificAttributes.forEach(def => {
+      if (!attributesMap[def.key]) {
+        attributesMap[def.key] = new Set();
+      }
+    });
 
-    // Extract data from products if available
+    // Seed with backend color options first so filters show real colors even before products load
+    if (colorOptionsFromDB.length > 0) {
+      colorOptionsFromDB.forEach((opt) => {
+        if (!colorsMap.has(opt.value)) {
+          colorsMap.set(opt.value, {
+            id: opt.value,
+            value: opt.value,
+            colorHex: opt.colorHex || getColorHex(opt.value),
+          });
+        }
+      });
+    }
+
+    // Extract data from products if available, merging with DB colors
+    // Also build product-specific colorHex map for display
+    const productColorHexMapLocal: Record<string, Record<string, string>> = {};
+    
     if (products && products.length > 0) {
       products.forEach((product: any) => {
-        // Extract colors
-        if (Array.isArray(product.availableColors)) {
+        const productId = product._id || product.id;
+        const productColorMap: Record<string, string> = {};
+        
+        // Extract colors from product variants (with colorHex) or availableColors
+        if (product.variants && Array.isArray(product.variants)) {
+          product.variants.forEach((variant: any) => {
+            if (variant.color) {
+              const colorHex = variant.colorHex || getColorHex(variant.color);
+              // Store in product-specific map
+              productColorMap[variant.color] = colorHex;
+              
+              // Also add to global colorsMap for filters
+              if (!colorsMap.has(variant.color)) {
+                colorsMap.set(variant.color, {
+                  id: variant.color,
+                  value: variant.color,
+                  colorHex: colorHex,
+                });
+              }
+            }
+          });
+        } else if (Array.isArray(product.availableColors)) {
           product.availableColors.forEach((colorName: string) => {
+            const colorHex = getColorHex(colorName);
+            // Store in product-specific map
+            productColorMap[colorName] = colorHex;
+            
+            // Also add to global colorsMap for filters
             if (!colorsMap.has(colorName)) {
               colorsMap.set(colorName, {
                 id: colorName,
                 value: colorName,
-                colorHex: getColorHex(colorName)
+                colorHex: colorHex,
               });
             }
           });
+        }
+        
+        // Store product color map
+        if (productId && Object.keys(productColorMap).length > 0) {
+          productColorHexMapLocal[productId] = productColorMap;
         }
 
         // Extract sizes
@@ -427,8 +546,9 @@ const CategoryProducts = () => {
           });
         }
 
-        // Extract dynamic attributes from products
-        fieldDefinitions.forEach(def => {
+        // Extract dynamic attributes from products (all field definitions + subcategory-specific)
+        const allFieldDefs = [...fieldDefinitions, ...subcategorySpecificAttributes];
+        allFieldDefs.forEach(def => {
           const val = product.catalogue?.attributes?.[def.key];
           if (val !== undefined && val !== null && val !== '') {
             // Handle both string and array values
@@ -443,6 +563,9 @@ const CategoryProducts = () => {
         });
       });
     }
+    
+    // Update product color hex map state
+    setProductColorHexMap(productColorHexMapLocal);
 
     // Convert to arrays and sort
     const colors = Array.from(colorsMap.values()).sort((a, b) => a.value.localeCompare(b.value));
@@ -463,18 +586,11 @@ const CategoryProducts = () => {
 
     const tags = Array.from(tagsSet).sort() as string[];
 
-    // Process attributes for display - include ALL field definitions
+    // Process attributes for display - prioritize subcategory-specific attributes from bySubcategory
     const processedAttributes: Record<string, { label: string, options: string[], type: string, fieldDef: FieldDefinition, hasProducts: Set<string> }> = {};
     
-    console.log('Processing field definitions:', {
-      count: fieldDefinitions.length,
-      definitions: fieldDefinitions.map(d => ({ key: d.key, label: d.label, type: d.type })),
-      parentCategoryId,
-      subcategory,
-      productsCount: products?.length || 0
-    });
-    
-    fieldDefinitions.forEach(def => {
+    // First, process subcategory-specific attributes (these are unique to the subcategory from bySubcategory)
+    subcategorySpecificAttributes.forEach(def => {
       // For select fields, use all options from field definition
       // For other field types, use values found in products
       let options: string[] = [];
@@ -503,22 +619,42 @@ const CategoryProducts = () => {
           fieldDef: def,
           hasProducts
         };
-        console.log(`Added filter for ${def.key}:`, {
-          label: def.label,
-          type: def.type,
-          optionsCount: options.length,
-          hasProductsCount: hasProducts.size,
-          isSelectWithOptions,
-          hasProductValues
-        });
+      }
+    });
+    
+    // Then, process all other field definitions (common + any remaining fields)
+    fieldDefinitions.forEach(def => {
+      // Skip if already processed (subcategory-specific takes priority)
+      if (processedAttributes[def.key]) return;
+      
+      // For select fields, use all options from field definition
+      // For other field types, use values found in products
+      let options: string[] = [];
+      
+      if (def.type === 'select' && def.options && def.options.length > 0) {
+        // Use all options from field definition for select fields
+        options = [...def.options];
       } else {
-        console.log(`Skipped filter for ${def.key}:`, {
+        // For text/number/textarea, use values found in products
+        options = Array.from(attributesMap[def.key] || []).sort();
+      }
+
+      // Track which options have products available
+      const hasProducts = new Set<string>(attributesMap[def.key] || []);
+
+      // Always show select fields if they have options
+      // Show other field types only if they have values in products
+      const isSelectWithOptions = def.type === 'select' && def.options && def.options.length > 0;
+      const hasProductValues = options.length > 0;
+      
+      if (isSelectWithOptions || hasProductValues) {
+        processedAttributes[def.key] = {
           label: def.label,
+          options,
           type: def.type,
-          isSelectWithOptions,
-          hasProductValues,
-          optionsCount: options.length
-        });
+          fieldDef: def,
+          hasProducts
+        };
       }
     });
 
@@ -550,78 +686,159 @@ const CategoryProducts = () => {
     };
   };
 
-  const productsCount = products.length;
+  const productsCount = filteredProducts.length;
+  const totalProductsCount = products.length;
+
+  // Get parent category ID for subcategory options
+  const parentCategoryIdForSubcats = useMemo(() => {
+    if (isMainCategory) return slug;
+    return categorySlugToParentCategory[slug || ''] || undefined;
+  }, [slug, isMainCategory]);
+
+  // Get subcategories for category filter buttons
+  const subcategoryOptions = useMemo(() => {
+    if (!parentCategoryIdForSubcats) return [];
+    
+    // Get subcategories from categorySlugToSubcategory that belong to this parent
+    const subcats: string[] = [];
+    Object.entries(categorySlugToSubcategory).forEach(([catSlug, subcatName]) => {
+      if (categorySlugToParentCategory[catSlug] === parentCategoryIdForSubcats) {
+        if (!subcats.includes(subcatName)) {
+          subcats.push(subcatName);
+        }
+      }
+    });
+    return subcats;
+  }, [parentCategoryIdForSubcats]);
+
+  // Derive category name with fallbacks (after isMainCategory, subcategory, and parentCategoryId are defined)
+  const categoryName = useMemo(() => {
+    // First try to get from static category list
+    if (category?.name) return category.name;
+    
+    // If it's a main category, format the slug
+    if (isMainCategory && slug) {
+      return slug.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+    }
+    
+    // If we have a subcategory, try to get parent category name
+    if (subcategory && parentCategoryId) {
+      const parentCategoryNames: Record<string, string> = {
+        'apparel': 'Apparel',
+        'accessories': 'Accessories',
+        'home': 'Home & Living',
+        'print': 'Print',
+        'packaging': 'Packaging',
+        'tech': 'Tech',
+        'jewelry': 'Jewelry'
+      };
+      return parentCategoryNames[parentCategoryId] || parentCategoryId;
+    }
+    
+    // Fallback: format slug
+    if (slug) {
+      return slug.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+    }
+    
+    return 'Category';
+  }, [category, slug, isMainCategory, subcategory, parentCategoryId]);
 
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
 
-      <main className="container mx-auto px-4 py-8">
+      <main className="w-full">
         {/* Breadcrumb */}
-        <div className="mb-6">
-          <Link
-            to="/products"
-            className="inline-flex items-center text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to All Products
-          </Link>
+        <div className="border-b bg-white">
+          <div className="container mx-auto px-4 py-3 flex flex-col sm:flex-row items-center justify-between">
+            <div className="text-sm text-muted-foreground">
+              <Link to="/products" className="hover:text-foreground">Catalogue</Link>
+              <span className="mx-2">/</span>
+              <span className="text-foreground">{categoryName}</span>
+              {subcategory && !isMainCategory && (
+                <>
+                  <span className="mx-2">/</span>
+                  <span className="text-foreground">{subcategory}</span>
+                </>
+              )}
+            </div>
+            
+            <div className="relative flex-1 max-w-3xl mx-auto sm:mx-4">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <input type="text" placeholder="Search products..." className="w-full h-10 bg-[#ECECE9] pl-14 pr-4 text-base sm:text-md border border-input/40 rounded-2xl  shadow-sm hover:shadow-md hover:border-primary/30 focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-primary/10 focus:border-primary transition-all duration-300 placeholder:text-muted-foreground/60" />
+            </div>  
+
+            {/* Sort Dropdown */}
+            <Select value={sortOption} onValueChange={setSortOption}>
+                    <SelectTrigger className="w-[120px] border-0 shadow-none text-sm">
+                      <SelectValue placeholder="Sorted by Featured" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="featured">Featured</SelectItem>
+                      <SelectItem value="price-low">Price: Low to High</SelectItem>
+                      <SelectItem value="price-high">Price: High to Low</SelectItem>
+                      <SelectItem value="newest">Newest</SelectItem>
+                      <SelectItem value="popularity">Popularity</SelectItem>
+                    </SelectContent>
+            </Select>
+            </div>
         </div>
 
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold mb-2">
-            {category?.name || 'Category'}
-          </h1>
-          <p className="text-muted-foreground">
-            {isLoadingProducts
-              ? 'Loading products...'
-              : `${productsCount} product${productsCount !== 1 ? 's' : ''} available`}
-          </p>
-          {error && (
-            <p className="text-sm text-red-500 mt-1">
-              {error}
-            </p>
-          )}
+        <div className="border-b bg-white">
+          <div className="container mx-auto px-4 py-6">
+            <h1 className="text-3xl font-semibold">
+              {categoryName}
+            </h1>
+            {error && (
+              <p className="text-sm text-red-500 mt-2">
+                {error}
+              </p>
+            )}
+          </div>
         </div>
 
-        {/* Search (UI only for now) */}
-        <div className="mb-8 max-w-md">
-          <Input
-            type="search"
-            placeholder="Search products..."
-            className="w-full"
-          />
-        </div>
+        {/* Main Content Area with Sidebar */}
+        <div className="flex">
+          {/* Left Sidebar - Filters */}
+          <aside className="w-64 border-r bg-white min-h-[calc(100vh-200px)] sticky top-0 self-start">
+            <div className="p-4">
+              
+              {subcategoryOptions.length > 0 && (
+                <div className="mb-6">
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    <button
+                      onClick={() => {
+                        
+                      }}
+                      className="px-4 py-2 text-sm border rounded-md hover:bg-muted transition-colors bg-primary text-primary-foreground"
+                    >
+                      All
+                    </button>
+                    {subcategoryOptions.map((subcat) => (
+                      <button
+                        key={subcat}
+                        className="px-4 py-2 text-sm border rounded-md hover:bg-muted transition-colors"
+                      >
+                        {subcat}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
-        {/* Filters and Tags */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-          <Sheet>
-            <SheetTrigger asChild>
-              <Button variant="outline" className="gap-2">
-                <Filter className="h-4 w-4" />
-                Filters
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="left" className="w-[300px] sm:w-[400px] p-0">
-              <SheetHeader className="px-6 py-4 border-b">
-                <SheetTitle>Filters</SheetTitle>
-              </SheetHeader>
-              <ScrollArea className="h-[calc(100vh-8rem)] px-6">
+              {/* Filter Accordions */}
+              <ScrollArea className="h-[calc(100vh-300px)] pr-4">
                 <Accordion type="multiple" className="w-full">
-
                   {/* Dynamic Attributes from Field Definitions */}
                   {Object.entries(availableAttributes).map(([key, { label, options, type, fieldDef, hasProducts }]) => (
-                    <AccordionItem key={key} value={key}>
-                      <AccordionTrigger>
-                        <div className="flex items-center gap-2">
+                    <AccordionItem key={key} value={key} className="border-b">
+                      <AccordionTrigger className="py-3 text-sm font-medium hover:no-underline">
+                        <div className="flex items-center justify-between w-full">
                           <span>{label}</span>
-                          {fieldDef.unit && (
-                            <span className="text-xs text-muted-foreground">({fieldDef.unit})</span>
-                          )}
                         </div>
                       </AccordionTrigger>
-                      <AccordionContent>
+                      <AccordionContent className="pt-2 pb-4">
                         {type === 'select' && options.length > 0 ? (
                           <div className="space-y-2">
                             {options.map((option) => {
@@ -637,7 +854,7 @@ const CategoryProducts = () => {
                                   />
                                   <Label 
                                     htmlFor={`${key}-${option}`}
-                                    className={`cursor-pointer flex-1 ${!optionHasProducts && products.length > 0 ? 'text-muted-foreground opacity-60' : ''}`}
+                                    className={`cursor-pointer flex-1 text-sm ${!optionHasProducts && products.length > 0 ? 'text-muted-foreground opacity-60' : ''}`}
                                   >
                                     {option}
                                     {!optionHasProducts && products.length > 0 && (
@@ -658,7 +875,7 @@ const CategoryProducts = () => {
                                     checked={selectedAttributes[key]?.includes(option) || false}
                                     onCheckedChange={() => toggleAttribute(key, option)}
                                   />
-                                  <Label htmlFor={`${key}-${option}`} className="cursor-pointer flex-1">
+                                  <Label htmlFor={`${key}-${option}`} className="cursor-pointer flex-1 text-sm">
                                     {option}
                                   </Label>
                                 </div>
@@ -677,7 +894,7 @@ const CategoryProducts = () => {
                                     checked={selectedAttributes[key]?.includes(option) || false}
                                     onCheckedChange={() => toggleAttribute(key, option)}
                                   />
-                                  <Label htmlFor={`${key}-${option}`} className="cursor-pointer flex-1">
+                                  <Label htmlFor={`${key}-${option}`} className="cursor-pointer flex-1 text-sm">
                                     {option} {fieldDef.unit || ''}
                                   </Label>
                                 </div>
@@ -691,9 +908,13 @@ const CategoryProducts = () => {
                     </AccordionItem>
                   ))}
 
-                  <AccordionItem value="colors">
-                    <AccordionTrigger>Colors</AccordionTrigger>
-                    <AccordionContent>
+                  <AccordionItem value="colors" className="border-b">
+                    <AccordionTrigger className="py-3 text-sm font-medium hover:no-underline">
+                      <div className="flex items-center justify-between w-full">
+                        <span>Colors</span>
+                      </div>
+                    </AccordionTrigger>
+                    <AccordionContent className="pt-2 pb-4">
                       <div className="flex flex-wrap gap-2">
                         {availableColors.length > 0 ? (
                           availableColors.map((color) => {
@@ -702,7 +923,7 @@ const CategoryProducts = () => {
                               <div
                                 key={color.id}
                                 onClick={() => toggleColor(color.value)}
-                                className={`w-8 h-8 rounded-full border cursor-pointer transition-all ${isSelected ? 'ring-2 ring-offset-2 ring-primary scale-110' : 'hover:ring-2 hover:ring-offset-2 hover:ring-primary/50'
+                                className={`w-8 h-8 rounded-full border-2 cursor-pointer transition-all ${isSelected ? 'ring-2 ring-offset-2 ring-primary scale-110' : 'hover:ring-2 hover:ring-offset-2 hover:ring-primary/50'
                                   }`}
                                 style={{ backgroundColor: color.colorHex || color.value }}
                                 title={color.value}
@@ -716,10 +937,15 @@ const CategoryProducts = () => {
                     </AccordionContent>
                   </AccordionItem>
 
-                  <AccordionItem value="sizes">
-                    <AccordionTrigger>Sizes</AccordionTrigger>
-                    <AccordionContent>
-                      <div className="grid grid-cols-4 gap-2">
+                  <AccordionItem value="sizes" className="border-b">
+                    <AccordionTrigger className="py-3 text-sm font-medium hover:no-underline">
+                      <div className="flex items-center justify-between w-full">
+                        <span>Sizes</span>
+                        
+                      </div>
+                    </AccordionTrigger>
+                    <AccordionContent className="pt-2 pb-4">
+                      <div className="grid grid-cols-3 gap-2">
                         {availableSizes.length > 0 ? (
                           availableSizes.map((size) => {
                             const isSelected = selectedSizes.includes(size.value);
@@ -727,7 +953,7 @@ const CategoryProducts = () => {
                               <div
                                 key={size.id}
                                 onClick={() => toggleSize(size.value)}
-                                className={`border rounded-md py-1 text-center text-sm cursor-pointer transition-colors ${isSelected ? 'bg-primary text-primary-foreground border-primary' : 'hover:bg-muted'
+                                className={`border rounded-md py-1.5 text-center text-xs cursor-pointer transition-colors ${isSelected ? 'bg-primary text-primary-foreground border-primary' : 'hover:bg-muted'
                                   }`}
                               >
                                 {size.value}
@@ -735,124 +961,242 @@ const CategoryProducts = () => {
                             );
                           })
                         ) : (
-                          <p className="text-sm text-muted-foreground col-span-4">No sizes available</p>
+                          <p className="text-sm text-muted-foreground col-span-3">No sizes available</p>
                         )}
                       </div>
                     </AccordionContent>
                   </AccordionItem>
-
                 </Accordion>
               </ScrollArea>
-              <SheetFooter className="absolute bottom-0 left-0 right-0 p-4 border-t bg-background">
-                <div className="flex w-full gap-2">
-                  <SheetClose asChild>
-                    <Button variant="outline" className="flex-1" onClick={clearFilters}>Clear all</Button>
-                  </SheetClose>
-                  <SheetClose asChild>
-                    <Button className="flex-1">Show results</Button>
-                  </SheetClose>
-                </div>
-              </SheetFooter>
-            </SheetContent>
-          </Sheet>
 
-          <div className="flex-1 overflow-x-auto pb-2 sm:pb-0 scrollbar-hide">
-            <div className="flex items-center gap-2">
-              {availableTags.length > 0 ? (
-                availableTags.map((tag) => {
-                  const isSelected = selectedTags.includes(tag);
-                  return (
-                    <Badge
-                      key={tag}
-                      variant={isSelected ? "secondary" : "outline"}
-                      className={`rounded-full px-4 py-1.5 text-sm font-normal whitespace-nowrap cursor-pointer transition-colors ${isSelected
-                        ? 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
-                        : 'hover:bg-muted'
-                        }`}
-                      onClick={() => toggleTag(tag)}
+              {/* Clear Filters Button */}
+              <div className="mt-4 pt-4 border-t">
+                <Button 
+                  variant="outline" 
+                  className="w-full" 
+                  onClick={clearFilters}
+                  size="sm"
+                >
+                  Clear all filters
+                </Button>
+              </div>
+            </div>
+          </aside>
+
+          {/* Main Content Area */}
+          <div className="flex-1 bg-white">
+            <div className="container mx-auto px-4 py-6">
+              {/* Product Grid Controls */}
+              <div className="flex items-center justify-between mb-6">
+                {/* <div className="text-sm text-muted-foreground">
+                  {isLoadingProducts
+                    ? 'Loading...'
+                    : `${productsCount} Item${productsCount !== 1 ? 's' : ''}`}
+                </div> */}
+                <div className="flex items-center gap-4">
+                  {/* Sort Dropdown */}
+                  {/* <Select value={sortOption} onValueChange={setSortOption}>
+                    <SelectTrigger className="w-[180px] border-0 shadow-none text-sm">
+                      <SelectValue placeholder="Sorted by Featured" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="featured">Featured</SelectItem>
+                      <SelectItem value="price-low">Price: Low to High</SelectItem>
+                      <SelectItem value="price-high">Price: High to Low</SelectItem>
+                      <SelectItem value="newest">Newest</SelectItem>
+                      <SelectItem value="popularity">Popularity</SelectItem>
+                    </SelectContent>
+                  </Select> */}
+
+                  {/* Attribute Tags - Display all unique attribute values as tags */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {/* Size Tags */}
+                    {/* {availableSizes.map((size) => {
+                      const isSelected = selectedSizes.includes(size.value);
+                      return (
+                        <Badge
+                          key={size.id}
+                          variant={isSelected ? "default" : "outline"}
+                          className={`cursor-pointer transition-colors whitespace-nowrap ${
+                            isSelected
+                              ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                              : 'hover:bg-muted'
+                          }`}
+                          onClick={() => toggleSize(size.value)}
+                        >
+                          Size: {size.value}
+                        </Badge>
+                      );
+                    })} */}
+
+                    {/* Color Tags */}
+                    {/* {availableColors.map((color) => {
+                      const isSelected = selectedColors.includes(color.value);
+                      return (
+                        <Badge
+                          key={color.id}
+                          variant={isSelected ? "default" : "outline"}
+                          className={`cursor-pointer transition-colors whitespace-nowrap flex items-center gap-1.5 ${
+                            isSelected
+                              ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                              : 'hover:bg-muted'
+                          }`}
+                          onClick={() => toggleColor(color.value)}
+                        >
+                          <div
+                            className="w-3 h-3 rounded-full border border-gray-300"
+                            style={{ backgroundColor: color.colorHex || color.value }}
+                          />
+                          Color: {color.value}
+                        </Badge>
+                      );
+                    })} */}
+
+                    {/* Dynamic Attribute Tags */}
+                    {Object.entries(availableAttributes).map(([key, { label, options }]) => {
+                      return options.map((option) => {
+                        const isSelected = selectedAttributes[key]?.includes(option) || false;
+                        return (
+                          <Badge
+                            key={`${key}-${option}`}
+                            variant={isSelected ? "default" : "outline"}
+                            className={`cursor-pointer transition-colors whitespace-nowrap ${
+                              isSelected
+                                ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                                : 'hover:bg-muted'
+                            }`}
+                            onClick={() => toggleAttribute(key, option)}
+                          >
+                            {label}: {option}
+                          </Badge>
+                        );
+                      });
+                    })}
+
+                    {/* Tag Tags (if any) */}
+                    {/* {availableTags.map((tag) => {
+                      const isSelected = selectedTags.includes(tag);
+                      return (
+                        <Badge
+                          key={tag}
+                          variant={isSelected ? "default" : "outline"}
+                          className={`cursor-pointer transition-colors whitespace-nowrap ${
+                            isSelected
+                              ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                              : 'hover:bg-muted'
+                          }`}
+                          onClick={() => toggleTag(tag)}
+                        >
+                          {tag}
+                        </Badge>
+                      );
+                    })} */}
+                  </div>
+                </div>
+              </div>
+
+              {/* Products Grid / Empty / Loading */}
+              {isLoadingProducts && productsCount === 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+                  {Array.from({ length: 8 }).map((_, idx) => (
+                    <div
+                      key={idx}
+                      className="bg-card rounded-lg overflow-hidden border animate-pulse h-full"
                     >
-                      {tag}
-                    </Badge>
-                  );
-                })
+                      <div className="aspect-square bg-muted" />
+                      <div className="p-4 space-y-2">
+                        <div className="h-3 bg-muted rounded" />
+                        <div className="h-4 bg-muted rounded w-3/4" />
+                        <div className="h-4 bg-muted rounded w-1/3" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : filteredProducts.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+                  {filteredProducts.map((product: any) => {
+                    const formattedProduct = formatProduct(product);
+                    // Get available colors for this product
+                    const productColors = product.availableColors || [];
+                    const displayColors = productColors.slice(0, 5);
+                    const remainingColorsCount = productColors.length - 5;
+                    
+                    return (
+                      <Link
+                        key={formattedProduct.id}
+                        to={`/products/${formattedProduct.id}`}
+                        className="group"
+                      >
+                        <div className="flex flex-col h-full">
+                          {/* Product Image */}
+                          <div className="aspect-square bg-muted relative overflow-hidden mb-3">
+                            <img
+                              src={formattedProduct.image}
+                              alt={formattedProduct.name}
+                              className="w-full h-full object-cover group-hover:opacity-90 transition-opacity duration-300"
+                            />
+                            {formattedProduct.badge && (
+                              <Badge className="absolute top-2 right-2 bg-black/80 text-white border-0">
+                                {formattedProduct.badge}
+                              </Badge>
+                            )}
+                          </div>
+                          
+                          {/* Product Info */}
+                          <div className="flex-1 flex flex-col">
+                            <h3 className="font-medium text-base mb-1 group-hover:underline transition-colors line-clamp-2">
+                              {formattedProduct.name}
+                            </h3>
+                            <p className="text-sm text-muted-foreground mb-2 line-clamp-2">
+                              {product.catalogue?.description || formattedProduct.brand}
+                            </p>
+                            
+                            {/* Color Swatches */}
+                            {displayColors.length > 0 && (
+                              <div className="flex items-center gap-1.5 mb-3">
+                                {displayColors.map((colorName: string, idx: number) => {
+                                  // Get colorHex from product variants, fallback to getColorHex
+                                  const productId = formattedProduct.id;
+                                  const productColorMap = productColorHexMap[productId] || {};
+                                  const colorHex = productColorMap[colorName] || getColorHex(colorName);
+                                  return (
+                                    <div
+                                      key={idx}
+                                      className="w-4 h-4 rounded-full border border-gray-300"
+                                      style={{ backgroundColor: colorHex || colorName }}
+                                      title={colorName}
+                                    />
+                                  );
+                                })}
+                                {remainingColorsCount > 0 && (
+                                  <span className="text-xs text-muted-foreground ml-1">
+                                    + {remainingColorsCount} more
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                            
+                            {/* Price */}
+                            <p className="text-base font-semibold mt-auto">
+                              ${formattedProduct.price}
+                            </p>
+                          </div>
+                        </div>
+                      </Link>
+                    );
+                  })}
+                </div>
               ) : (
-                <span className="text-sm text-muted-foreground italic px-2">No tags available</span>
+                <div className="text-center py-16">
+                  <p className="text-xl text-muted-foreground mb-4">
+                    No products found matching your filters.
+                  </p>
+                  <Button variant="outline" onClick={clearFilters}>Clear Filters</Button>
+                </div>
               )}
             </div>
           </div>
         </div>
-
-        {/* Products Grid / Empty / Loading */}
-        {isLoadingProducts && productsCount === 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {Array.from({ length: 8 }).map((_, idx) => (
-              <div
-                key={idx}
-                className="bg-card rounded-lg overflow-hidden border animate-pulse h-full"
-              >
-                <div className="aspect-square bg-muted" />
-                <div className="p-4 space-y-2">
-                  <div className="h-3 bg-muted rounded" />
-                  <div className="h-4 bg-muted rounded w-3/4" />
-                  <div className="h-4 bg-muted rounded w-1/3" />
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : filteredProducts.length > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 mt-4">
-            {filteredProducts.map((product: any) => {
-              const formattedProduct = formatProduct(product);
-              return (
-                <Link
-                  key={formattedProduct.id}
-                  to={`/products/${formattedProduct.id}`}
-                  className="group"
-                >
-                  <Card className="overflow-hidden hover:shadow-lg transition-all h-full">
-                    <CardContent className="p-0 flex flex-col h-full">
-                      <div className="aspect-square bg-muted relative overflow-hidden">
-                        <img
-                          src={formattedProduct.image}
-                          alt={formattedProduct.name}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                        />
-                        {formattedProduct.badge && (
-                          <Badge className="absolute top-2 right-2">
-                            {formattedProduct.badge}
-                          </Badge>
-                        )}
-                      </div>
-                      <div className="p-4 flex-1 flex flex-col">
-                        <p className="text-sm text-muted-foreground mb-1">
-                          {formattedProduct.brand}
-                        </p>
-                        <h3 className="font-semibold mb-2 group-hover:text-primary transition-colors line-clamp-2">
-                          {formattedProduct.name}
-                        </h3>
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
-                          <span>{formattedProduct.sizesCount} sizes</span>
-                          <span>•</span>
-                          <span>{formattedProduct.colorsCount} colors</span>
-                        </div>
-                        <p className="text-lg font-bold text-primary mt-auto">
-                          From ${formattedProduct.price}
-                        </p>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </Link>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="text-center py-16">
-            <p className="text-xl text-muted-foreground mb-4">
-              No products found matching your filters.
-            </p>
-            <Button variant="outline" onClick={clearFilters}>Clear Filters</Button>
-          </div>
-        )}
       </main>
 
       <Footer />

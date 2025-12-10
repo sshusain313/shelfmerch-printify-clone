@@ -41,6 +41,7 @@ import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, R
 import {
   Users,
   Package,
+  Palette,
   Store,
   TrendingUp,
   Settings,
@@ -140,7 +141,7 @@ const Admin = () => {
       }
     };
 
-    if (user?.role === 'admin') {
+    if (user?.role === 'superadmin') {
       fetchUserCount();
     } else {
       // If not admin, just show stores length
@@ -152,7 +153,7 @@ const Admin = () => {
   // Fetch products count from backend for stats
   useEffect(() => {
     const fetchProductsCount = async () => {
-      if (user?.role !== 'admin') {
+      if (user?.role !== 'superadmin') {
         return;
       }
 
@@ -224,7 +225,7 @@ const Admin = () => {
       return;
     }
     
-    if (user?.role !== 'admin') {
+    if (user?.role !== 'superadmin') {
       return;
     }
     
@@ -271,7 +272,7 @@ const Admin = () => {
 
   useEffect(() => {
     // Fetch immediately when tab becomes active or page changes
-    if (activeTab === 'products' && user?.role === 'admin') {
+    if (activeTab === 'products' && user?.role === 'superadmin') {
       if (productsSearchQuery) {
         // Debounce search query
         const timeoutId = setTimeout(() => {
@@ -561,6 +562,16 @@ const Admin = () => {
               <Link to="/admin/variant-options">
                 <Package className="mr-2 h-4 w-4" />
                 Variant Options
+              </Link>
+            </Button>
+               <Button
+              variant="ghost"
+              className="w-full justify-start"
+              asChild
+            >
+              <Link to="/admin/assets">
+                <Palette className="mr-2 h-4 w-4" />
+                Design Assets
               </Link>
             </Button>
             <Button

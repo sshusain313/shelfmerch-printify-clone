@@ -3,33 +3,123 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { useMemo } from 'react';
 import { ShoppingCart, Search, Menu, X, Package } from 'lucide-react';
 import { Product, Store, CartItem } from '@/types';
-import { getStoreBySubdomain, getProducts } from '@/lib/localStorage';
+import { storeApi, storeProductsApi } from '@/lib/api';
 import { getTheme } from '@/lib/themes';
 import { toast } from 'sonner';
+import { useAuth } from '@/contexts/AuthContext';
 import CartDrawer from '@/components/storefront/CartDrawer';
 import SectionRenderer from '@/components/builder/SectionRenderer';
 
 const StoreFrontendNew = () => {
+  const { user, isMerchant, isAdmin } = useAuth();
   const { subdomain } = useParams<{ subdomain: string }>();
   const navigate = useNavigate();
   const [store, setStore] = useState<Store | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
+  const [storeProducts, setStoreProducts] = useState<any[]>([]);
+  const [spLoading, setSpLoading] = useState(false);
+  const [spFilter, setSpFilter] = useState<{ status?: 'draft' | 'published'; isActive?: boolean }>({
+    status: 'published',
+    isActive: true,
+  });
+
+  // Load store-specific products from backend (StoreProduct collection)
+  useEffect(() => {
+    const loadSP = async () => {
+      if (!store) {
+        setStoreProducts([]);
+        setProducts([]);
+        return;
+      }
+      try {
+        setSpLoading(true);
+        const resp = await storeProductsApi.list(spFilter);
+        if (resp.success) {
+          const all = resp.data || [];
+          // Filter products for this specific store
+          const forStore = all.filter(
+            (sp: any) =>
+              sp.storeId === store.id ||
+              sp.storeId === store._id || // depending on serialization
+              String(sp.storeId) === String(store.id)
+          );
+          setStoreProducts(forStore);
+
+          // Map StoreProduct documents into frontend Product shape for rendering / cart
+          const mapped: Product[] = forStore.map((sp: any) => {
+            const id = sp._id?.toString?.() || sp.id;
+            const basePrice: number =
+              typeof sp.sellingPrice === 'number'
+                ? sp.sellingPrice
+                : typeof sp.price === 'number'
+                ? sp.price
+                : 0;
+
+            const primaryImage =
+              sp.galleryImages?.find((img: any) => img.isPrimary)?.url ||
+              (Array.isArray(sp.galleryImages) && sp.galleryImages[0]?.url) ||
+              undefined;
+
+            return {
+              id,
+              userId: store.userId,
+              name: sp.title || sp.name || 'Untitled product',
+              description: sp.description,
+              baseProduct: sp.catalogProductId || '',
+              price: basePrice,
+              compareAtPrice:
+                typeof sp.compareAtPrice === 'number' ? sp.compareAtPrice : undefined,
+              mockupUrl: primaryImage,
+              mockupUrls: Array.isArray(sp.galleryImages)
+                ? sp.galleryImages.map((img: any) => img.url).filter(Boolean)
+                : [],
+              designs: sp.designData?.designs || {},
+              designBoundaries: sp.designData?.designBoundaries,
+              variants: {
+                colors: [],
+                sizes: [],
+              },
+              createdAt: sp.createdAt || new Date().toISOString(),
+              updatedAt: sp.updatedAt || new Date().toISOString(),
+            };
+          });
+
+          setProducts(mapped);
+        }
+      } catch (e) {
+        console.error('Failed to load store products', e);
+        setStoreProducts([]);
+        setProducts([]);
+      } finally {
+        setSpLoading(false);
+      }
+    };
+
+    loadSP();
+  }, [store, spFilter]);
   
   // Function to load store data
-  const loadStoreData = useCallback(() => {
+  const loadStoreData = useCallback(async () => {
     if (!subdomain) return;
-    
-    const foundStore = getStoreBySubdomain(subdomain);
-    if (foundStore) {
-      setStore(foundStore);
-      
-      // Load products for this store - only if not using builder or builder needs products
-      const storeProducts = getProducts(foundStore.userId);
-      setProducts(storeProducts);
+
+    try {
+      const response = await storeApi.getBySubdomain(subdomain);
+      if (response && response.success && response.data) {
+        const foundStore = response.data as Store;
+        setStore(foundStore);
+      } else {
+        setStore(null);
+        setProducts([]);
+      }
+    } catch (err) {
+      console.error('Failed to fetch store from backend:', err);
+      setStore(null);
+      setProducts([]);
     }
   }, [subdomain]);
 
@@ -59,9 +149,6 @@ const StoreFrontendNew = () => {
         // Only reload if this update is for the current store
         if (updatedStore.subdomain === subdomain) {
           setStore(updatedStore);
-          // Also reload products in case they changed
-          const storeProducts = getProducts(updatedStore.userId);
-          setProducts(storeProducts);
         }
       }
     };
@@ -303,6 +390,9 @@ const StoreFrontendNew = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
               {products.map((product) => {
                 const mockup = product.mockupUrls?.[0] || product.mockupUrl;
+                const sellingPrice = product.price;
+                const compareAtPrice = product.compareAtPrice;
+
                 return (
                 <Card
                   key={product.id}
@@ -321,9 +411,9 @@ const StoreFrontendNew = () => {
                         <Package className="h-16 w-16" />
                       </div>
                     )}
-                    {product.compareAtPrice && product.compareAtPrice > product.price && (
+                    {typeof compareAtPrice === 'number' && compareAtPrice > sellingPrice && (
                       <Badge className="absolute top-2 right-2 bg-red-500">
-                        Save ${(product.compareAtPrice - product.price).toFixed(2)}
+                        Save ${(compareAtPrice - sellingPrice).toFixed(2)}
                       </Badge>
                     )}
                   </div>
@@ -337,11 +427,11 @@ const StoreFrontendNew = () => {
                           className="text-lg font-bold"
                           style={{ color: theme.colors.primary }}
                         >
-                          ${product.price.toFixed(2)}
+                          ${sellingPrice.toFixed(2)}
                         </p>
-                        {product.compareAtPrice && product.compareAtPrice > product.price && (
+                        {typeof compareAtPrice === 'number' && compareAtPrice > sellingPrice && (
                           <p className="text-sm text-muted-foreground line-through">
-                            ${product.compareAtPrice.toFixed(2)}
+                            ${compareAtPrice.toFixed(2)}
                           </p>
                         )}
                       </div>

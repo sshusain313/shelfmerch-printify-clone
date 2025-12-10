@@ -8,9 +8,10 @@ import { Card } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { Store as StoreIcon, Check, Loader2, Sparkles } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { useData } from '@/contexts/DataContext';
+import { useData } from '@/contexts\DataContext';
 import { Store, StoreTheme } from '@/types';
 import { themes } from '@/lib/themes';
+import { storeApi } from '@/lib/api';
 
 interface StoreWizardModalProps {
   open: boolean;
@@ -45,33 +46,51 @@ const StoreWizardModal: React.FC<StoreWizardModalProps> = ({ open, onClose }) =>
 
     setIsCreating(true);
 
-    // Simulate creation delay
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    try {
+      const response = await storeApi.create({
+        name: storeName.trim(),
+        theme: selectedTheme,
+      });
 
-    const newStore: Store = {
-      id: Math.random().toString(36).substr(2, 9),
-      userId: user.id,
-      storeName: storeName.trim(),
-      subdomain,
-      theme: selectedTheme,
-      productIds: [],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
+      if (!response.success || !response.data) {
+        throw new Error(response.message || 'Failed to create store');
+      }
 
-    saveStore(newStore);
+      const backendStore = response.data;
 
-    toast.success(`🎉 Store created! Your store is live at ${subdomain}.shelfmerch.com`, {
-      duration: 5000,
-    });
+      const newStore: Store = {
+        id: backendStore.id || backendStore._id,
+        userId: backendStore.userId || user.id,
+        storeName: backendStore.storeName || backendStore.name,
+        subdomain: backendStore.subdomain || backendStore.slug || subdomain,
+        theme: (backendStore.theme as StoreTheme) || selectedTheme,
+        productIds: backendStore.productIds || [],
+        createdAt: backendStore.createdAt || new Date().toISOString(),
+        updatedAt: backendStore.updatedAt || new Date().toISOString(),
+        description: backendStore.description,
+        logo: backendStore.logo,
+        settings: backendStore.settings,
+        useBuilder: backendStore.useBuilder,
+        builder: backendStore.builder,
+      };
 
-    setIsCreating(false);
-    onClose();
-    
-    // Navigate to stores page to see the new store
-    setTimeout(() => {
-      navigate('/stores');
-    }, 500);
+      saveStore(newStore);
+
+      toast.success(`🎉 Store created! Your store is live at ${newStore.subdomain}.shelfmerch.com`, {
+        duration: 5000,
+      });
+
+      onClose();
+
+      setTimeout(() => {
+        navigate('/stores');
+      }, 500);
+    } catch (error: any) {
+      console.error('Error creating store:', error);
+      toast.error(error.message || 'Failed to create store. Please try again.');
+    } finally {
+      setIsCreating(false);
+    }
   };
 
   const handleSkip = () => {

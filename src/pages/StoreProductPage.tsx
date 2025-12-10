@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Product, Store, CartItem } from '@/types';
-import { getStoreBySubdomain, getProducts } from '@/lib/localStorage';
+import { storeApi, storeProductsApi } from '@/lib/api';
 import { getTheme } from '@/lib/themes';
 import SectionRenderer from '@/components/builder/SectionRenderer';
 import CartDrawer from '@/components/storefront/CartDrawer';
@@ -30,6 +30,120 @@ interface ImageMagnifierProps {
 const ImageMagnifier: React.FC<ImageMagnifierProps> = ({ src, zoom = 2, alt }) => {
   const [isHovering, setIsHovering] = useState(false);
   const [backgroundPosition, setBackgroundPosition] = useState('center');
+  const [storeProducts, setStoreProducts] = useState<any[]>([]);
+  const [spLoading, setSpLoading] = useState(false);
+  const [spFilter, setSpFilter] = useState<{ status?: 'draft' | 'published'; isActive?: boolean }>({});
+  const [products, setProducts] = useState<Product[]>([]);
+  const { subdomain } = useParams<{ subdomain: string }>();
+  const [store, setStore] = useState<Store | null>(null);
+
+  const loadStoreData = useCallback(async () => {
+    if (!subdomain) return;
+    try {
+      const response = await storeApi.getBySubdomain(subdomain);
+      if (response && response.success && response.data) {
+        setStore(response.data as Store);
+      }
+    } catch (err) {
+      console.error('Failed to fetch store from backend:', err);
+      setStore(null);
+    }
+  }, [subdomain]);
+
+  useEffect(() => {
+    if (!subdomain) return;
+
+    // Simulate URL rewriting - show custom domain in address bar
+    if (window.location.pathname.startsWith('/store/')) {
+      const customDomain = `${subdomain}.shelfmerch.com`;
+      // Update document title and meta tags
+      document.title = `${subdomain.charAt(0).toUpperCase() + subdomain.slice(1)} - ShelfMerch Store`;
+      
+      // You can also update the displayed URL using history API (cosmetic only)
+      // Note: This won't actually change the domain, but shows the concept
+      window.history.replaceState(null, '', `/store/${subdomain}`);
+    }
+
+    // Load store data
+    loadStoreData();
+  }, [subdomain, loadStoreData]);
+
+
+  // Load store-specific products from backend (StoreProduct collection)
+  useEffect(() => {
+    const loadSP = async () => {
+      if (!store) {
+        setStoreProducts([]);
+        setProducts([]);
+        return;
+      }
+      try {
+        setSpLoading(true);
+        const resp = await storeProductsApi.list(spFilter);
+        if (resp.success) {
+          const all = resp.data || [];
+          // Filter products for this specific store
+          const forStore = all.filter(
+            (sp: any) =>
+              sp.storeId === store.id ||
+              sp.storeId === store._id || // depending on serialization
+              String(sp.storeId) === String(store.id)
+          );
+          setStoreProducts(forStore);
+
+          // Map StoreProduct documents into frontend Product shape for rendering / cart
+          const mapped: Product[] = forStore.map((sp: any) => {
+            const id = sp._id?.toString?.() || sp.id;
+            const basePrice: number =
+              typeof sp.sellingPrice === 'number'
+                ? sp.sellingPrice
+                : typeof sp.price === 'number'
+                ? sp.price
+                : 0;
+
+            const primaryImage =
+              sp.galleryImages?.find((img: any) => img.isPrimary)?.url ||
+              (Array.isArray(sp.galleryImages) && sp.galleryImages[0]?.url) ||
+              undefined;
+
+            return {
+              id,
+              userId: store.userId,
+              name: sp.title || sp.name || 'Untitled product',
+              description: sp.description,
+              baseProduct: sp.catalogProductId || '',
+              price: basePrice,
+              compareAtPrice:
+                typeof sp.compareAtPrice === 'number' ? sp.compareAtPrice : undefined,
+              mockupUrl: primaryImage,
+              mockupUrls: Array.isArray(sp.galleryImages)
+                ? sp.galleryImages.map((img: any) => img.url).filter(Boolean)
+                : [],
+              designs: sp.designData?.designs || {},
+              designBoundaries: sp.designData?.designBoundaries,
+              variants: {
+                colors: [],
+                sizes: [],
+              },
+              createdAt: sp.createdAt || new Date().toISOString(),
+              updatedAt: sp.updatedAt || new Date().toISOString(),
+            };
+          });
+
+          setProducts(mapped);
+        }
+      } catch (e) {
+        console.error('Failed to load store products', e);
+        setStoreProducts([]);
+        setProducts([]);
+      } finally {
+        setSpLoading(false);
+      }
+    };
+
+    loadSP();
+  }, [store, spFilter]);
+  
 
   const handleMouseMove = (event: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
     const { left, top, width, height } = event.currentTarget.getBoundingClientRect();
@@ -124,25 +238,124 @@ const StoreProductPage: React.FC = () => {
     return products.filter((item) => item.id !== productId).slice(0, 4);
   }, [products, productId]);
 
+  // Load store and specific product from backend (Store + StoreProduct collections)
   useEffect(() => {
-    if (!subdomain) return;
-    const foundStore = getStoreBySubdomain(subdomain);
-    if (!foundStore) {
-      setStore(null);
-      return;
-    }
+    const loadStoreAndProduct = async () => {
+      if (!subdomain || !productId) return;
 
-    setStore(foundStore);
-    const storeProducts = getProducts(foundStore.userId);
-    setProducts(storeProducts);
-    const currentProduct = storeProducts.find((item) => item.id === productId) || null;
-    setProduct(currentProduct);
-    if (currentProduct) {
-      const primaryMockup = currentProduct.mockupUrls?.[0] || currentProduct.mockupUrl || null;
-      setActiveImage(primaryMockup);
-      setSelectedColor(currentProduct.variants.colors[0] || '');
-      setSelectedSize(currentProduct.variants.sizes[0] || '');
-    }
+      try {
+        // 1) Load public store by subdomain
+        const storeResp = await storeApi.getBySubdomain(subdomain);
+        if (!storeResp.success || !storeResp.data) {
+          setStore(null);
+          setProducts([]);
+          setProduct(null);
+          return;
+        }
+
+        const foundStore = storeResp.data as Store;
+        setStore(foundStore);
+
+        // 2) Load all published + active store products for this merchant,
+        //    then filter down to this specific store.
+        const spResp = await storeProductsApi.list({
+          status: 'published',
+          isActive: true,
+        });
+
+        if (!spResp.success) {
+          setProducts([]);
+          setProduct(null);
+          return;
+        }
+
+        const all = spResp.data || [];
+        const forStore = all.filter(
+          (sp: any) =>
+            sp.storeId === foundStore.id ||
+            sp.storeId === (foundStore as any)._id ||
+            String(sp.storeId) === String(foundStore.id)
+        );
+
+        // Map StoreProduct docs into frontend Product shape
+        const mapped: Product[] = forStore.map((sp: any) => {
+          const id = sp._id?.toString?.() || sp.id;
+          const basePrice: number =
+            typeof sp.sellingPrice === 'number'
+              ? sp.sellingPrice
+              : typeof sp.price === 'number'
+              ? sp.price
+              : 0;
+
+          const primaryImage =
+            sp.galleryImages?.find((img: any) => img.isPrimary)?.url ||
+            (Array.isArray(sp.galleryImages) && sp.galleryImages[0]?.url) ||
+            undefined;
+
+          const variantsFromDesign = sp.designData?.variants as
+            | { colors?: string[]; sizes?: string[] }
+            | undefined;
+
+          const colors =
+            variantsFromDesign?.colors && variantsFromDesign.colors.length > 0
+              ? variantsFromDesign.colors
+              : ['Default'];
+          const sizes =
+            variantsFromDesign?.sizes && variantsFromDesign.sizes.length > 0
+              ? variantsFromDesign.sizes
+              : ['One Size'];
+
+          return {
+            id,
+            userId: foundStore.userId,
+            name: sp.title || sp.name || 'Untitled product',
+            description: sp.description,
+            baseProduct: sp.catalogProductId || '',
+            price: basePrice,
+            compareAtPrice:
+              typeof sp.compareAtPrice === 'number' ? sp.compareAtPrice : undefined,
+            mockupUrl: primaryImage,
+            mockupUrls: Array.isArray(sp.galleryImages)
+              ? sp.galleryImages.map((img: any) => img.url).filter(Boolean)
+              : [],
+            designs: sp.designData?.designs || {},
+            designBoundaries: sp.designData?.designBoundaries,
+            variants: {
+              colors,
+              sizes,
+            },
+            createdAt: sp.createdAt || new Date().toISOString(),
+            updatedAt: sp.updatedAt || new Date().toISOString(),
+          };
+        });
+
+        setProducts(mapped);
+
+        // 3) Select the specific product for this page
+        const currentProduct =
+          mapped.find((item) => item.id === productId) ||
+          null;
+
+        setProduct(currentProduct);
+
+        if (currentProduct) {
+          const primaryMockup =
+            currentProduct.mockupUrls?.[0] ||
+            currentProduct.mockupUrl ||
+            null;
+          setActiveImage(primaryMockup);
+          setSelectedColor(currentProduct.variants.colors[0] || 'Default');
+          setSelectedSize(currentProduct.variants.sizes[0] || 'One Size');
+        }
+      } catch (err) {
+        console.error('Failed to load store product page data:', err);
+        setStore(null);
+        setProducts([]);
+        setProduct(null);
+      }
+    };
+
+    loadStoreAndProduct();
   }, [subdomain, productId]);
 
   useEffect(() => {

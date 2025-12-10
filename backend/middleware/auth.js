@@ -100,4 +100,43 @@ exports.optionalAuth = async (req, res, next) => {
   }
 };
 
+// Superadmin only middleware (convenience wrapper)
+exports.superadminOnly = (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({
+      success: false,
+      message: 'Not authorized to access this route'
+    });
+  }
+
+  if (req.user.role !== 'superadmin') {
+    return res.status(403).json({
+      success: false,
+      message: 'Superadmin access required'
+    });
+  }
+
+  next();
+};
+
+// Admin only middleware (deprecated - use superadminOnly or authorize('superadmin'))
+// Kept for backward compatibility but checks for superadmin
+exports.adminOnly = (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({
+      success: false,
+      message: 'Not authorized to access this route'
+    });
+  }
+
+  if (req.user.role !== 'superadmin') {
+    return res.status(403).json({
+      success: false,
+      message: 'Superadmin access required'
+    });
+  }
+
+  next();
+};
+
 

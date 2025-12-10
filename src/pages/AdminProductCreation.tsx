@@ -15,7 +15,21 @@ import { ProductStocksSection } from '@/components/admin/ProductStocksSection';
 import { ProductOptionsSection } from '@/components/admin/ProductOptionsSection';
 import { ProductDetailsSection } from '@/components/admin/ProductDetailsSection';
 import { ProductFAQSection } from '@/components/admin/ProductFAQSection';
-import { ProductFormData, ProductCatalogueData, ProductDesignData, ProductShippingData, ProductPricingData, ProductStocksData, ProductOptionsData, ProductDetailsData, ProductVariant, ProductGalleryImage, ProductFAQ, ViewConfig } from '@/types/product';
+import {
+  ProductFormData,
+  ProductCatalogueData,
+  ProductDesignData,
+  ProductShippingData,
+  ProductPricingData,
+  ProductStocksData,
+  ProductOptionsData,
+  ProductDetailsData,
+  ProductVariant,
+  ProductGalleryImage,
+  ProductFAQ,
+  ViewConfig,
+  DisplacementSettings,
+} from '@/types/product';
 import { productApi } from '@/lib/api';
 
 const AdminProductCreation = () => {
@@ -51,6 +65,17 @@ const AdminProductCreation = () => {
   const [variants, setVariants] = useState<ProductVariant[]>([]);
 
   // SECTION D: Design Data (Mockup + Print Areas)
+  // Default physical dimensions in inches – this should match what we use in the configurator
+  const DEFAULT_PHYSICAL_WIDTH = 20;
+  const DEFAULT_PHYSICAL_HEIGHT = 24;
+  const DEFAULT_PHYSICAL_LENGTH = 18;
+
+  const defaultDisplacementSettings: DisplacementSettings = {
+    scaleX: 20,
+    scaleY: 20,
+    contrastBoost: 1.5,
+  };
+
   const [designData, setDesignData] = useState<ProductDesignData>({
     views: [
       { key: 'front', mockupImageUrl: '', placeholders: [] },
@@ -59,6 +84,12 @@ const AdminProductCreation = () => {
       { key: 'right', mockupImageUrl: '', placeholders: [] },
     ],
     dpi: 300,
+    physicalDimensions: {
+      width: DEFAULT_PHYSICAL_WIDTH,
+      height: DEFAULT_PHYSICAL_HEIGHT,
+      length: DEFAULT_PHYSICAL_LENGTH,
+    },
+    displacementSettings: defaultDisplacementSettings,
   });
 
   // SECTION E: Product Gallery Images (Customer-facing display images)
@@ -140,9 +171,10 @@ const AdminProductCreation = () => {
           
           if (product.design) {
             // Migrate old placeholders (wIn/hIn) to new format (widthIn/heightIn)
+            // Preserve any new polygon/magnetic lasso fields if present
             const migratedViews = (product.design.views || []).map((view: ViewConfig) => ({
               ...view,
-              placeholders: view.placeholders.map((p: any) => ({
+              placeholders: (view.placeholders || []).map((p: any) => ({
                 id: p.id,
                 xIn: p.xIn,
                 yIn: p.yIn,
@@ -151,17 +183,31 @@ const AdminProductCreation = () => {
                 rotationDeg: p.rotationDeg ?? 0,
                 scale: p.scale ?? 1.0,
                 lockSize: p.lockSize ?? false,
+                // Polygon / magnetic lasso support
+                shapeType: p.shapeType, // e.g. 'polygon'
+                polygonPoints: p.polygonPoints,
               })),
             }));
 
             setDesignData({
-              views: migratedViews.length > 0 ? migratedViews : [
+              views:
+                migratedViews.length > 0
+                  ? migratedViews
+                  : [
                 { key: 'front', mockupImageUrl: '', placeholders: [] },
                 { key: 'back', mockupImageUrl: '', placeholders: [] },
                 { key: 'left', mockupImageUrl: '', placeholders: [] },
                 { key: 'right', mockupImageUrl: '', placeholders: [] },
               ],
               dpi: product.design.dpi || 300,
+              physicalDimensions: product.design.physicalDimensions || {
+                width: DEFAULT_PHYSICAL_WIDTH,
+                height: DEFAULT_PHYSICAL_HEIGHT,
+                length: DEFAULT_PHYSICAL_LENGTH,
+              },
+              // Preserve existing displacement settings or fall back to sensible defaults
+              displacementSettings:
+                product.design.displacementSettings || defaultDisplacementSettings,
             });
           }
           
@@ -270,11 +316,59 @@ const AdminProductCreation = () => {
       return;
     }
 
+    // Sanitize design data to ensure all placeholders have required numeric fields
+    const sanitizedDesign: ProductDesignData = {
+      ...designData,
+      views: (designData.views || []).map((view) => ({
+        ...view,
+        placeholders: (view.placeholders || [])
+          .map((p) => {
+            let { xIn, yIn, widthIn, heightIn } = p;
+
+            // If core fields are missing but polygon points exist, derive a bounding box from polygon
+            if (
+              (xIn === undefined || yIn === undefined || widthIn === undefined || heightIn === undefined) &&
+              Array.isArray((p as any).polygonPoints) &&
+              (p as any).polygonPoints.length >= 3
+            ) {
+              const pts = (p as any).polygonPoints as Array<{ xIn: number; yIn: number }>;
+              const xs = pts.map((pt) => pt.xIn);
+              const ys = pts.map((pt) => pt.yIn);
+              const minX = Math.min(...xs);
+              const maxX = Math.max(...xs);
+              const minY = Math.min(...ys);
+              const maxY = Math.max(...ys);
+
+              xIn = minX;
+              yIn = minY;
+              widthIn = maxX - minX;
+              heightIn = maxY - minY;
+            }
+
+            return {
+              ...p,
+              xIn,
+              yIn,
+              widthIn,
+              heightIn,
+            };
+          })
+          // Final safety net: drop any placeholder that still misses required coords/sizes
+          .filter(
+            (p) =>
+              p.xIn !== undefined &&
+              p.yIn !== undefined &&
+              p.widthIn !== undefined &&
+              p.heightIn !== undefined,
+          ),
+      })),
+    };
+
     // Prepare payload
     const payload: ProductFormData = {
       catalogue: catalogueData,
       details: detailsData,
-      design: designData,
+      design: sanitizedDesign,
       shipping: shippingData,
       pricing: pricingData,
       stocks: stocksData,
@@ -508,11 +602,26 @@ const AdminProductCreation = () => {
                 </div>
                 <ProductImageConfigurator
                   views={designData.views}
-                  onViewsChange={(views) => setDesignData({ ...designData, views })}
-                  physicalWidth={20} // Default product width in inches
-                  physicalHeight={24} // Default product height in inches
-                  physicalLength={18} // Default product length in inches (for left/right views)
+                  onViewsChange={(views) =>
+                    setDesignData((prev) => ({
+                      ...prev,
+                      views,
+                    }))
+                  }
+                  // Use persisted physical dimensions so admin + designer stay in sync 1:1
+                  physicalWidth={designData.physicalDimensions?.width ?? DEFAULT_PHYSICAL_WIDTH}
+                  physicalHeight={designData.physicalDimensions?.height ?? DEFAULT_PHYSICAL_HEIGHT}
+                  physicalLength={designData.physicalDimensions?.length ?? DEFAULT_PHYSICAL_LENGTH}
                   unit="in"
+                  displacementSettings={
+                    designData.displacementSettings || defaultDisplacementSettings
+                  }
+                  onDisplacementSettingsChange={(settings) =>
+                    setDesignData((prev) => ({
+                      ...prev,
+                      displacementSettings: settings,
+                    }))
+                  }
                 />
                 <div className="flex justify-between pt-4">
                   <Button

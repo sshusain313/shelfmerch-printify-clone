@@ -7,6 +7,7 @@ interface DataContextType {
   products: Product[];
   orders: Order[];
   store: Store | null;
+  stores: Store[]; // expose all stores (currently single-store-backed)
   cart: Cart;
   stats: DashboardStats;
   refreshData: () => void;
@@ -28,6 +29,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [store, setStore] = useState<Store | null>(null);
+  const [stores, setStores] = useState<Store[]>([]);
   const [cart, setCart] = useState<Cart>({ items: [], updatedAt: new Date().toISOString() });
   const [stats, setStats] = useState<DashboardStats>({
     totalProducts: 0,
@@ -50,6 +52,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setProducts(loadedProducts);
     setOrders(loadedOrders);
     setStore(loadedStore);
+    // For now we only persist a single store per user; expose it as a 1-element array
+    // so components like Stores.tsx can safely use stores.length.
+    setStores(loadedStore ? [loadedStore] : []);
     setCart(loadedCart);
     setStats(loadedStats);
   }, [user?.id]);
@@ -113,6 +118,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     (storeData: Store) => {
       if (!user?.id) return;
       storage.saveStore(user.id, storeData);
+      // keep both single store and stores[] in sync
+      setStore(storeData);
+      setStores(storeData ? [storeData] : []);
       refreshData();
     },
     [user?.id, refreshData]
@@ -157,6 +165,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         products,
         orders,
         store,
+        stores,
         cart,
         stats,
         refreshData,

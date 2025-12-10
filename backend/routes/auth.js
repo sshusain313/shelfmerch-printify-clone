@@ -101,13 +101,17 @@ router.post(
         });
       }
 
+      // Validate role if provided
+      const validRoles = ['superadmin', 'merchant', 'staff'];
+      const userRole = role && validRoles.includes(role) ? role : 'merchant';
+      
       // Create user
-      console.log('Creating user with:', { name, email, role: role || 'merchant' });
+      console.log('Creating user with:', { name, email, role: userRole });
       const user = await User.create({
         name,
         email,
         password,
-        role: role || 'merchant'
+        role: userRole
       });
       console.log('User created successfully:', user._id);
 
@@ -251,9 +255,9 @@ router.post('/logout', protect, async (req, res) => {
 });
 
 // @route   GET /api/auth/users/count
-// @desc    Get total user count (Admin only)
-// @access  Private/Admin
-router.get('/users/count', protect, authorize('admin'), async (req, res) => {
+// @desc    Get total user count (Superadmin only)
+// @access  Private/Superadmin
+router.get('/users/count', protect, authorize('superadmin'), async (req, res) => {
   try {
     const userCount = await User.countDocuments();
     res.status(200).json({

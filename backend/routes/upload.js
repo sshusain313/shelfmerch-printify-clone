@@ -23,7 +23,7 @@ const upload = multer({
 // @route   POST /api/upload/image
 // @desc    Upload an image file to S3
 // @access  Private/Admin
-router.post('/image', protect, authorize('admin'), upload.single('image'), async (req, res) => {
+router.post('/image', protect, authorize('superadmin'), upload.single('image'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({
@@ -55,7 +55,7 @@ router.post('/image', protect, authorize('admin'), upload.single('image'), async
 // @desc    Upload a base64 image to S3
 // @desc    This endpoint handles base64 images (for backward compatibility)
 // @access  Private/Admin
-router.post('/base64', protect, authorize('admin'), async (req, res) => {
+router.post('/base64', protect, authorize('superadmin'), async (req, res) => {
   try {
     const { base64, fileName, folder } = req.body;
 
@@ -92,7 +92,7 @@ router.post('/base64', protect, authorize('admin'), async (req, res) => {
 // @route   POST /api/upload/batch
 // @desc    Upload multiple images to S3
 // @access  Private/Admin
-router.post('/batch', protect, authorize('admin'), upload.array('images', 10), async (req, res) => {
+router.post('/batch', protect, authorize('superadmin'), upload.array('images', 10), async (req, res) => {
   try {
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({
@@ -125,5 +125,9 @@ router.post('/batch', protect, authorize('admin'), upload.array('images', 10), a
 });
 
 module.exports = router;
+
+
+
+
 
 

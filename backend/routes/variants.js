@@ -1,47 +1,48 @@
 const express = require('express');
 const router = express.Router();
-const ProductVariant = require('../models/ProductVariant');
-const Product = require('../models/Product');
+const CatalogProductVariant = require('../models/CatalogProductVariant');
+const CatalogProduct = require('../models/CatalogProduct');
 const { protect, authorize } = require('../middleware/auth');
 
 // @route   POST /api/variants
 // @desc    Create a new product variant (Admin only)
 // @access  Private/Admin
-router.post('/', protect, authorize('admin'), async (req, res) => {
+router.post('/', protect, authorize('superadmin'), async (req, res) => {
   try {
     const {
       productId,
       id,
       size,
       color,
+      colorHex,
       sku,
       isActive
     } = req.body;
 
     // Validate required fields
-    if (!productId || !id || !size || !color || !sku) {
+    if (!productId || !id || !size || !color || !colorHex || !sku) {
       return res.status(400).json({
         success: false,
-        message: 'Missing required fields: productId, id, size, color, sku'
+        message: 'Missing required fields: productId, id, size, color, colorHex, sku'
       });
     }
 
-    // Verify that the product exists
-    const product = await Product.findById(productId);
+    // Verify that the catalog product exists
+    const product = await CatalogProduct.findById(productId);
     if (!product) {
       return res.status(404).json({
         success: false,
-        message: 'Product not found'
+        message: 'Catalog product not found'
       });
     }
 
-    // Create variant
-    const variant = await ProductVariant.create({
-      productId,
-      id,
+    // Create catalog variant
+    const variant = await CatalogProductVariant.create({
+      catalogProductId: productId,
       size,
       color,
-      sku,
+      colorHex,
+      skuTemplate: sku || `${product.productTypeCode}-${size}-${color}`,
       isActive: isActive !== undefined ? isActive : true
     });
 
@@ -83,7 +84,7 @@ router.post('/', protect, authorize('admin'), async (req, res) => {
 // @route   POST /api/variants/bulk
 // @desc    Create multiple variants at once (Admin only)
 // @access  Private/Admin
-router.post('/bulk', protect, authorize('admin'), async (req, res) => {
+router.post('/bulk', protect, authorize('superadmin'), async (req, res) => {
   try {
     const { productId, variants } = req.body;
 
@@ -94,23 +95,27 @@ router.post('/bulk', protect, authorize('admin'), async (req, res) => {
       });
     }
 
-    // Verify that the product exists
-    const product = await Product.findById(productId);
+    // Verify that the catalog product exists
+    const product = await CatalogProduct.findById(productId);
     if (!product) {
       return res.status(404).json({
         success: false,
-        message: 'Product not found'
+        message: 'Catalog product not found'
       });
     }
 
-    // Add productId to each variant
-    const variantsWithProductId = variants.map(v => ({
-      ...v,
-      productId
+    // Transform variants to catalog variant structure
+    const catalogVariants = variants.map(v => ({
+      catalogProductId: productId,
+      size: v.size,
+      color: v.color,
+      colorHex: v.colorHex,
+      skuTemplate: v.sku || `${product.productTypeCode}-${v.size}-${v.color}`,
+      isActive: v.isActive !== false
     }));
 
-    // Create all variants
-    const createdVariants = await ProductVariant.insertMany(variantsWithProductId, {
+    // Create all catalog variants
+    const createdVariants = await CatalogProductVariant.insertMany(catalogVariants, {
       ordered: false // Continue on duplicate key errors
     });
 
@@ -141,12 +146,12 @@ router.post('/bulk', protect, authorize('admin'), async (req, res) => {
 });
 
 // @route   GET /api/variants/product/:productId
-// @desc    Get all variants for a specific product
+// @desc    Get all variants for a specific catalog product
 // @access  Private
 router.get('/product/:productId', protect, async (req, res) => {
   try {
-    const variants = await ProductVariant.find({
-      productId: req.params.productId
+    const variants = await CatalogProductVariant.find({
+      catalogProductId: req.params.productId
     }).sort({ size: 1, color: 1 });
 
     res.json({
@@ -169,8 +174,8 @@ router.get('/product/:productId', protect, async (req, res) => {
 // @access  Private
 router.get('/:id', protect, async (req, res) => {
   try {
-    const variant = await ProductVariant.findById(req.params.id)
-      .populate('productId', 'catalogue.name');
+    const variant = await CatalogProductVariant.findById(req.params.id)
+      .populate('catalogProductId', 'name');
 
     if (!variant) {
       return res.status(404).json({
@@ -196,9 +201,9 @@ router.get('/:id', protect, async (req, res) => {
 // @route   PUT /api/variants/:id
 // @desc    Update variant
 // @access  Private/Admin
-router.put('/:id', protect, authorize('admin'), async (req, res) => {
+router.put('/:id', protect, authorize('superadmin'), async (req, res) => {
   try {
-    const variant = await ProductVariant.findById(req.params.id);
+    const variant = await CatalogProductVariant.findById(req.params.id);
 
     if (!variant) {
       return res.status(404).json({
@@ -208,11 +213,12 @@ router.put('/:id', protect, authorize('admin'), async (req, res) => {
     }
 
     // Update fields
-    const { size, color, sku, isActive } = req.body;
+    const { size, color, colorHex, sku, isActive } = req.body;
 
     if (size !== undefined) variant.size = size;
     if (color !== undefined) variant.color = color;
-    if (sku !== undefined) variant.sku = sku;
+    if (colorHex !== undefined) variant.colorHex = colorHex;
+    if (sku !== undefined) variant.skuTemplate = sku;
     if (isActive !== undefined) variant.isActive = isActive;
 
     variant.updatedAt = Date.now();
@@ -247,9 +253,9 @@ router.put('/:id', protect, authorize('admin'), async (req, res) => {
 // @route   DELETE /api/variants/:id
 // @desc    Delete variant permanently from database
 // @access  Private/Admin
-router.delete('/:id', protect, authorize('admin'), async (req, res) => {
+router.delete('/:id', protect, authorize('superadmin'), async (req, res) => {
   try {
-    const variant = await ProductVariant.findById(req.params.id);
+    const variant = await CatalogProductVariant.findById(req.params.id);
 
     if (!variant) {
       return res.status(404).json({
@@ -259,7 +265,7 @@ router.delete('/:id', protect, authorize('admin'), async (req, res) => {
     }
 
     // Permanently delete the variant from database
-    await ProductVariant.findByIdAndDelete(req.params.id);
+    await CatalogProductVariant.findByIdAndDelete(req.params.id);
 
     console.log(`Variant ${req.params.id} deleted permanently from database`);
 
@@ -278,12 +284,12 @@ router.delete('/:id', protect, authorize('admin'), async (req, res) => {
 });
 
 // @route   DELETE /api/variants/product/:productId
-// @desc    Delete all variants for a specific product
+// @desc    Delete all variants for a specific catalog product
 // @access  Private/Admin
-router.delete('/product/:productId', protect, authorize('admin'), async (req, res) => {
+router.delete('/product/:productId', protect, authorize('superadmin'), async (req, res) => {
   try {
-    const result = await ProductVariant.deleteMany({
-      productId: req.params.productId
+    const result = await CatalogProductVariant.deleteMany({
+      catalogProductId: req.params.productId
     });
 
     console.log(`Deleted ${result.deletedCount} variants for product ${req.params.productId}`);

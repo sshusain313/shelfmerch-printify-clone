@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -40,10 +40,10 @@ export const ProductVariantsSection = ({
   const [customSizeInput, setCustomSizeInput] = useState('');
   const [customColorInput, setCustomColorInput] = useState('');
   const [customColorHexInput, setCustomColorHexInput] = useState('');
-  const [customSizesFromDB, setCustomSizesFromDB] = useState<string[]>([]);
-  const [customColorsFromDB, setCustomColorsFromDB] = useState<string[]>([]);
-  const [customColorHexMap, setCustomColorHexMap] = useState<Record<string, string>>({});
-  const [isLoadingCustomOptions, setIsLoadingCustomOptions] = useState(false);
+  const [sizesFromDB, setSizesFromDB] = useState<string[]>([]);
+  const [colorsFromDB, setColorsFromDB] = useState<string[]>([]);
+  const [colorHexMap, setColorHexMap] = useState<Record<string, string>>({});
+  const [isLoadingOptions, setIsLoadingOptions] = useState(false);
 
   // Get variant options based on category and subcategory
   const staticVariantOptions = useMemo(() => {
@@ -59,57 +59,82 @@ export const ProductVariantsSection = ({
     return getVariantOptions(categoryId as CategoryId, subcategoryId);
   }, [categoryId, subcategoryId]);
 
-  // Fetch custom options from database
-  useEffect(() => {
-    if (!categoryId) return;
+  // Fetch ALL options from database (DB is authoritative for sizes/colors)
+  const fetchOptionsFromDB = useCallback(async () => {
+    if (!categoryId) {
+      // No category context: clear lists
+      setSizesFromDB([]);
+      setColorsFromDB([]);
+      setColorHexMap({});
+      return;
+    }
+    
+    setIsLoadingOptions(true);
+    try {
+      const response = await variantOptionsApi.getAll({
+        categoryId,
+        subcategoryId: subcategoryId || undefined,
+      });
+      // Normalize response: apiRequest may return either { success, data } or data[]
+      const optionsArray: any[] = Array.isArray(response)
+        ? response as any[]
+        : (response && (response as any).data && Array.isArray((response as any).data)
+          ? (response as any).data
+          : []);
 
-    const fetchCustomOptions = async () => {
-      setIsLoadingCustomOptions(true);
-      try {
-        const response = await variantOptionsApi.getAll({
-          categoryId,
-          subcategoryId: subcategoryId || undefined,
-        });
-
-        if (response.success && response.data) {
-          const sizes = response.data
-            .filter((opt: any) => opt.optionType === 'size')
-            .map((opt: any) => opt.value);
-          
-          const colorOptions = response.data.filter((opt: any) => opt.optionType === 'color');
-          const colors = colorOptions.map((opt: any) => opt.value);
-          
-          // Build a map of color names to hex values
-          const hexMap: Record<string, string> = {};
-          colorOptions.forEach((opt: any) => {
-            if (opt.colorHex) {
+      if (Array.isArray(optionsArray)) {
+        if (optionsArray.length === 0) {
+          console.warn('[ProductVariantsSection] No variant options returned from DB', { categoryId, subcategoryId });
+        }
+        // Remove duplicates by using Set, then convert back to array
+        const sizeValues = optionsArray
+          .filter((opt: any) => opt.optionType === 'size')
+          .map((opt: any) => opt.value as string);
+        const sizes: string[] = Array.from(new Set(sizeValues));
+        
+        const colorOptions = optionsArray.filter((opt: any) => opt.optionType === 'color');
+        const colorValues = colorOptions.map((opt: any) => opt.value as string);
+        const colors: string[] = Array.from(new Set(colorValues));
+        
+        // Build a map of color names to hex values (prefer subcategory-specific hex if available)
+        const hexMap: Record<string, string> = {};
+        colorOptions.forEach((opt: any) => {
+          if (opt.colorHex) {
+            // If color already exists, prefer subcategory-specific hex (subcategoryId is not null)
+            if (!hexMap[opt.value] || opt.subcategoryId) {
               hexMap[opt.value] = opt.colorHex;
             }
-          });
+          }
+        });
 
-          setCustomSizesFromDB(sizes);
-          setCustomColorsFromDB(colors);
-          setCustomColorHexMap(hexMap);
+        // DB is the single source of truth; even if empty, show empty
+        setSizesFromDB(sizes);
+        setColorsFromDB(colors);
+        setColorHexMap(hexMap);
+        if (sizes.length === 0 && colors.length === 0) {
+          console.warn('[ProductVariantsSection] Empty sizes/colors after processing DB options', { categoryId, subcategoryId });
         }
-      } catch (error) {
-        console.error('Error fetching custom variant options:', error);
-        // Fail silently - custom options are optional
-      } finally {
-        setIsLoadingCustomOptions(false);
       }
-    };
-
-    fetchCustomOptions();
+    } catch (error) {
+      console.error('Error fetching variant options from database:', error);
+      // On error, leave current state as-is
+    } finally {
+      setIsLoadingOptions(false);
+    }
   }, [categoryId, subcategoryId]);
 
-  // Merge static options with custom options from DB
+  useEffect(() => {
+    fetchOptionsFromDB();
+  }, [fetchOptionsFromDB]);
+
+  // Use options from DB only
   const SIZE_OPTIONS = useMemo(() => {
-    return [...staticVariantOptions.sizes, ...customSizesFromDB];
-  }, [staticVariantOptions.sizes, customSizesFromDB]);
+    return sizesFromDB;
+  }, [sizesFromDB]);
 
   const COLOR_OPTIONS = useMemo(() => {
-    return [...staticVariantOptions.colors, ...customColorsFromDB];
-  }, [staticVariantOptions.colors, customColorsFromDB]);
+    return colorsFromDB;
+  }, [colorsFromDB]);
 
   const variantOptions = {
     ...staticVariantOptions,
@@ -136,11 +161,14 @@ export const ProductVariantsSection = ({
         } else {
           // Generate SKU: BASE-SIZE-COLOR (e.g., PROD-M-WHITE)
           const sku = `${baseSku}-${size.toUpperCase().replace(/\s+/g, '-')}-${color.toUpperCase().replace(/\s+/g, '-')}`;
+          const hex = colorHexMap[color] || getColorHex(color);
           newVariants.push({
             id: `${size}-${color}-${Date.now()}-${Math.random()}`,
             size,
             color,
+            colorHex: hex,
             sku,
+            price: undefined, // Admin will set price manually
             isActive: true,
           });
         }
@@ -199,9 +227,11 @@ export const ProductVariantsSection = ({
           optionType: 'size',
           value: trimmedValue,
         });
+        // Optimistically append to DB-backed list so it appears immediately
+        setSizesFromDB(prev => Array.from(new Set([...(prev || []), trimmedValue])));
         
-        // Refresh custom options from DB
-        setCustomSizesFromDB(prev => [...prev, trimmedValue]);
+        // Refresh options from DB to ensure consistency
+        await fetchOptionsFromDB();
         
         toast({
           title: 'Success',
@@ -246,7 +276,7 @@ export const ProductVariantsSection = ({
     
     // IMMEDIATELY add hex to map (before adding to product)
     if (trimmedHex) {
-      setCustomColorHexMap(prev => ({ ...prev, [trimmedValue]: trimmedHex }));
+      setColorHexMap(prev => ({ ...prev, [trimmedValue]: trimmedHex }));
     }
     
     // Add to current product
@@ -264,9 +294,11 @@ export const ProductVariantsSection = ({
           value: trimmedValue,
           colorHex: trimmedHex || undefined,
         });
+        // Optimistically append to DB-backed list so it appears immediately
+        setColorsFromDB(prev => Array.from(new Set([...(prev || []), trimmedValue])));
         
-        // Refresh custom options from DB
-        setCustomColorsFromDB(prev => [...prev, trimmedValue]);
+        // Refresh options from DB to ensure consistency
+        await fetchOptionsFromDB();
         
         toast({
           title: 'Success',
@@ -295,11 +327,24 @@ export const ProductVariantsSection = ({
     );
   };
 
+  const handlePriceChange = (variantId: string, price: string) => {
+    const numericPrice = price === '' ? undefined : parseFloat(price);
+    // Only update if it's a valid number or empty string
+    if (price === '' || (!isNaN(numericPrice!) && numericPrice! >= 0)) {
+      onVariantsChange(
+        variants.map(v => v.id === variantId ? { ...v, price: numericPrice } : v)
+      );
+    }
+  };
+
   const regenerateSkus = () => {
     onVariantsChange(
       variants.map(v => ({
         ...v,
+        colorHex: v.colorHex || colorHexMap[v.color] || getColorHex(v.color),
         sku: `${baseSku}-${v.size}-${v.color.toUpperCase().replace(/\s+/g, '-')}`,
+        // Preserve price when regenerating SKUs
+        price: v.price,
       }))
     );
   };
@@ -381,7 +426,7 @@ export const ProductVariantsSection = ({
               <div
                 className="w-5 h-5 rounded-full border-2 shadow-sm flex-shrink-0"
                 style={{
-                  background: customColorHexMap[color] || getColorHex(color),
+                  background: colorHexMap[color] || getColorHex(color),
                   borderColor: color === 'White' || color === 'Clear' ? '#E5E7EB' : 'rgba(0, 0, 0, 0.1)',
                 }}
               />
@@ -451,7 +496,7 @@ export const ProductVariantsSection = ({
             {variants.map((variant) => (
               <Card key={variant.id} className="p-3">
                 <div className="flex items-center justify-between gap-4">
-                  <div className="flex-1 grid grid-cols-3 gap-2 items-center">
+                  <div className="flex-1 grid grid-cols-4 gap-2 items-center">
                     <div>
                       <Label className="text-xs text-muted-foreground">Size</Label>
                       <p className="text-sm font-medium">{variant.size}</p>
@@ -465,6 +510,18 @@ export const ProductVariantsSection = ({
                       <Input
                         value={variant.sku}
                         onChange={(e) => handleSkuChange(variant.id, e.target.value)}
+                        className="h-8 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Price</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={variant.price ?? ''}
+                        onChange={(e) => handlePriceChange(variant.id, e.target.value)}
+                        placeholder="0.00"
                         className="h-8 text-sm"
                       />
                     </div>

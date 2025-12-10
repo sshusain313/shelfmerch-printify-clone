@@ -376,7 +376,7 @@ const CategorySubcategories = () => {
             <p className="text-muted-foreground text-lg">No subcategories found matching "{searchQuery}"</p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-4 bg-green">
             {sortedSubcategories.map((subcategory) => {
               const latestProduct = categoryProducts[subcategory.slug];
               const productImage = latestProduct?.galleryImages?.find((img: any) => img.isPrimary)?.url ||

@@ -89,6 +89,7 @@ const ProductDetail = () => {
   const [isLoadingRelated, setIsLoadingRelated] = useState(false);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [selectedColor, setSelectedColor] = useState<string | null>(null);
+  const [colorsWithHex, setColorsWithHex] = useState<Array<{ value: string; colorHex?: string }>>([]);
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [isImageModalOpen, setIsImageModalOpen] = useState(false);
@@ -106,6 +107,22 @@ const ProductDetail = () => {
         const response = await productApi.getById(id);
         if (response && response.success && response.data) {
           setProduct(response.data);
+          // Build available colors with hex from variants returned by backend
+          const variants: Array<any> = Array.isArray(response.data.variants) ? response.data.variants : [];
+          const colorMapUnique: Record<string, string | undefined> = {};
+          variants.forEach((v) => {
+            if (v && typeof v.color === 'string') {
+              const key = v.color;
+              if (colorMapUnique[key] === undefined) {
+                colorMapUnique[key] = v.colorHex || undefined;
+              }
+            }
+          });
+          const colorsArr = Object.entries(colorMapUnique).map(([value, hex]) => ({ value, colorHex: hex || getColorHex(value) }));
+          setColorsWithHex(colorsArr);
+          if (!selectedColor && colorsArr.length > 0) {
+            setSelectedColor(colorsArr[0].value);
+          }
           const primaryIndex = response.data.galleryImages?.findIndex((img: any) => img.isPrimary) ?? 0;
           setSelectedImageIndex(primaryIndex >= 0 ? primaryIndex : 0);
         } else {
@@ -154,15 +171,6 @@ const ProductDetail = () => {
     }
   }, [product]);
 
-  // Set initial selected color and size
-  useEffect(() => {
-    if (product?.availableColors && product.availableColors.length > 0) {
-      setSelectedColor(product.availableColors[0]);
-    }
-    if (product?.availableSizes && product.availableSizes.length > 0) {
-      setSelectedSize(product.availableSizes[0]);
-    }
-  }, [product]);
 
   // Sticky CTA visibility
   useEffect(() => {
@@ -498,24 +506,25 @@ const ProductDetail = () => {
             )}
 
             {/* Color Specifications */}
-            {product.availableColors && product.availableColors.length > 0 && (
+            {(colorsWithHex && colorsWithHex.length > 0) && (
               <div>
                 <div className="flex items-center gap-2 mb-3">
                   <Palette className="w-4 h-4 text-primary" />
                   <p className="text-sm font-semibold">Available Colors</p>
                 </div>
                 <div className="flex flex-wrap gap-3">
-                  {product.availableColors.map((color: string) => {
-                    const colorHex = getColorHex(color);
-                    // const isSelected = selectedColor === color;
+                  {colorsWithHex.map((c) => {
+                    const color = c.value;
+                    const colorHex = c.colorHex || getColorHex(color);
+                    const isSelected = selectedColor === c.value;
                     return (
                       <div
                         key={color}
                         className="flex flex-col items-center gap-2 cursor-pointer group"
-                        // onClick={() => setSelectedColor(color)}
+                        onClick={() => setSelectedColor(color)}
                       >
                         <div
-                          className="w-14 h-14 lg:w-16 lg:h-16 rounded-full border-2 transition-all relative"
+                          className={`w-14 h-14 lg:w-16 lg:h-16 rounded-full border-2 transition-all relative ${isSelected ? 'ring-2 ring-offset-2 ring-primary scale-105' : ''}`}
                           style={{ backgroundColor: colorHex }}
                           title={color}
                         >

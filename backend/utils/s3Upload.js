@@ -32,10 +32,10 @@ const uploadToS3 = async (fileBuffer, originalFileName, folder = 'uploads') => {
   try {
     // Get file extension
     const ext = path.extname(originalFileName).toLowerCase() || '.jpg';
-    
+
     // Generate unique filename
     const fileName = `${folder}/${uuidv4()}${ext}`;
-    
+
     // Upload to S3
     const command = new PutObjectCommand({
       Bucket: BUCKET_NAME,
@@ -50,7 +50,7 @@ const uploadToS3 = async (fileBuffer, originalFileName, folder = 'uploads') => {
     // Return the public URL
     const region = process.env.AWS_REGION || 'ap-south-1';
     const url = `https://${BUCKET_NAME}.s3.${region}.amazonaws.com/${fileName}`;
-    
+
     console.log(`✅ Uploaded to S3: ${url}`);
     return url;
   } catch (error) {
@@ -76,9 +76,9 @@ const deleteFromS3 = async (s3Url) => {
     if (urlParts.length !== 2) {
       throw new Error('Invalid S3 URL format');
     }
-    
+
     const key = urlParts[1];
-    
+
     const command = new DeleteObjectCommand({
       Bucket: BUCKET_NAME,
       Key: key,
@@ -106,7 +106,7 @@ const getContentType = (ext) => {
     '.webp': 'image/webp',
     '.svg': 'image/svg+xml',
   };
-  
+
   return contentTypes[ext.toLowerCase()] || 'application/octet-stream';
 };
 
@@ -117,10 +117,10 @@ const getContentType = (ext) => {
  */
 const base64ToBuffer = (base64String) => {
   // Remove data URL prefix if present (e.g., "data:image/png;base64,")
-  const base64Data = base64String.includes(',') 
-    ? base64String.split(',')[1] 
+  const base64Data = base64String.includes(',')
+    ? base64String.split(',')[1]
     : base64String;
-  
+
   return Buffer.from(base64Data, 'base64');
 };
 

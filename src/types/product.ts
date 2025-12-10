@@ -3,13 +3,23 @@ export type ViewKey = 'front' | 'back' | 'left' | 'right';
 // Print placeholder stored in INCHES (design data)
 export interface Placeholder {
   id: string;
-  xIn: number; // X position in inches
-  yIn: number; // Y position in inches
-  widthIn: number; // Real print width in inches (source of truth)
-  heightIn: number; // Real print height in inches (source of truth)
+  xIn: number; // X position in inches (for rectangular placeholders, or bounding box for polygons)
+  yIn: number; // Y position in inches (for rectangular placeholders, or bounding box for polygons)
+  widthIn: number; // Real print width in inches (source of truth) - for rectangles, or bounding box width for polygons
+  heightIn: number; // Real print height in inches (source of truth) - for rectangles, or bounding box height for polygons
   rotationDeg: number; // Rotation in degrees
   scale?: number; // Visual scale multiplier (default: 1.0) - for display only
   lockSize?: boolean; // If true, dragging handles only changes scale, not widthIn/heightIn
+  // For polygon/magnetic lasso placeholders
+  polygonPoints?: Array<{ xIn: number; yIn: number }>; // Polygon points in inches (relative to xIn, yIn or absolute)
+  shapeType?: 'rect' | 'polygon'; // Shape type: rectangle (default) or polygon (from magnetic lasso)
+  // Shape refinement for polygons (curved/smoothed rendering)
+  renderPolygonPoints?: Array<{ xIn: number; yIn: number }>; // Computed smoothed/curved points for rendering (in inches)
+  shapeRefinement?: {
+    smoothness: number; // 0-100: how smooth the curve is (0 = original polygon, 100 = very smooth)
+    bulgeStrength: number; // 0-100: how much to exaggerate convex regions (0 = neutral, 100 = strong bulge)
+    roundCorners: number; // 0-100: how much to round sharp corners (0 = sharp, 100 = very rounded)
+  };
 }
 
 export interface ViewConfig {
@@ -18,11 +28,19 @@ export interface ViewConfig {
   placeholders: Placeholder[];
 }
 
+// WebGL displacement settings used for realistic fabric previews
+export interface DisplacementSettings {
+  scaleX: number; // 0-100, horizontal displacement strength
+  scaleY: number; // 0-100, vertical displacement strength
+  contrastBoost: number; // 1.0-5.0, fold intensity for displacement map generation
+}
+
 // Product Variant (size × color combination)
 export interface ProductVariant {
   id: string;
   size: string;
   color: string;
+  colorHex?: string;
   sku: string;
   isActive: boolean;
 }
@@ -43,6 +61,14 @@ export interface ProductCatalogueData {
 export interface ProductDesignData {
   views: ViewConfig[];
   dpi?: number; // DPI for print-ready file generation (default: 300)
+  // Optional physical dimensions of the product's printable area (in inches)
+  physicalDimensions?: {
+    width: number;   // Total width in inches (e.g. garment width)
+    height: number;  // Total height in inches
+    length?: number; // Optional length/depth for left/right views
+  };
+  // Optional WebGL displacement settings for realistic fabric previews
+  displacementSettings?: DisplacementSettings;
 }
 
 // SECTION C: Shipping / Packaging (Logistics Data)

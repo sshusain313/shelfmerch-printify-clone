@@ -2,7 +2,6 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { CloudUpgradePrompt } from '@/components/CloudUpgradePrompt';
 import { 
   Package, 
   Store, 
@@ -16,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Product } from '@/types';
+import { storeProductsApi } from '@/lib/api';
 import { getProducts } from '@/lib/localStorage';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ExternalLink, Pencil, Trash2 } from 'lucide-react';
@@ -26,6 +26,9 @@ const Dashboard = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
   const [storageUsage, setStorageUsage] = useState<{ used: number; limit: number } | null>(null);
+  const [storeProducts, setStoreProducts] = useState<any[]>([]);
+  const [spLoading, setSpLoading] = useState(false);
+  const [spFilter, setSpFilter] = useState<{ status?: 'draft' | 'published'; isActive?: boolean }>({});
 
   const storageKey = useMemo(() => (user?.id ? `products_${user.id}` : null), [user?.id]);
 
@@ -70,6 +73,48 @@ const Dashboard = () => {
     };
   }, [user?.id, storageKey]);
 
+  // Load Store Products from backend
+  useEffect(() => {
+    const loadSP = async () => {
+      if (!user?.id) {
+        setStoreProducts([]);
+        return;
+      }
+      try {
+        setSpLoading(true);
+        const resp = await storeProductsApi.list(spFilter);
+        if (resp.success) setStoreProducts(resp.data || []);
+      } catch (e) {
+        console.error('Failed to load store products', e);
+      } finally {
+        setSpLoading(false);
+      }
+    };
+    loadSP();
+  }, [user?.id, spFilter]);
+
+  const updateStoreProduct = async (id: string, updates: any) => {
+    try {
+      const resp = await storeProductsApi.update(id, updates);
+      if (resp.success) {
+        setStoreProducts(prev => prev.map(p => (p._id === id ? resp.data : p)));
+      }
+    } catch (e) {
+      console.error('Update failed', e);
+    }
+  };
+
+  const deleteStoreProduct = async (id: string) => {
+    try {
+      const resp = await storeProductsApi.delete(id);
+      if (resp.success) {
+        setStoreProducts(prev => prev.filter(p => p._id !== id));
+      }
+    } catch (e) {
+      console.error('Delete failed', e);
+    }
+  };
+
   const handleProductClick = (product: Product) => {
     if (product.id) {
       navigate(`/dashboard/products/${product.id}`);
@@ -103,7 +148,7 @@ const Dashboard = () => {
 
   const stats = [
     { label: 'Total Orders', value: '0', icon: ShoppingBag, color: 'text-primary' },
-    { label: 'Products', value: products.length.toString(), icon: Package, color: 'text-blue-500' },
+    { label: 'Products', value: `${storeProducts.length}`, icon: Package, color: 'text-blue-500' },
     { label: 'Revenue', value: '$0', icon: DollarSign, color: 'text-green-500' },
     { label: 'Profit', value: '$0', icon: TrendingUp, color: 'text-purple-500' },
   ];
@@ -149,6 +194,7 @@ const Dashboard = () => {
               </Link>
             </Button>
           )}
+
           <Button variant="ghost" className="w-full justify-start" asChild>
             <Link to="/settings">
               <Settings className="mr-2 h-4 w-4" />
@@ -191,11 +237,6 @@ const Dashboard = () => {
             </Link>
           </div>
 
-          {/* Cloud Upgrade Prompt */}
-          <div className="mb-8">
-            <CloudUpgradePrompt />
-          </div>
-
           {/* Storage warning */}
           {storageUsage && storageUsage.used > storageUsage.limit * 0.9 && (
             <Card className="mb-6 border-amber-300 bg-amber-50 text-amber-900">
@@ -224,8 +265,8 @@ const Dashboard = () => {
             ))}
           </div>
 
-          {/* Products Display */}
-          {products.length > 0 ? (
+          {/* Products Display (Store Products from backend) */}
+          {storeProducts.length > 0 ? (
             <Card className="p-0 overflow-hidden">
               <div className="px-6 pt-6 pb-4 flex flex-col gap-2">
                 <h2 className="text-xl font-bold">Your Products</h2>
@@ -238,8 +279,8 @@ const Dashboard = () => {
                   <thead className="bg-muted/60 text-muted-foreground">
                     <tr className="text-left">
                       <th className="px-6 py-3"><Checkbox
-                        checked={selectedProducts.length === products.length && products.length > 0}
-                        onCheckedChange={(checked) => handleSelectAll(Boolean(checked))}
+                        checked={selectedProducts.length === storeProducts.length && storeProducts.length > 0}
+                        onCheckedChange={(checked) => setSelectedProducts(Boolean(checked) ? storeProducts.map((sp:any) => sp._id) : [])}
                         aria-label="Select all products"
                       /></th>
                       <th className="px-2 py-3 font-medium">Product</th>
@@ -250,26 +291,26 @@ const Dashboard = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y">
-                    {products.map((product) => {
-                      const mockup = product.mockupUrls?.[0] || product.mockupUrl;
-                      const isSelected = selectedProducts.includes(product.id);
+                    {storeProducts.map((sp: any) => {
+                      const mockup = sp.galleryImages?.find((img: any) => img.isPrimary)?.url || sp.galleryImages?.[0]?.url;
+                      const isSelected = selectedProducts.includes(sp._id);
                       return (
-                        <tr key={product.id} className="hover:bg-muted/20 transition-colors">
+                        <tr key={sp._id} className="hover:bg-muted/20 transition-colors">
                           <td className="px-6 py-3 align-middle">
                             <Checkbox
                               checked={isSelected}
-                              onCheckedChange={(checked) => handleSelectProduct(product.id, Boolean(checked))}
-                              aria-label={`Select ${product.name}`}
+                              onCheckedChange={(checked) => setSelectedProducts(prev => Boolean(checked) ? [...new Set([...prev, sp._id])] : prev.filter(id => id !== sp._id))}
+                              aria-label={`Select ${sp.title || 'Untitled'}`}
                             />
                           </td>
                           <td className="px-2 py-4 align-middle">
                             <div
                               className="flex items-center gap-3 cursor-pointer"
-                              onClick={() => handleProductClick(product)}
+                              onClick={() => navigate(`/designer/${sp.catalogProductId}`)}
                               onKeyDown={(event) => {
                                 if (event.key === 'Enter' || event.key === ' ') {
                                   event.preventDefault();
-                                  handleProductClick(product);
+                                  navigate(`/designer/${sp.catalogProductId}`);
                                 }
                               }}
                               role="button"
@@ -277,57 +318,44 @@ const Dashboard = () => {
                             >
                               <div className="h-14 w-14 rounded-md border bg-muted overflow-hidden flex items-center justify-center">
                                 {mockup ? (
-                                  <img src={mockup} alt={product.name} className="h-full w-full object-cover" />
+                                  <img src={mockup} alt={sp.title || 'Untitled'} className="h-full w-full object-cover" />
                                 ) : (
                                   <Package className="h-6 w-6 text-muted-foreground" />
                                 )}
                               </div>
                               <div>
-                                <p className="font-medium leading-tight line-clamp-1">{product.name}</p>
-                                <p className="text-xs text-muted-foreground line-clamp-1">
-                                  Base: {product.baseProduct}
-                                </p>
+                                <p className="font-medium leading-tight line-clamp-1">{sp.title || 'Untitled'}</p>
+                                <p className="text-xs text-muted-foreground line-clamp-1">Status: {sp.status}</p>
                               </div>
                             </div>
                           </td>
                           <td className="px-2 py-4 align-middle hidden md:table-cell text-muted-foreground">
-                            {new Date(product.createdAt).toLocaleDateString()}
+                            {new Date(sp.createdAt).toLocaleDateString()}
                           </td>
                           <td className="px-2 py-4 align-middle hidden lg:table-cell text-muted-foreground">
-                            ${product.price.toFixed(2)}
+                            ${(sp.sellingPrice ?? 0).toFixed(2)}
                           </td>
                           <td className="px-2 py-4 align-middle hidden lg:table-cell text-muted-foreground">
                             {mockup ? 'Preview saved' : 'No mockup'}
                           </td>
                           <td className="px-2 py-4 align-middle">
                             <div className="flex justify-end gap-2">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8"
-                                onClick={() => handleProductClick(product)}
-                                aria-label={`Edit ${product.name}`}
-                              >
-                                <Pencil className="h-4 w-4" />
+                              {/* Publish/Draft toggle */}
+                              {sp.status === 'draft' ? (
+                                <Button size="sm" variant="outline" onClick={() => updateStoreProduct(sp._id, { status: 'published' })}>Publish</Button>
+                              ) : (
+                                <Button size="sm" variant="secondary" onClick={() => updateStoreProduct(sp._id, { status: 'draft' })}>Mark Draft</Button>
+                              )}
+                              {/* Active toggle */}
+                              <Button size="sm" variant="outline" onClick={() => updateStoreProduct(sp._id, { isActive: !sp.isActive })}>
+                                {sp.isActive ? 'Deactivate' : 'Activate'}
                               </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8"
-                                onClick={() => navigate(`/store/${user?.id ?? 'me'}/builder`)}
-                                aria-label="Open store builder"
-                              >
-                                <ExternalLink className="h-4 w-4" />
+                              {/* Edit in Designer */}
+                              <Button size="sm" variant="ghost" onClick={() => navigate(`/designer/${sp.catalogProductId}`)}>
+                                Edit
                               </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 text-muted-foreground"
-                                disabled
-                                aria-label="Delete product (coming soon)"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
+                              {/* Delete */}
+                              <Button size="sm" variant="destructive" onClick={() => deleteStoreProduct(sp._id)}>Delete</Button>
                             </div>
                           </td>
                         </tr>
@@ -339,9 +367,7 @@ const Dashboard = () => {
               {selectedProducts.length > 0 && (
                 <div className="border-t bg-muted/40 px-6 py-4 text-sm text-muted-foreground flex flex-wrap items-center gap-3">
                   <span>{selectedProducts.length} selected</span>
-                  <span className="text-xs">
-                    Bulk publish and delete actions will be available soon.
-                  </span>
+                  <span className="text-xs">Use the actions above to publish, deactivate, or delete.</span>
                 </div>
               )}
             </Card>

@@ -12,7 +12,7 @@ import AllCategories from "./pages/AllCategories";
 import CategoryProducts from "./pages/CategoryProducts";
 import CategorySubcategories from "./pages/Apparel";
 import ProductDetail from "./pages/ProductDetail";
-import Designer from "./pages/Designer";
+import DesignerEditor from "./pages/DesignEditor";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import Orders from "./pages/Orders";
@@ -24,6 +24,7 @@ import AdminProductCreation from "./pages/AdminProductCreation";
 import AdminProductDetail from "./pages/AdminProductDetail";
 import ManageVariantOptions from "./pages/ManageVariantOptions";
 import ManageCatalogueFields from "./pages/ManageCatalogueFields";
+import AdminAssets from "./pages/AdminAssets";
 import CreateStore from "./pages/CreateStore";
 import StoreFrontendNew from "./pages/StoreFrontendNew";
 import StoreProductPage from "./pages/StoreProductPage";
@@ -32,6 +33,7 @@ import OrderConfirmation from "./pages/OrderConfirmation";
 import BuilderDemo from "./pages/BuilderDemo";
 import NotFound from "./pages/NotFound";
 import ProductCreation from "./pages/ProductCreation";
+import ListingEditor from "./pages/ListingEditor";
 
 const queryClient = new QueryClient();
 
@@ -55,7 +57,15 @@ const App = () => (
                 path="/designer/:id"
                 element={
                   <ProtectedRoute>
-                    <Designer />
+                    <DesignerEditor />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/listing-editor/:id"
+                element={
+                  <ProtectedRoute>
+                    <ListingEditor />
                   </ProtectedRoute>
                 }
               />
@@ -72,6 +82,14 @@ const App = () => (
                 element={
                   <ProtectedRoute>
                     <ProductCreation />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/listing-editor"
+                element={
+                  <ProtectedRoute>
+                    <ListingEditor />
                   </ProtectedRoute>
                 }
               />
@@ -160,6 +178,14 @@ const App = () => (
                 element={
                   <ProtectedRoute requireAdmin>
                     <ManageCatalogueFields />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin/assets"
+                element={
+                  <ProtectedRoute requireAdmin>
+                    <AdminAssets />
                   </ProtectedRoute>
                 }
               />

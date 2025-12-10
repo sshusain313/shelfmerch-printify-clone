@@ -1,9 +1,10 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Stage, Layer, Image, Rect, Transformer, Line, Text } from 'react-konva';
+import { Stage, Layer, Image, Rect, Transformer, Line, Text, Shape } from 'react-konva';
 import Konva from 'konva';
 import { Placeholder } from '@/types/product';
 import { Button } from '@/components/ui/button';
-import { Square, X } from 'lucide-react';
+import { Square, X, LassoSelect } from 'lucide-react';
+import MagneticLassoTool, { Point } from './MagneticLassoTool';
 
 interface CanvasMockupProps {
   mockupImageUrl: string | null;
@@ -13,6 +14,11 @@ interface CanvasMockupProps {
   onPlaceholderSelect: (id: string | null) => void;
   onPlaceholderAdd: () => void;
   onPlaceholderDelete: (id: string) => void;
+  /**
+   * Optional: create a real design placeholder from a completed magnetic lasso selection.
+   * Receives placeholder dimensions in INCHES (same model as other placeholders), without id.
+   */
+  onLassoPlaceholderCreate?: (placeholder: Omit<Placeholder, 'id'>) => string | void;
   canvasWidth?: number;
   canvasHeight?: number;
   physicalWidth?: number; // Physical width in inches
@@ -28,6 +34,7 @@ export const CanvasMockup = ({
   onPlaceholderSelect,
   onPlaceholderAdd,
   onPlaceholderDelete,
+  onLassoPlaceholderCreate,
   canvasWidth = 800,
   canvasHeight = 600,
   physicalWidth,
@@ -38,8 +45,10 @@ export const CanvasMockup = ({
   const [imageSize, setImageSize] = useState({ width: 0, height: 0, x: 0, y: 0 });
   const stageRef = useRef<Konva.Stage>(null);
   const transformerRef = useRef<Konva.Transformer>(null);
-  const shapeRefs = useRef<Record<string, Konva.Rect>>({});
+  const shapeRefs = useRef<Record<string, Konva.Rect | Konva.Shape>>({});
   const checkerboardPatternRef = useRef<string | null>(null);
+  const [isMagneticLassoActive, setIsMagneticLassoActive] = useState(false);
+  const [completedLassoPaths, setCompletedLassoPaths] = useState<{ id: string; points: Point[] }[]>([]);
 
   // Canvas padding
   const canvasPadding = 40;
@@ -123,6 +132,11 @@ export const CanvasMockup = ({
     }
   }, [activePlaceholderId]);
 
+  // Keep completed lasso overlays in sync with existing placeholders
+  useEffect(() => {
+    setCompletedLassoPaths((prev) => prev.filter((p) => placeholders.some((ph) => ph.id === p.id)));
+  }, [placeholders]);
+
   const handlePlaceholderDragEnd = (id: string, e: Konva.KonvaEventObject<DragEvent>) => {
     const node = e.target as Konva.Rect;
     // Convert pixel position back to inches
@@ -190,7 +204,7 @@ export const CanvasMockup = ({
   const handleStageClick = (e: Konva.KonvaEventObject<MouseEvent>) => {
     // Deselect if clicking on empty area
     const clickedOnEmpty = e.target === e.target.getStage();
-    if (clickedOnEmpty) {
+    if (clickedOnEmpty && !isMagneticLassoActive) {
       onPlaceholderSelect(null);
     }
   };
@@ -232,7 +246,7 @@ export const CanvasMockup = ({
         ref={stageRef}
         onClick={handleStageClick}
         onTap={handleStageClick}
-        style={{ cursor: 'default' }}
+        style={{ cursor: isMagneticLassoActive ? 'crosshair' : 'default' }}
       >
         <Layer>
           {/* Subtle grid lines - 20px increments, thin and faint */}
@@ -283,41 +297,89 @@ export const CanvasMockup = ({
             />
           )}
 
-          {/* Placeholder Rectangles - Convert from inches to pixels for display */}
+          {/* Placeholder Shapes - Convert from inches to pixels for display */}
           {placeholders.map((placeholder) => {
             const isActive = activePlaceholderId === placeholder.id;
             const scale = placeholder.scale ?? 1.0;
+            const isPolygon = placeholder.shapeType === 'polygon' && placeholder.polygonPoints && placeholder.polygonPoints.length >= 3;
+            
             // Convert inches to pixels for display, then apply scale
             const xPx = canvasPadding + inchesToPixels(placeholder.xIn);
             const yPx = canvasPadding + inchesToPixels(placeholder.yIn);
             const widthPx = inchesToPixels(placeholder.widthIn) * scale;
             const heightPx = inchesToPixels(placeholder.heightIn) * scale;
             
+            // For polygons, use renderPolygonPoints if available, otherwise fall back to polygonPoints
+            const pointsToUse = isPolygon
+              ? (placeholder.renderPolygonPoints && placeholder.renderPolygonPoints.length >= 3
+                  ? placeholder.renderPolygonPoints
+                  : placeholder.polygonPoints!)
+              : [];
+            
+            // Convert polygon points from inches to pixels
+            const polygonPointsPx = isPolygon
+              ? pointsToUse.map((pt) => [
+                  canvasPadding + inchesToPixels(pt.xIn) * scale,
+                  canvasPadding + inchesToPixels(pt.yIn) * scale,
+                ]).flat()
+              : [];
+            
             return (
               <React.Fragment key={placeholder.id}>
-                <Rect
-                  ref={(node) => {
-                    if (node) {
-                      shapeRefs.current[placeholder.id] = node;
-                    }
-                  }}
-                  x={xPx}
-                  y={yPx}
-                  width={widthPx}
-                  height={heightPx}
-                  rotation={placeholder.rotationDeg}
-                  fill={isActive ? 'rgba(244, 114, 182, 0.3)' : 'rgba(244, 114, 182, 0.15)'}
-                  stroke={isActive ? 'rgb(236, 72, 153)' : 'rgba(244, 114, 182, 0.5)'}
-                  strokeWidth={isActive ? 3 : 2}
-                  draggable
-                  onClick={() => onPlaceholderSelect(placeholder.id)}
-                  onTap={() => onPlaceholderSelect(placeholder.id)}
-                  onDragEnd={(e) => handlePlaceholderDragEnd(placeholder.id, e)}
-                  onTransformEnd={(e) => handlePlaceholderTransformEnd(placeholder.id, e)}
-                />
+                {isPolygon ? (
+                  // Render polygon placeholder
+                  <Shape
+                    ref={(node) => {
+                      if (node) {
+                        shapeRefs.current[placeholder.id] = node;
+                      }
+                    }}
+                    sceneFunc={(context, shape) => {
+                      context.beginPath();
+                      if (polygonPointsPx.length >= 6) {
+                        context.moveTo(polygonPointsPx[0], polygonPointsPx[1]);
+                        for (let i = 2; i < polygonPointsPx.length; i += 2) {
+                          context.lineTo(polygonPointsPx[i], polygonPointsPx[i + 1]);
+                        }
+                        context.closePath();
+                      }
+                      context.fillStrokeShape(shape);
+                    }}
+                    fill={isActive ? 'rgba(244, 114, 182, 0.3)' : 'rgba(244, 114, 182, 0.15)'}
+                    stroke={isActive ? 'rgb(236, 72, 153)' : 'rgba(244, 114, 182, 0.5)'}
+                    strokeWidth={isActive ? 3 : 2}
+                    draggable
+                    onClick={() => onPlaceholderSelect(placeholder.id)}
+                    onTap={() => onPlaceholderSelect(placeholder.id)}
+                    onDragEnd={(e) => handlePlaceholderDragEnd(placeholder.id, e)}
+                    onTransformEnd={(e) => handlePlaceholderTransformEnd(placeholder.id, e)}
+                  />
+                ) : (
+                  // Render rectangular placeholder
+                  <Rect
+                    ref={(node) => {
+                      if (node) {
+                        shapeRefs.current[placeholder.id] = node;
+                      }
+                    }}
+                    x={xPx}
+                    y={yPx}
+                    width={widthPx}
+                    height={heightPx}
+                    rotation={placeholder.rotationDeg}
+                    fill={isActive ? 'rgba(244, 114, 182, 0.3)' : 'rgba(244, 114, 182, 0.15)'}
+                    stroke={isActive ? 'rgb(236, 72, 153)' : 'rgba(244, 114, 182, 0.5)'}
+                    strokeWidth={isActive ? 3 : 2}
+                    draggable
+                    onClick={() => onPlaceholderSelect(placeholder.id)}
+                    onTap={() => onPlaceholderSelect(placeholder.id)}
+                    onDragEnd={(e) => handlePlaceholderDragEnd(placeholder.id, e)}
+                    onTransformEnd={(e) => handlePlaceholderTransformEnd(placeholder.id, e)}
+                  />
+                )}
                 
                 {/* Bounding Box for Active Placeholder - matches placeholder exactly */}
-                {isActive && (
+                {isActive && !isPolygon && (
                   <>
                     {/* Bounding box outline - matches placeholder dimensions */}
                     <Rect
@@ -367,9 +429,102 @@ export const CanvasMockup = ({
                     })()}
                   </>
                 )}
+                
+                {/* Active indicator for polygon placeholders */}
+                {isActive && isPolygon && (
+                  <Line
+                    points={polygonPointsPx}
+                    closed
+                    stroke="rgba(59, 130, 246, 0.8)"
+                    strokeWidth={2}
+                    dash={[4, 4]}
+                    listening={false}
+                  />
+                )}
               </React.Fragment>
             );
           })}
+
+          {/* Completed Lasso Paths - Render persistently */}
+          {completedLassoPaths.map((entry, index) => {
+            const flattenedPoints = entry.points.reduce<number[]>((acc, point) => {
+              acc.push(point.x, point.y);
+              return acc;
+            }, []);
+            return (
+              <Line
+                key={`lasso-path-${index}`}
+                points={flattenedPoints}
+                stroke="#FF00FF"
+                strokeWidth={2}
+                lineCap="round"
+                lineJoin="round"
+                closed
+                listening={false}
+              />
+            );
+          })}
+
+          {/* Magnetic Lasso Tool overlay */}
+          {image && imageSize.width > 0 && imageSize.height > 0 && (
+            <MagneticLassoTool
+              isActive={isMagneticLassoActive}
+              canvasWidth={canvasWidth}
+              canvasHeight={canvasHeight}
+              backgroundImage={image}
+              imageX={imageSize.x}
+              imageY={imageSize.y}
+              imageWidth={imageSize.width}
+              imageHeight={imageSize.height}
+              onComplete={(points: Point[]) => {
+                console.log('Magnetic lasso completed with points:', points);
+                // Persist a visual overlay path tied to the created placeholder id
+
+                // Convert lasso polygon into a polygon design placeholder (inches) for persistence
+                if (onLassoPlaceholderCreate && points.length >= 3) {
+                  // Convert each polygon point from canvas pixels to INCHES, accounting for padding
+                  const polygonPointsIn = points.map((point) => ({
+                    xIn: pixelsToUnits(point.x - canvasPadding),
+                    yIn: pixelsToUnits(point.y - canvasPadding),
+                  }));
+
+                  // Calculate bounding box for xIn, yIn, widthIn, heightIn (for compatibility)
+                  const xs = points.map(p => p.x);
+                  const ys = points.map(p => p.y);
+                  const minX = Math.min(...xs);
+                  const maxX = Math.max(...xs);
+                  const minY = Math.min(...ys);
+                  const maxY = Math.max(...ys);
+
+                  const xIn = pixelsToUnits(minX - canvasPadding);
+                  const yIn = pixelsToUnits(minY - canvasPadding);
+                  const widthIn = pixelsToUnits(maxX - minX);
+                  const heightIn = pixelsToUnits(maxY - minY);
+
+                  const newId = onLassoPlaceholderCreate({
+                    xIn,
+                    yIn,
+                    widthIn,
+                    heightIn,
+                    rotationDeg: 0,
+                    scale: 1.0,
+                    lockSize: false,
+                    shapeType: 'polygon',
+                    polygonPoints: polygonPointsIn,
+                  });
+
+                  if (typeof newId === 'string' && newId.length > 0) {
+                    setCompletedLassoPaths((prev) => [...prev, { id: newId, points }]);
+                  }
+                }
+
+                setIsMagneticLassoActive(false);
+              }}
+              onCancel={() => {
+                setIsMagneticLassoActive(false);
+              }}
+            />
+          )}
 
           {/* Guide Lines for Active Placeholder with Markers */}
           {activePlaceholderId && (() => {
@@ -571,6 +726,15 @@ export const CanvasMockup = ({
           >
             <Square className="h-4 w-4" />
             Add Placeholder
+          </Button>
+          <Button
+            variant={isMagneticLassoActive ? 'secondary' : 'outline'}
+            size="sm"
+            onClick={() => setIsMagneticLassoActive((prev) => !prev)}
+            className="gap-2"
+          >
+            <LassoSelect className="h-4 w-4" />
+            {isMagneticLassoActive ? 'Exit Magnetic Lasso' : 'Magnetic Lasso'}
           </Button>
           {activePlaceholderId && (
             <Button

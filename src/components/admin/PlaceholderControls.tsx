@@ -1,8 +1,11 @@
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Slider } from '@/components/ui/slider';
+import { Button } from '@/components/ui/button';
 import { Placeholder } from '@/types/product';
-import { Lock, Unlock } from 'lucide-react';
+import { Lock, Unlock, RotateCcw } from 'lucide-react';
+import { computeRefinedPolygonPoints } from '@/lib/polygonRefinement';
 
 interface PlaceholderControlsProps {
   placeholder: Placeholder | null;
@@ -169,6 +172,152 @@ export const PlaceholderControls = ({ placeholder, onUpdate, unit = 'in' }: Plac
           R: {placeholder.rotationDeg}°
         </div>
       </div>
+
+      {/* Shape Refinement Section for Polygon Placeholders */}
+      {placeholder.shapeType === 'polygon' && placeholder.polygonPoints && placeholder.polygonPoints.length >= 3 && (
+        <div className="pt-4 border-t space-y-4">
+          <div className="flex items-center justify-between">
+            <Label className="text-sm font-semibold">Shape Refinement</Label>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                onUpdate({
+                  shapeRefinement: {
+                    smoothness: 0,
+                    bulgeStrength: 0,
+                    roundCorners: 0,
+                  },
+                  renderPolygonPoints: undefined,
+                });
+              }}
+              className="h-7 text-xs"
+            >
+              <RotateCcw className="h-3 w-3 mr-1" />
+              Reset
+            </Button>
+          </div>
+
+          <div className="space-y-4">
+            {/* Smoothness Slider */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs">Smoothness</Label>
+                <span className="text-xs text-muted-foreground">
+                  {placeholder.shapeRefinement?.smoothness ?? 0}%
+                </span>
+              </div>
+              <Slider
+                value={[placeholder.shapeRefinement?.smoothness ?? 0]}
+                onValueChange={([value]) => {
+                  const currentRefinement = placeholder.shapeRefinement || {
+                    smoothness: 0,
+                    bulgeStrength: 0,
+                    roundCorners: 0,
+                  };
+                  const newRefinement = { ...currentRefinement, smoothness: value };
+                  
+                  // Recompute renderPolygonPoints
+                  const renderPoints = computeRefinedPolygonPoints(
+                    placeholder.polygonPoints!,
+                    newRefinement
+                  );
+                  
+                  onUpdate({
+                    shapeRefinement: newRefinement,
+                    renderPolygonPoints: renderPoints,
+                  });
+                }}
+                min={0}
+                max={100}
+                step={1}
+                className="w-full"
+              />
+              <p className="text-xs text-muted-foreground">
+                0 = original polygon, 100 = very smooth curve
+              </p>
+            </div>
+
+            {/* Bulge Strength Slider */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs">Bulge Strength</Label>
+                <span className="text-xs text-muted-foreground">
+                  {placeholder.shapeRefinement?.bulgeStrength ?? 0}%
+                </span>
+              </div>
+              <Slider
+                value={[placeholder.shapeRefinement?.bulgeStrength ?? 0]}
+                onValueChange={([value]) => {
+                  const currentRefinement = placeholder.shapeRefinement || {
+                    smoothness: 0,
+                    bulgeStrength: 0,
+                    roundCorners: 0,
+                  };
+                  const newRefinement = { ...currentRefinement, bulgeStrength: value };
+                  
+                  // Recompute renderPolygonPoints
+                  const renderPoints = computeRefinedPolygonPoints(
+                    placeholder.polygonPoints!,
+                    newRefinement
+                  );
+                  
+                  onUpdate({
+                    shapeRefinement: newRefinement,
+                    renderPolygonPoints: renderPoints,
+                  });
+                }}
+                min={0}
+                max={100}
+                step={1}
+                className="w-full"
+              />
+              <p className="text-xs text-muted-foreground">
+                0 = neutral, 100 = exaggerate convex regions
+              </p>
+            </div>
+
+            {/* Round Corners Slider */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs">Round Corners</Label>
+                <span className="text-xs text-muted-foreground">
+                  {placeholder.shapeRefinement?.roundCorners ?? 0}%
+                </span>
+              </div>
+              <Slider
+                value={[placeholder.shapeRefinement?.roundCorners ?? 0]}
+                onValueChange={([value]) => {
+                  const currentRefinement = placeholder.shapeRefinement || {
+                    smoothness: 0,
+                    bulgeStrength: 0,
+                    roundCorners: 0,
+                  };
+                  const newRefinement = { ...currentRefinement, roundCorners: value };
+                  
+                  // Recompute renderPolygonPoints
+                  const renderPoints = computeRefinedPolygonPoints(
+                    placeholder.polygonPoints!,
+                    newRefinement
+                  );
+                  
+                  onUpdate({
+                    shapeRefinement: newRefinement,
+                    renderPolygonPoints: renderPoints,
+                  });
+                }}
+                min={0}
+                max={100}
+                step={1}
+                className="w-full"
+              />
+              <p className="text-xs text-muted-foreground">
+                0 = sharp corners, 100 = very rounded
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

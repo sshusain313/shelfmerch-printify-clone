@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { ViewTabs } from './ViewTabs';
 import { CanvasMockup } from './CanvasMockup';
 import { PlaceholderControls } from './PlaceholderControls';
@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ViewKey, Placeholder, ViewConfig } from '@/types/product';
 import { uploadApi } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
+import { computeRefinedPolygonPoints } from '@/lib/polygonRefinement';
 
 interface ProductImageConfiguratorProps {
   views: ViewConfig[];
@@ -125,6 +126,35 @@ export const ProductImageConfigurator = ({
     onViewsChange(updatedViews);
   }, [activeView, views, currentView.mockupImageUrl, onViewsChange, physicalWidth, physicalHeight, physicalLength]);
 
+  // Create a placeholder from a magnetic lasso selection (dimensions already in inches)
+  const handleLassoPlaceholderCreate = useCallback(
+    (placeholderWithoutId: Omit<Placeholder, 'id'>) => {
+      const id = `${activeView}-${Date.now()}`;
+      const newPlaceholder: Placeholder = {
+        id,
+        ...placeholderWithoutId,
+      };
+
+      const updatedViews = views.map(v =>
+        v.key === activeView
+          ? { ...v, placeholders: [...v.placeholders, newPlaceholder] }
+          : v
+      );
+
+      if (!views.find(v => v.key === activeView)) {
+        updatedViews.push({
+          key: activeView,
+          mockupImageUrl: currentView.mockupImageUrl,
+          placeholders: [newPlaceholder],
+        });
+      }
+
+      onViewsChange(updatedViews);
+      return id;
+    },
+    [activeView, views, currentView.mockupImageUrl, onViewsChange],
+  );
+
   const handlePlaceholderChange = useCallback((id: string, updates: Partial<Placeholder>) => {
     const updatedViews = views.map(v =>
       v.key === activeView
@@ -138,6 +168,42 @@ export const ProductImageConfigurator = ({
     );
     onViewsChange(updatedViews);
   }, [activeView, views, onViewsChange]);
+
+  // Ensure renderPolygonPoints are computed for placeholders with shapeRefinement
+  useEffect(() => {
+    const needsUpdate = views.some(view =>
+      view.placeholders.some(p =>
+        p.shapeType === 'polygon' &&
+        p.polygonPoints &&
+        p.polygonPoints.length >= 3 &&
+        p.shapeRefinement &&
+        (!p.renderPolygonPoints || p.renderPolygonPoints.length === 0)
+      )
+    );
+
+    if (needsUpdate) {
+      const updatedViews = views.map(view => ({
+        ...view,
+        placeholders: view.placeholders.map(p => {
+          if (
+            p.shapeType === 'polygon' &&
+            p.polygonPoints &&
+            p.polygonPoints.length >= 3 &&
+            p.shapeRefinement &&
+            (!p.renderPolygonPoints || p.renderPolygonPoints.length === 0)
+          ) {
+            const renderPoints = computeRefinedPolygonPoints(
+              p.polygonPoints,
+              p.shapeRefinement
+            );
+            return { ...p, renderPolygonPoints: renderPoints };
+          }
+          return p;
+        }),
+      }));
+      onViewsChange(updatedViews);
+    }
+  }, [views, onViewsChange]);
 
   const handlePlaceholderDelete = useCallback((id: string) => {
     const updatedViews = views.map(v =>
@@ -188,6 +254,7 @@ export const ProductImageConfigurator = ({
           onPlaceholderSelect={setActivePlaceholderId}
           onPlaceholderAdd={handlePlaceholderAdd}
           onPlaceholderDelete={handlePlaceholderDelete}
+          onLassoPlaceholderCreate={handleLassoPlaceholderCreate}
           canvasWidth={800}
           canvasHeight={600}
           physicalWidth={(activeView === 'left' || activeView === 'right') ? physicalLength : physicalWidth}
