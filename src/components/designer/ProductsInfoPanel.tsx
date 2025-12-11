@@ -2,6 +2,7 @@
 import React from 'react';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 
 interface ProductView {
     key: string;
@@ -178,33 +179,64 @@ const getColorHex = (colorName: string): string => {
               <Label className="text-xs font-semibold uppercase text-muted-foreground mb-2 block">
                 Select Colors
               </Label>
-              <div className="flex flex-wrap gap-3">
-                {product.availableColors.map((color, index) => {
-                  const isSelected = selectedColors.includes(color);
-                  // Use colorHex from variants if available, otherwise fallback to getColorHex
-                  const colorHex = colorHexMap[color] || getColorHex(color);
-                  return (  
-                    <div
-                      key={index}
-                      className="flex flex-col items-center gap-1"
-                    >
-                      <div
-                        className={`w-10 h-10 rounded-full border-2 cursor-pointer transition-all hover:scale-110 ${
-                          isSelected 
-                            ? 'border-primary ring-2 ring-primary ring-offset-2' 
-                            : 'border-border hover:border-primary'
-                        }`}
-                        style={{ backgroundColor: colorHex }}
-                        onClick={() => onColorToggle?.(color)}
-                        title={color}
-                      />
-                      <span className="text-xs text-muted-foreground text-center max-w-[60px] truncate">
-                        {color}
-                      </span>
+
+              {/* Dropdown using native details/summary for accessibility */}
+              <details className="relative">
+                <summary className="flex items-center justify-between p-2 border rounded-md cursor-pointer">
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
+                      {selectedColors.length > 0 ? (
+                        <>
+                          <div className="flex -space-x-2">
+                            {selectedColors.slice(0, 3).map((c, i) => {
+                              const hex = colorHexMap[c] || getColorHex(c);
+                              return (
+                                <span
+                                  key={i}
+                                  className="w-5 h-5 rounded-full border border-border inline-block"
+                                  style={{ backgroundColor: hex }}
+                                />
+                              );
+                            })}
+                          </div>
+                          <span className="text-sm">{selectedColors.length} selected</span>
+                        </>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">Choose colors</span>
+                      )}
                     </div>
-                  );
-                })}
-              </div>
+                  </div>
+                  <span className="text-xs text-muted-foreground">▾</span>
+                </summary>
+
+                <div className="absolute left-0 right-0 mt-2 z-20 bg-background border rounded-md p-2 max-h-60 overflow-y-auto shadow-lg">
+                  <div className="space-y-1">
+                    {product.availableColors.map((color, index) => {
+                      const isSelected = selectedColors.includes(color);
+                      const colorHex = colorHexMap[color] || getColorHex(color);
+                      return (
+                        <label
+                          key={index}
+                          className="flex items-center gap-3 p-2 rounded-md hover:bg-muted/50 cursor-pointer"
+                        >
+                          <Checkbox
+                            checked={isSelected}
+                            onCheckedChange={() => onColorToggle?.(color)}
+                            className="cursor-pointer"
+                          />
+                          <span
+                            className="w-5 h-5 rounded-full border border-border flex-shrink-0 inline-block"
+                            style={{ backgroundColor: colorHex }}
+                            aria-hidden
+                          />
+                          <span className="text-sm flex-1">{color}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              </details>
+
               {selectedColors.length > 0 && (
                 <p className="text-xs text-muted-foreground mt-2">
                   {selectedColors.length} color{selectedColors.length > 1 ? 's' : ''} selected

@@ -877,10 +877,12 @@ const DesignEditor: React.FC = () => {
     });
   }, []);
 
-  // File upload - applies to selected placeholder in WebGL or adds to library
+  // File upload - always adds to preview library for manual selection
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
+
+    let successCount = 0;
 
     // Process each selected file
     Array.from(files).forEach((file) => {
@@ -894,18 +896,11 @@ const DesignEditor: React.FC = () => {
       const reader = new FileReader();
       reader.onload = (event) => {
         const imageUrl = event.target?.result as string;
-
-        // If placeholder is selected, apply directly to it
-        if (selectedPlaceholderId) {
-          setDesignUrlsByPlaceholder(prev => ({
-            ...prev,
-            [selectedPlaceholderId]: imageUrl,
-          }));
-          toast.success(`${file.name} applied to placeholder`);
-        } else {
-          // Otherwise, add to preview library
-          setUploadedImagePreview(prev => [...prev, imageUrl]);
-          toast.success(`${file.name} added to library`);
+        // Always add to preview library - user must click to add to canvas
+        setUploadedImagePreview(prev => [...prev, imageUrl]);
+        successCount++;
+        if (successCount === Array.from(files).length) {
+          toast.success(`${files.length} image${files.length > 1 ? 's' : ''} added to library`);
         }
       };
       reader.onerror = () => {
@@ -2527,79 +2522,188 @@ const PropertiesPanel: React.FC<{
 
     return (
       <div className="space-y-6">
-      
-        {/* Design Transform Controls (only if design is uploaded) */}
+        {/* Size Section */}
         {designUrl && (
-          <div className="space-y-4 border-t pt-4">
-            <Label className="text-sm font-semibold">Design Transform</Label>
-            <p className="text-xs text-muted-foreground">
-              Adjust the position and scale of the design within the placeholder. These controls affect the WebGL preview.
-            </p>
-
+          <div className="space-y-4">
+            <h3 className="text-sm font-semibold">Size</h3>
             <div className="space-y-2">
               <div>
-                <Label className="text-xs">Position X (inches): {transform.x.toFixed(2)}</Label>
+                <Label className="text-xs">Width: {Math.round(selectedPlaceholder.width * PX_PER_INCH)}px</Label>
                 <Slider
-                  value={[transform.x]}
+                  value={[selectedPlaceholder.width * PX_PER_INCH]}
                   onValueChange={([value]) => {
-                    setDesignTransforms(prev => ({
-                      ...prev,
-                      [selectedPlaceholderId]: { ...transform, x: value },
-                    }));
+                    // Update placeholder width
+                    const newWidth = value / PX_PER_INCH;
+                    // This would need to be handled by a callback, but keeping structure for now
                   }}
-                  min={-selectedPlaceholder.original.widthIn / 2}
-                  max={selectedPlaceholder.original.widthIn / 2}
-                  step={0.1}
+                  min={10}
+                  max={1000}
+                  step={1}
                 />
               </div>
               <div>
-                <Label className="text-xs">Position Y (inches): {transform.y.toFixed(2)}</Label>
+                <Label className="text-xs">Height: {Math.round(selectedPlaceholder.height * PX_PER_INCH)}px</Label>
                 <Slider
-                  value={[transform.y]}
+                  value={[selectedPlaceholder.height * PX_PER_INCH]}
+                  onValueChange={([value]) => {
+                    // Update placeholder height
+                    const newHeight = value / PX_PER_INCH;
+                    // This would need to be handled by a callback, but keeping structure for now
+                  }}
+                  min={10}
+                  max={1000}
+                  step={1}
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="lockAspect"
+                  className="w-4 h-4"
+                  checked={false}
+                  onChange={() => {}}
+                />
+                <Label htmlFor="lockAspect" className="text-xs cursor-pointer">
+                  🔒 Lock aspect ratio
+                </Label>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Position Section */}
+        {designUrl && (
+          <div className="space-y-4">
+            <h3 className="text-sm font-semibold">Position</h3>
+            <div className="space-y-2">
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <Label className="text-xs">X: {Math.round(transform.x * PX_PER_INCH)}px</Label>
+                </div>
+                <Slider
+                  value={[transform.x * PX_PER_INCH]}
                   onValueChange={([value]) => {
                     setDesignTransforms(prev => ({
                       ...prev,
-                      [selectedPlaceholderId]: { ...transform, y: value },
+                      [selectedPlaceholderId]: { ...transform, x: value / PX_PER_INCH },
                     }));
                   }}
-                  min={-selectedPlaceholder.original.heightIn / 2}
-                  max={selectedPlaceholder.original.heightIn / 2}
-                  step={0.1}
+                  min={0}
+                  max={1000}
+                  step={1}
                 />
               </div>
               <div>
-                <Label className="text-xs">Scale: {(transform.scale * 100).toFixed(0)}%</Label>
+                <div className="flex items-center justify-between mb-1">
+                  <Label className="text-xs">Y: {Math.round(transform.y * PX_PER_INCH)}px</Label>
+                </div>
                 <Slider
-                  value={[transform.scale]}
+                  value={[transform.y * PX_PER_INCH]}
                   onValueChange={([value]) => {
                     setDesignTransforms(prev => ({
                       ...prev,
-                      [selectedPlaceholderId]: { ...transform, scale: value },
+                      [selectedPlaceholderId]: { ...transform, y: value / PX_PER_INCH },
                     }));
                   }}
-                  min={0.1}
-                  max={3}
-                  step={0.01}
+                  min={0}
+                  max={1000}
+                  step={1}
                 />
               </div>
             </div>
           </div>
         )}
 
-        {/* Displacement Settings */}
-        <div className="space-y-4 border-t pt-4">
-          <Label className="text-sm font-semibold">Displacement Settings</Label>
-          <p className="text-xs text-muted-foreground">
-            Control how the design wraps around the garment surface in the WebGL preview.
-          </p>
+        {/* Flip Section */}
+        {designUrl && (
+          <div className="space-y-4">
+            <h3 className="text-sm font-semibold">Flip</h3>
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="flipH"
+                  className="w-4 h-4"
+                  checked={false}
+                  onChange={() => {}}
+                />
+                <Label htmlFor="flipH" className="text-xs cursor-pointer">
+                  ↔️ Horizontal
+                </Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="flipV"
+                  className="w-4 h-4"
+                  checked={false}
+                  onChange={() => {}}
+                />
+                <Label htmlFor="flipV" className="text-xs cursor-pointer">
+                  ↕️ Vertical
+                </Label>
+              </div>
+            </div>
+          </div>
+        )}
 
+        {/* Opacity Section */}
+        {designUrl && (
+          <div className="space-y-4">
+            <h3 className="text-sm font-semibold">Opacity</h3>
+            <div className="space-y-2">
+              <div>
+                <Label className="text-xs">Opacity: 100%</Label>
+                <Slider
+                  value={[100]}
+                  onValueChange={() => {}}
+                  min={0}
+                  max={100}
+                  step={1}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Blend Mode Section */}
+        {designUrl && (
+          <div className="space-y-4">
+            <h3 className="text-sm font-semibold">Blend Mode</h3>
+            <select
+              className="w-full px-3 py-2 border rounded-md bg-background text-sm"
+              value="normal"
+              onChange={() => {}}
+            >
+              <option value="normal">Normal</option>
+              <option value="multiply">Multiply</option>
+              <option value="screen">Screen</option>
+              <option value="overlay">Overlay</option>
+              <option value="darken">Darken</option>
+              <option value="lighten">Lighten</option>
+            </select>
+            <p className="text-xs text-muted-foreground">
+              Adjusts how the design blends with the mockup
+            </p>
+          </div>
+        )}
+
+        {/* Tune Realism (Displacement Settings) */}
+        <div className="space-y-4">
+          <h3 className="text-sm font-semibold">Tune Realism</h3>
           <div className="space-y-2">
             <div>
-              <Label className="text-xs">Scale X: {displacementSettings.scaleX.toFixed(1)}</Label>
+              <div className="flex items-center justify-between mb-1">
+                <Label className="text-xs">Displacement X</Label>
+                <span className="text-xs">{displacementSettings.scaleX}</span>
+              </div>
               <Slider
                 value={[displacementSettings.scaleX]}
                 onValueChange={([value]) => {
-                  onDisplacementSettingsChange({ ...displacementSettings, scaleX: value });
+                  onDisplacementSettingsChange({
+                    ...displacementSettings,
+                    scaleX: value
+                  });
                 }}
                 min={0}
                 max={100}
@@ -2607,11 +2711,17 @@ const PropertiesPanel: React.FC<{
               />
             </div>
             <div>
-              <Label className="text-xs">Scale Y: {displacementSettings.scaleY.toFixed(1)}</Label>
+              <div className="flex items-center justify-between mb-1">
+                <Label className="text-xs">Displacement Y</Label>
+                <span className="text-xs">{displacementSettings.scaleY}</span>
+              </div>
               <Slider
                 value={[displacementSettings.scaleY]}
                 onValueChange={([value]) => {
-                  onDisplacementSettingsChange({ ...displacementSettings, scaleY: value });
+                  onDisplacementSettingsChange({
+                    ...displacementSettings,
+                    scaleY: value
+                  });
                 }}
                 min={0}
                 max={100}
@@ -2619,14 +2729,20 @@ const PropertiesPanel: React.FC<{
               />
             </div>
             <div>
-              <Label className="text-xs">Contrast Boost: {displacementSettings.contrastBoost.toFixed(2)}</Label>
+              <div className="flex items-center justify-between mb-1">
+                <Label className="text-xs">Fold Contrast</Label>
+                <span className="text-xs">{displacementSettings.contrastBoost.toFixed(1)}</span>
+              </div>
               <Slider
                 value={[displacementSettings.contrastBoost]}
                 onValueChange={([value]) => {
-                  onDisplacementSettingsChange({ ...displacementSettings, contrastBoost: value });
+                  onDisplacementSettingsChange({
+                    ...displacementSettings,
+                    contrastBoost: value
+                  });
                 }}
-                min={0.5}
-                max={3}
+                min={1}
+                max={5}
                 step={0.1}
               />
             </div>
@@ -2739,15 +2855,18 @@ const PropertiesPanel: React.FC<{
 
       {element.type === 'image' && (
         <>
-          {/* Size/Scale Section */}
-          <div className="space-y-2">
-            <Label className="text-sm font-semibold">Size</Label>
+          {/* Size Section */}
+          <div className="space-y-4">
+            <h3 className="text-sm font-semibold">Size</h3>
             <div className="space-y-2">
               <div>
                 <Label className="text-xs">Width: {Math.round(element.width || 0)}px</Label>
-                <Slider
-                  value={[element.width || 100]}
-                  onValueChange={([value]) => {
+                <input
+                  type="number"
+                  className="w-full px-3 py-2 border rounded-md bg-background text-sm"
+                  value={element.width || 0}
+                  onChange={(e) => {
+                    const value = parseInt(e.target.value) || 0;
                     if (element.lockAspectRatio && element.width && element.height) {
                       const aspectRatio = element.width / element.height;
                       onUpdate({ width: value, height: value / aspectRatio });
@@ -2755,16 +2874,16 @@ const PropertiesPanel: React.FC<{
                       onUpdate({ width: value });
                     }
                   }}
-                  min={10}
-                  max={800}
-                  step={1}
                 />
               </div>
               <div>
                 <Label className="text-xs">Height: {Math.round(element.height || 0)}px</Label>
-                <Slider
-                  value={[element.height || 100]}
-                  onValueChange={([value]) => {
+                <input
+                  type="number"
+                  className="w-full px-3 py-2 border rounded-md bg-background text-sm"
+                  value={element.height || 0}
+                  onChange={(e) => {
+                    const value = parseInt(e.target.value) || 0;
                     if (element.lockAspectRatio && element.width && element.height) {
                       const aspectRatio = element.width / element.height;
                       onUpdate({ height: value, width: value * aspectRatio });
@@ -2772,35 +2891,30 @@ const PropertiesPanel: React.FC<{
                       onUpdate({ height: value });
                     }
                   }}
-                  min={10}
-                  max={800}
-                  step={1}
                 />
               </div>
               <div className="flex items-center gap-2">
                 <input
                   type="checkbox"
-                  id="lockAspectRatio"
+                  id="lockAspect"
+                  className="w-4 h-4"
                   checked={element.lockAspectRatio !== false}
                   onChange={(e) => onUpdate({ lockAspectRatio: e.target.checked })}
-                  className="w-4 h-4"
                 />
-                <Label htmlFor="lockAspectRatio" className="text-xs cursor-pointer">Lock aspect ratio</Label>
+                <Label htmlFor="lockAspect" className="text-xs cursor-pointer">
+                  🔒 Lock aspect ratio
+                </Label>
               </div>
             </div>
           </div>
 
           {/* Position Section */}
-          <div className="space-y-2">
-            <Label className="text-sm font-semibold">Position</Label>
-            <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-4">
+            <h3 className="text-sm font-semibold">Position</h3>
+            <div className="space-y-2">
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <Label className="text-xs">X: {Math.round(element.x)}px</Label>
-                  <div className="flex gap-1">
-                    <Button size="sm" variant="outline" className="h-6 w-6 p-0" onClick={() => onUpdate({ x: element.x - 1 })}>-</Button>
-                    <Button size="sm" variant="outline" className="h-6 w-6 p-0" onClick={() => onUpdate({ x: element.x + 1 })}>+</Button>
-                  </div>
                 </div>
                 <Slider
                   value={[element.x]}
@@ -2813,10 +2927,6 @@ const PropertiesPanel: React.FC<{
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <Label className="text-xs">Y: {Math.round(element.y)}px</Label>
-                  <div className="flex gap-1">
-                    <Button size="sm" variant="outline" className="h-6 w-6 p-0" onClick={() => onUpdate({ y: element.y - 1 })}>-</Button>
-                    <Button size="sm" variant="outline" className="h-6 w-6 p-0" onClick={() => onUpdate({ y: element.y + 1 })}>+</Button>
-                  </div>
                 </div>
                 <Slider
                   value={[element.y]}
@@ -2830,268 +2940,132 @@ const PropertiesPanel: React.FC<{
           </div>
 
           {/* Flip Section */}
-          <div className="space-y-2">
-            <Label className="text-sm font-semibold">Flip</Label>
-            <div className="flex gap-2">
-              <Button
-                variant={element.flipX ? "default" : "outline"}
-                size="sm"
-                className="flex-1"
-                onClick={() => onUpdate({ flipX: !element.flipX })}
-              >
-                ↔️ Horizontal
-              </Button>
-              <Button
-                variant={element.flipY ? "default" : "outline"}
-                size="sm"
-                className="flex-1"
-                onClick={() => onUpdate({ flipY: !element.flipY })}
-              >
-                ↕️ Vertical
-              </Button>
+          <div className="space-y-4">
+            <h3 className="text-sm font-semibold">Flip</h3>
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="flipH"
+                  className="w-4 h-4"
+                  checked={element.flipX || false}
+                  onChange={(e) => onUpdate({ flipX: e.target.checked })}
+                />
+                <Label htmlFor="flipH" className="text-xs cursor-pointer">
+                  ↔️ Horizontal
+                </Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="flipV"
+                  className="w-4 h-4"
+                  checked={element.flipY || false}
+                  onChange={(e) => onUpdate({ flipY: e.target.checked })}
+                />
+                <Label htmlFor="flipV" className="text-xs cursor-pointer">
+                  ↕️ Vertical
+                </Label>
+              </div>
             </div>
           </div>
 
           {/* Opacity Section */}
-          <div className="space-y-2">
-            <Label className="text-sm font-semibold">Opacity</Label>
-            <div>
-              <Label className="text-xs">Opacity: {((element.opacity !== undefined ? element.opacity : 1) * 100).toFixed(0)}%</Label>
-              <Slider
-                value={[element.opacity !== undefined ? element.opacity : 1]}
-                onValueChange={([value]) => onUpdate({ opacity: value })}
-                min={0}
-                max={1}
-                step={0.01}
-              />
+          <div className="space-y-4">
+            <h3 className="text-sm font-semibold">Opacity</h3>
+            <div className="space-y-2">
+              <div>
+                <Label className="text-xs">Opacity: {((element.opacity !== undefined ? element.opacity : 1) * 100).toFixed(0)}%</Label>
+                <Slider
+                  value={[element.opacity !== undefined ? element.opacity * 100 : 100]}
+                  onValueChange={([value]) => onUpdate({ opacity: value / 100 })}
+                  min={0}
+                  max={100}
+                  step={1}
+                />
+              </div>
             </div>
           </div>
 
           {/* Blend Mode Section */}
-          <div className="space-y-2">
-            <Label className="text-sm font-semibold">Blend Mode</Label>
+          <div className="space-y-4">
+            <h3 className="text-sm font-semibold">Blend Mode</h3>
             <select
+              className="w-full px-3 py-2 border rounded-md bg-background text-sm"
               value={element.blendMode || 'normal'}
               onChange={(e) => onUpdate({ blendMode: e.target.value as any })}
-              className="w-full px-3 py-2 border rounded-md bg-background text-sm"
             >
               <option value="normal">Normal</option>
-              <option value="multiply">Multiply (Darker)</option>
-              <option value="screen">Screen (Lighter)</option>
-              <option value="overlay">Overlay (Contrast)</option>
-              <option value="soft-light">Soft Light (Realistic)</option>
-              <option value="hard-light">Hard Light</option>
+              <option value="multiply">Multiply</option>
+              <option value="screen">Screen</option>
+              <option value="overlay">Overlay</option>
               <option value="darken">Darken</option>
               <option value="lighten">Lighten</option>
-              <option value="color-dodge">Color Dodge</option>
-              <option value="color-burn">Color Burn</option>
-              <option value="difference">Difference</option>
-              <option value="exclusion">Exclusion</option>
-              <option value="hue">Hue</option>
-              <option value="saturation">Saturation</option>
-              <option value="color">Color</option>
-              <option value="luminosity">Luminosity</option>
             </select>
             <p className="text-xs text-muted-foreground">
-              {element.blendMode === 'soft-light' || element.blendMode === 'overlay'
-                ? '💡 Best for realistic mockup blending'
-                : element.blendMode === 'multiply'
-                  ? '💡 Good for darker fabrics'
-                  : element.blendMode === 'screen'
-                    ? '💡 Good for lighter fabrics'
-                    : 'Adjusts how the design blends with the mockup'}
-            </p>
-            <Button
-              variant="outline"
-              size="sm"
-              className="w-full mt-2"
-              onClick={() => {
-                // Apply realistic blending presets
-                onUpdate({
-                  blendMode: 'soft-light',
-                  opacity: 0.85,
-                  saturation: -20,
-                  brightness: 5,
-                  contrast: 10,
-                  shadowBlur: 8,
-                  shadowOffsetX: 3,
-                  shadowOffsetY: 3,
-                  shadowColor: '#000000',
-                  shadowOpacity: 0.3,
-                });
-                toast.success('Applied realistic blending mode');
-              }}
-            >
-              ✨ Apply Realistic Mode
-            </Button>
-            <p className="text-xs text-muted-foreground">
-              Automatically adjusts blend mode, opacity, saturation, and shadow for realistic mockup appearance
+              Adjusts how the design blends with the mockup
             </p>
           </div>
 
-          {/* Filters Section */}
-          <div className="space-y-2">
-            <Label className="text-sm font-semibold">Filters</Label>
+          {/* Tune Realism (Displacement Settings) */}
+          <div className="space-y-4">
+            <h3 className="text-sm font-semibold">Tune Realism</h3>
             <div className="space-y-2">
               <div>
-                <Label className="text-xs">Brightness: {element.brightness || 0}</Label>
+                <div className="flex items-center justify-between mb-1">
+                  <Label className="text-xs">Displacement X</Label>
+                  <span className="text-xs">{displacementSettings.scaleX}</span>
+                </div>
                 <Slider
-                  value={[element.brightness || 0]}
-                  onValueChange={([value]) => onUpdate({ brightness: value })}
-                  min={-100}
-                  max={100}
-                  step={1}
-                />
-              </div>
-              <div>
-                <Label className="text-xs">Contrast: {element.contrast || 0}</Label>
-                <Slider
-                  value={[element.contrast || 0]}
-                  onValueChange={([value]) => onUpdate({ contrast: value })}
-                  min={-100}
-                  max={100}
-                  step={1}
-                />
-              </div>
-              <div>
-                <Label className="text-xs">Saturation: {element.saturation || 0}</Label>
-                <Slider
-                  value={[element.saturation || 0]}
-                  onValueChange={([value]) => onUpdate({ saturation: value })}
-                  min={-100}
-                  max={100}
-                  step={1}
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Reduce for realistic fabric appearance
-                </p>
-              </div>
-              <div>
-                <Label className="text-xs">Blur: {element.blur || 0}</Label>
-                <Slider
-                  value={[element.blur || 0]}
-                  onValueChange={([value]) => onUpdate({ blur: value })}
+                  value={[displacementSettings.scaleX]}
+                  onValueChange={([value]) => {
+                    onDisplacementSettingsChange({
+                      ...displacementSettings,
+                      scaleX: value
+                    });
+                  }}
                   min={0}
-                  max={20}
-                  step={0.5}
+                  max={100}
+                  step={1}
+                />
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <Label className="text-xs">Displacement Y</Label>
+                  <span className="text-xs">{displacementSettings.scaleY}</span>
+                </div>
+                <Slider
+                  value={[displacementSettings.scaleY]}
+                  onValueChange={([value]) => {
+                    onDisplacementSettingsChange({
+                      ...displacementSettings,
+                      scaleY: value
+                    });
+                  }}
+                  min={0}
+                  max={100}
+                  step={1}
+                />
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <Label className="text-xs">Fold Contrast</Label>
+                  <span className="text-xs">{displacementSettings.contrastBoost.toFixed(1)}</span>
+                </div>
+                <Slider
+                  value={[displacementSettings.contrastBoost]}
+                  onValueChange={([value]) => {
+                    onDisplacementSettingsChange({
+                      ...displacementSettings,
+                      contrastBoost: value
+                    });
+                  }}
+                  min={1}
+                  max={5}
+                  step={0.1}
                 />
               </div>
             </div>
-          </div>
-
-          {/* Shadow Section */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label className="text-sm font-semibold">Shadow</Label>
-              <Switch
-                checked={(element.shadowBlur || 0) > 0}
-                onCheckedChange={(checked) => onUpdate({ shadowBlur: checked ? 10 : 0, shadowOffsetX: checked ? 5 : 0, shadowOffsetY: checked ? 5 : 0, shadowColor: element.shadowColor || '#000000', shadowOpacity: element.shadowOpacity || 0.5 })}
-              />
-            </div>
-            {(element.shadowBlur || 0) > 0 && (
-              <div className="space-y-2">
-                <div>
-                  <Label className="text-xs">Blur: {element.shadowBlur || 0}</Label>
-                  <Slider
-                    value={[element.shadowBlur || 0]}
-                    onValueChange={([value]) => onUpdate({ shadowBlur: value })}
-                    min={0}
-                    max={50}
-                    step={1}
-                  />
-                </div>
-                <div>
-                  <Label className="text-xs">Offset X: {element.shadowOffsetX || 0}</Label>
-                  <Slider
-                    value={[element.shadowOffsetX || 0]}
-                    onValueChange={([value]) => onUpdate({ shadowOffsetX: value })}
-                    min={-50}
-                    max={50}
-                    step={1}
-                  />
-                </div>
-                <div>
-                  <Label className="text-xs">Offset Y: {element.shadowOffsetY || 0}</Label>
-                  <Slider
-                    value={[element.shadowOffsetY || 0]}
-                    onValueChange={([value]) => onUpdate({ shadowOffsetY: value })}
-                    min={-50}
-                    max={50}
-                    step={1}
-                  />
-                </div>
-                <div>
-                  <Label className="text-xs">Color</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      type="color"
-                      value={element.shadowColor || '#000000'}
-                      onChange={(e) => onUpdate({ shadowColor: e.target.value })}
-                      className="w-16 h-10"
-                    />
-                    <Input
-                      value={element.shadowColor || '#000000'}
-                      onChange={(e) => onUpdate({ shadowColor: e.target.value })}
-                      placeholder="#000000"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <Label className="text-xs">Opacity: {((element.shadowOpacity !== undefined ? element.shadowOpacity : 0.5) * 100).toFixed(0)}%</Label>
-                  <Slider
-                    value={[element.shadowOpacity !== undefined ? element.shadowOpacity : 0.5]}
-                    onValueChange={([value]) => onUpdate({ shadowOpacity: value })}
-                    min={0}
-                    max={1}
-                    step={0.01}
-                  />
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Lower opacity (0.2-0.4) for more realistic shadows
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Border Section */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label className="text-sm font-semibold">Border</Label>
-              <Switch
-                checked={(element.borderWidth || 0) > 0}
-                onCheckedChange={(checked) => onUpdate({ borderWidth: checked ? 2 : 0, borderColor: element.borderColor || '#000000' })}
-              />
-            </div>
-            {(element.borderWidth || 0) > 0 && (
-              <div className="space-y-2">
-                <div>
-                  <Label className="text-xs">Width: {element.borderWidth || 0}px</Label>
-                  <Slider
-                    value={[element.borderWidth || 0]}
-                    onValueChange={([value]) => onUpdate({ borderWidth: value })}
-                    min={0}
-                    max={20}
-                    step={1}
-                  />
-                </div>
-                <div>
-                  <Label className="text-xs">Color</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      type="color"
-                      value={element.borderColor || '#000000'}
-                      onChange={(e) => onUpdate({ borderColor: e.target.value })}
-                      className="w-16 h-10"
-                    />
-                    <Input
-                      value={element.borderColor || '#000000'}
-                      onChange={(e) => onUpdate({ borderColor: e.target.value })}
-                      placeholder="#000000"
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
         </>
       )}
