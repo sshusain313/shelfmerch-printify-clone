@@ -4,6 +4,25 @@ import type { DisplacementSettings, Placeholder } from '@/types/product';
 import { createDisplacementTextureFromGarment } from '@/lib/displacementMap';
 // Removed UI imports - this component is now a pure canvas renderer
 
+interface CanvasElement {
+  id: string;
+  type: 'text' | 'image' | 'shape' | 'group';
+  x: number;
+  y: number;
+  width?: number;
+  height?: number;
+  rotation?: number;
+  opacity?: number;
+  visible?: boolean;
+  locked?: boolean;
+  zIndex: number;
+  view?: string;
+  imageUrl?: string;
+  flipX?: boolean;
+  flipY?: boolean;
+  blendMode?: string;
+}
+
 interface RealisticWebGLPreviewProps {
   mockupImageUrl: string | null;
   activePlaceholder: Placeholder | null;
@@ -27,6 +46,11 @@ interface RealisticWebGLPreviewProps {
   previewMode?: boolean;
   // Optional garment tint derived from selected product color (hex string like #RRGGBB)
   garmentTintHex?: string | null;
+  // Canvas elements support
+  canvasElements?: CanvasElement[];
+  currentView?: string;
+  canvasPadding?: number;
+  PX_PER_INCH?: number;
 }
 
 /**
@@ -53,6 +77,10 @@ export const RealisticWebGLPreview: React.FC<RealisticWebGLPreviewProps> = ({
   onSelectPlaceholder,
   previewMode = false,
   garmentTintHex,
+  canvasElements = [],
+  currentView = 'front',
+  canvasPadding = 40,
+  PX_PER_INCH = 72,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const appRef = useRef<Application | null>(null);
@@ -85,6 +113,7 @@ export const RealisticWebGLPreview: React.FC<RealisticWebGLPreviewProps> = ({
     designContainer: Container | null;
     placeholderContainer: Container | null;
     pxPerInch: number;
+    canvasElementSprites: Map<string, Sprite>; // Track canvas element sprites by element ID
   }>({
     garmentSprite: null,
     designSprite: null,
@@ -94,6 +123,7 @@ export const RealisticWebGLPreview: React.FC<RealisticWebGLPreviewProps> = ({
     designContainer: null,
     placeholderContainer: null,
     pxPerInch: 1,
+    canvasElementSprites: new Map(),
   });
 
   const hexToTint = (hex?: string | null): number | null => {
@@ -589,7 +619,25 @@ export const RealisticWebGLPreview: React.FC<RealisticWebGLPreviewProps> = ({
 
     const loadDesigns = async () => {
       const container = sceneRef.current.designContainer!;
-      container.removeChildren();
+      // Remove only placeholder design sprites (those with masks), preserve canvas elements
+      const canvasSprites = sceneRef.current.canvasElementSprites;
+      const canvasSpriteSet = new Set(canvasSprites.values());
+      const toRemove: any[] = [];
+      container.children.forEach((child) => {
+        if (!canvasSpriteSet.has(child as Sprite)) {
+          toRemove.push(child);
+        }
+      });
+      toRemove.forEach((child) => {
+        try {
+          container.removeChild(child);
+          if ((child as any).destroy) {
+            (child as any).destroy();
+          }
+        } catch (e) {
+          // Ignore errors
+        }
+      });
 
       const pxPerInch = sceneRef.current.pxPerInch || 1;
 
@@ -651,15 +699,15 @@ export const RealisticWebGLPreview: React.FC<RealisticWebGLPreviewProps> = ({
         // Dynamic blend mode based on garment color luminance
         // For dark garments: use 'screen' blend mode with full opacity to brighten the design
         // For light garments: use 'multiply' blend mode to integrate naturally with garment color
-        if (garmentTintHex) {
-          const isDark = isDarkHex(garmentTintHex);
-          designSprite.blendMode = isDark ? 'screen' : 'multiply';
-          designSprite.alpha = isDark ? 1.0 : 0.9; // Full opacity for dark garments, slightly reduced for light
-        } else {
-          // Default: use multiply for untinted garments (assumed light/white)
-          designSprite.blendMode = 'multiply';
-          designSprite.alpha = 0.9;
-        }
+        // if (garmentTintHex) {
+        //   const isDark = isDarkHex(garmentTintHex);
+        //   designSprite.blendMode = isDark ? 'screen' : 'multiply';
+        //   designSprite.alpha = isDark ? 1.0 : 0.9; // Full opacity for dark garments, slightly reduced for light
+        // } else {
+        //   // Default: use multiply for untinted garments (assumed light/white)
+        //   designSprite.blendMode = 'multiply';
+        //   designSprite.alpha = 0.9;
+        // }
 
         // Build mask matching placeholder shape.
         const mask = new Graphics();
@@ -840,6 +888,209 @@ export const RealisticWebGLPreview: React.FC<RealisticWebGLPreviewProps> = ({
       }
     });
   }, [previewMode, appReady]);
+
+  // Render canvas elements (images added via graphics tab)
+  useEffect(() => {
+    if (
+      !appReady ||
+      !appRef.current ||
+      !mockupImageUrl ||
+      !sceneRef.current.garmentSprite ||
+      !sceneRef.current.designContainer
+    ) {
+      return;
+    }
+
+    const loadCanvasElements = async () => {
+      // Filter canvas elements for current view and visible image elements
+      const imageElements = canvasElements.filter(
+        (el) =>
+          el.type === 'image' &&
+          el.imageUrl &&
+          (el.view === currentView || !el.view) &&
+          el.visible !== false
+      );
+
+      const container = sceneRef.current.designContainer!;
+      const canvasSprites = sceneRef.current.canvasElementSprites;
+
+      // Remove sprites for elements that no longer exist or changed
+      const currentElementIds = new Set(imageElements.map((el) => el.id));
+      for (const [elementId, sprite] of canvasSprites.entries()) {
+        if (!currentElementIds.has(elementId)) {
+          try {
+            container.removeChild(sprite);
+            sprite.destroy();
+            canvasSprites.delete(elementId);
+          } catch (e) {
+            // Ignore errors during cleanup
+          }
+        }
+      }
+
+      if (imageElements.length === 0) {
+        return;
+      }
+
+      // Get garment sprite position for relative positioning
+      const garmentSprite = sceneRef.current.garmentSprite;
+      if (!garmentSprite) {
+        return;
+      }
+
+      // Load and render each canvas image element
+      for (const element of imageElements) {
+        if (!element.imageUrl) continue;
+
+        // Skip if sprite already exists and update it
+        if (canvasSprites.has(element.id)) {
+          const existingSprite = canvasSprites.get(element.id)!;
+          
+          // Ensure anchor is set to center (in case it wasn't set before)
+          if (existingSprite.anchor.x !== 0.5 || existingSprite.anchor.y !== 0.5) {
+            existingSprite.anchor.set(0.5, 0.5);
+          }
+          
+          // Update size first
+          if (element.width && element.height) {
+            existingSprite.width = element.width;
+            existingSprite.height = element.height;
+          }
+          
+          // Update position - adjust for centered anchor
+          const spriteWidth = existingSprite.width;
+          const spriteHeight = existingSprite.height;
+          existingSprite.x = element.x + spriteWidth / 2;
+          existingSprite.y = element.y + spriteHeight / 2;
+          
+          // Update rotation
+          if (element.rotation !== undefined) {
+            existingSprite.rotation = (element.rotation * Math.PI) / 180;
+          }
+          
+          // Update opacity
+          existingSprite.alpha = element.opacity !== undefined ? element.opacity : 1;
+          
+          // Update flip - with centered anchor, this will flip around center without moving
+          if (element.flipX) {
+            existingSprite.scale.x = Math.abs(existingSprite.scale.x) * -1;
+          } else {
+            existingSprite.scale.x = Math.abs(existingSprite.scale.x);
+          }
+          if (element.flipY) {
+            existingSprite.scale.y = Math.abs(existingSprite.scale.y) * -1;
+          } else {
+            existingSprite.scale.y = Math.abs(existingSprite.scale.y);
+          }
+          continue;
+        }
+
+        try {
+          const texture = await Assets.load(element.imageUrl);
+          const sprite = new Sprite(texture);
+
+          // Set size first (needed for anchor calculation)
+          if (element.width && element.height) {
+            sprite.width = element.width;
+            sprite.height = element.height;
+          } else if (texture.width && texture.height) {
+            sprite.width = texture.width;
+            sprite.height = texture.height;
+          }
+
+          // Set anchor to center (0.5, 0.5) so flipping happens around center
+          sprite.anchor.set(0.5, 0.5);
+
+          // Set position - adjust for centered anchor
+          // element.x and element.y are top-left, but with centered anchor we need center position
+          const spriteWidth = sprite.width;
+          const spriteHeight = sprite.height;
+          sprite.x = element.x + spriteWidth / 2;
+          sprite.y = element.y + spriteHeight / 2;
+
+          // Apply rotation
+          if (element.rotation !== undefined) {
+            sprite.rotation = (element.rotation * Math.PI) / 180;
+          }
+
+          // Apply flip - with centered anchor, this will flip around center without moving
+          if (element.flipX) {
+            sprite.scale.x = -Math.abs(sprite.scale.x);
+          } else {
+            sprite.scale.x = Math.abs(sprite.scale.x);
+          }
+          if (element.flipY) {
+            sprite.scale.y = -Math.abs(sprite.scale.y);
+          } else {
+            sprite.scale.y = Math.abs(sprite.scale.y);
+          }
+
+          // Apply opacity
+          sprite.alpha = element.opacity !== undefined ? element.opacity : 1;
+
+          // Apply blend mode
+          if (element.blendMode) {
+            sprite.blendMode = element.blendMode as any;
+          } else if (garmentTintHex) {
+            // Use same logic as placeholder designs
+            const isDark = isDarkHex(garmentTintHex);
+            sprite.blendMode = isDark ? 'screen' : 'multiply';
+            sprite.alpha = isDark ? 1.0 : 0.9;
+          } else {
+            sprite.blendMode = 'multiply';
+            sprite.alpha = 0.9;
+          }
+
+          // Apply displacement filter if available
+          if (sceneRef.current.displacementFilter) {
+            sprite.filters = [sceneRef.current.displacementFilter];
+          }
+
+          // Set z-index (PixiJS uses zIndex property)
+          sprite.zIndex = element.zIndex || 0;
+
+          // Store reference to this sprite
+          canvasSprites.set(element.id, sprite);
+          container.addChild(sprite);
+        } catch (error) {
+          console.error(`Failed to load canvas element image: ${element.imageUrl}`, error);
+        }
+      }
+
+      // Sort children by zIndex
+      container.children.sort((a, b) => {
+        const aZ = (a as any).zIndex || 0;
+        const bZ = (b as any).zIndex || 0;
+        return aZ - bZ;
+      });
+    };
+
+    loadCanvasElements();
+
+    // Cleanup function - remove all canvas element sprites when dependencies change
+    return () => {
+      if (sceneRef.current.designContainer && sceneRef.current.canvasElementSprites) {
+        const container = sceneRef.current.designContainer!;
+        const canvasSprites = sceneRef.current.canvasElementSprites;
+        for (const [elementId, sprite] of canvasSprites.entries()) {
+          try {
+            container.removeChild(sprite);
+            sprite.destroy();
+          } catch (e) {
+            // Ignore errors during cleanup
+          }
+        }
+        canvasSprites.clear();
+      }
+    };
+  }, [
+    appReady,
+    mockupImageUrl,
+    canvasElements,
+    currentView,
+    garmentTintHex,
+    filterToken, // Re-apply filters when displacement changes
+  ]);
 
   // Handle design upload via callback if provided, otherwise use internal state
   const handleDesignUpload = (placeholderId: string, designUrl: string) => {

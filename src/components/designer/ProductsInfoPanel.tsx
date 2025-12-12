@@ -1,389 +1,388 @@
-
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 
 interface ProductView {
-    key: string;
-    mockupImageUrl: string;
-    placeholders: Placeholder[];
-  }
-
-interface Placeholder {
-    id?: string;
-    widthIn?: number;
-    heightIn?: number;
-    xIn?: number;
-    yIn?: number;
-    rotationDeg?: number;
-    scale?: number;
-    dpi?: number;
+  key: string;
+  mockupImageUrl: string;
+  placeholders: Placeholder[];
 }
 
+interface Placeholder {
+  id?: string;
+  widthIn?: number;
+  heightIn?: number;
+  xIn?: number;
+  yIn?: number;
+  rotationDeg?: number;
+  scale?: number;
+  dpi?: number;
+}
+
+interface ProductVariant {
+  id?: string;
+  size: string;
+  color: string;
+  colorHex?: string;
+  sku?: string;
+  price?: number;
+  isActive?: boolean;
+}
+
+// Store multiple sizes per color as Record<colorName, Set<size>>
+// But pass/receive as Record<colorName, string[]> for serialization
+
 interface Product {
-    _id?: string;
-    id?: string;
-    catalogue?: {
-      name?: string;
-      description?: string;
-      basePrice?: number;
+  _id?: string;
+  id?: string;
+  catalogue?: {
+    name?: string;
+    description?: string;
+    basePrice?: number;
+  };
+  design?: {
+    views?: ProductView[];
+    dpi?: number;
+    physicalDimensions?: {
+      width?: number;
+      height?: number;
+      length?: number;
     };
-    design?: {
-      views?: ProductView[];
-      dpi?: number;
-      physicalDimensions?: {
-        width?: number;  // in inches
-        height?: number; // in inches
-        length?: number; // in inches
-      };
-    };
-    galleryImages?: Array<{ url: string; isPrimary?: boolean }>;
-    availableColors?: string[];
-    availableSizes?: string[];
-    variants?: Array<{ color: string; colorHex?: string }>;
-  }
+  };
+  galleryImages?: Array<{ url: string; isPrimary?: boolean; color?: string }>;
+  availableColors?: string[];
+  availableSizes?: string[];
+  variants?: ProductVariant[];
+}
 
 // Helper function to convert color name to hex code
 const getColorHex = (colorName: string): string => {
-    const colorMap: { [key: string]: string } = {
-      'black': '#000000',
-      'white': '#FFFFFF',
-      'red': '#FF0000',
-      'blue': '#0000FF',
-      'green': '#008000',
-      'yellow': '#FFFF00',
-      'orange': '#FFA500',
-      'purple': '#800080',
-      'pink': '#FFC0CB',
-      'brown': '#A52A2A',
-      'grey': '#808080',
-      'gray': '#808080',
-      'navy': '#000080',
-      'maroon': '#800000',
-      'olive': '#808000',
-      'lime': '#00FF00',
-      'aqua': '#00FFFF',
-      'teal': '#008080',
-      'silver': '#C0C0C0',
-      'gold': '#FFD700',
-      'beige': '#F5F5DC',
-      'tan': '#D2B48C',
-      'khaki': '#F0E68C',
-      'coral': '#FF7F50',
-      'salmon': '#FA8072',
-      'turquoise': '#40E0D0',
-      'lavender': '#E6E6FA',
-      'ivory': '#FFFFF0',
-      'cream': '#FFFDD0',
-      'mint': '#98FF98',
-      'peach': '#FFE5B4',
-    };
-    
-    const normalized = colorName.toLowerCase().trim();
-    return colorMap[normalized] || '#CCCCCC'; // Default gray if color not found
+  const colorMap: { [key: string]: string } = {
+    'black': '#000000',
+    'white': '#FFFFFF',
+    'red': '#FF0000',
+    'blue': '#0000FF',
+    'green': '#008000',
+    'yellow': '#FFFF00',
+    'orange': '#FFA500',
+    'purple': '#800080',
+    'pink': '#FFC0CB',
+    'brown': '#A52A2A',
+    'grey': '#808080',
+    'gray': '#808080',
+    'navy': '#000080',
+    'maroon': '#800000',
+    'olive': '#808000',
+    'lime': '#00FF00',
+    'aqua': '#00FFFF',
+    'teal': '#008080',
+    'silver': '#C0C0C0',
+    'gold': '#FFD700',
+    'beige': '#F5F5DC',
+    'tan': '#D2B48C',
+    'khaki': '#F0E68C',
+    'coral': '#FF7F50',
+    'salmon': '#FA8072',
+    'turquoise': '#40E0D0',
+    'lavender': '#E6E6FA',
+    'ivory': '#FFFFF0',
+    'cream': '#FFFDD0',
+    'mint': '#98FF98',
+    'peach': '#FFE5B4',
+    'cerulean frost': '#6D9BC3',
+    'cerulean': '#6D9BC3',
+    'cobalt blue': '#0047AB',
+    'amber': '#FFBF00',
+    'frosted': '#E8E8E8',
+    'natural': '#FAF0E6',
+    'beige-gray': '#9F9F9F',
+    'clear': '#FFFFFF',
+    'kraft': '#D4A574',
   };
   
-  export const ProductInfoPanel: React.FC<{
-    product: Product | null;
-    isLoading: boolean;
-    selectedColors?: string[];
-    selectedSizes?: string[];
-    onColorToggle?: (color: string) => void;
-    onSizeToggle?: (size: string) => void;
-    onPrimaryColorHexChange?: (hex: string | null) => void;
-  }> = ({ product, isLoading, selectedColors = [], selectedSizes = [], onColorToggle, onSizeToggle, onPrimaryColorHexChange }) => {
-    // Build a map of color names to hex values from variants
-    const colorHexMap = React.useMemo(() => {
-      const map: Record<string, string> = {};
-      if (product?.variants) {
-        product.variants.forEach((variant) => {
-          if (variant.color && variant.colorHex) {
-            map[variant.color] = variant.colorHex;
+  const normalized = colorName.toLowerCase().trim();
+  return colorMap[normalized] || '#CCCCCC';
+};
+
+export const ProductInfoPanel: React.FC<{
+  product: Product | null;
+  isLoading: boolean;
+  selectedColors?: string[];
+  selectedSizes?: string[];
+  selectedSizesByColor?: Record<string, string[]>;
+  onColorToggle?: (color: string) => void;
+  onSizeToggle?: (size: string) => void;
+  onSizeToggleForColor?: (color: string, size: string) => void;
+  onPrimaryColorHexChange?: (hex: string | null) => void;
+  selectedPlaceholderId?: string | null;
+  placeholders?: Array<{ id: string; x: number; y: number; width: number; height: number; rotation: number }>;
+  designUrlsByPlaceholder?: Record<string, string>;
+  displacementSettings?: { scaleX: number; scaleY: number; contrastBoost: number };
+  onDisplacementSettingsChange?: (settings: any) => void;
+  PX_PER_INCH?: number;
+}> = ({ 
+  product, 
+  isLoading, 
+  selectedColors = [], 
+  selectedSizes = [], 
+  selectedSizesByColor = {},
+  onColorToggle, 
+  onSizeToggle,
+  onSizeToggleForColor,
+  onPrimaryColorHexChange,
+  selectedPlaceholderId,
+  placeholders = [],
+  designUrlsByPlaceholder = {},
+  displacementSettings,
+  onDisplacementSettingsChange,
+  PX_PER_INCH = 10,
+}) => {
+  const [isColorDropdownOpen, setIsColorDropdownOpen] = React.useState(false);
+  const [expandedColor, setExpandedColor] = React.useState<string | null>(null);
+
+  // Build a map of color names to hex values from variants
+  const colorHexMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    if (product?.variants) {
+      product.variants.forEach((variant) => {
+        if (variant.color && variant.colorHex) {
+          map[variant.color] = variant.colorHex;
+        }
+      });
+    }
+    return map;
+  }, [product?.variants]);
+
+  // Get variant prices by color and size
+  const variantPriceMap = useMemo(() => {
+    const map: Record<string, Record<string, number>> = {};
+    if (product?.variants) {
+      product.variants.forEach((variant) => {
+        if (variant.color && variant.size && variant.price !== undefined) {
+          if (!map[variant.color]) {
+            map[variant.color] = {};
           }
-        });
+          map[variant.color][variant.size] = variant.price;
+        }
+      });
+    }
+    return map;
+  }, [product?.variants]);
+
+  // Calculate current price based on selected color and size (prioritize color-specific size)
+  const currentPrice = useMemo(() => {
+    if (selectedColors.length > 0) {
+      const color = selectedColors[0];
+      // Get color-specific sizes (array)
+      const colorSpecificSizes = selectedSizesByColor[color] || [];
+      if (colorSpecificSizes.length > 0) {
+        // Use the first selected size for this color
+        const price = variantPriceMap[color]?.[colorSpecificSizes[0]];
+        if (price !== undefined) {
+          return price;
+        }
       }
-      return map;
-    }, [product?.variants]);
-
-    // When selection changes, notify parent of the primary color's hex
-    React.useEffect(() => {
-      if (!onPrimaryColorHexChange) return;
-
-      const primaryColor = selectedColors[0];
-      if (!primaryColor) {
-        onPrimaryColorHexChange(null);
-        return;
+      // Fallback to general size selection
+      if (selectedSizes.length > 0) {
+        const size = selectedSizes[0];
+        const price = variantPriceMap[color]?.[size];
+        if (price !== undefined) {
+          return price;
+        }
       }
+    }
+    return product?.catalogue?.basePrice;
+  }, [selectedColors, selectedSizes, selectedSizesByColor, variantPriceMap, product?.catalogue?.basePrice]);
 
-      const hexFromVariant = colorHexMap[primaryColor];
-      const hex = hexFromVariant || getColorHex(primaryColor);
-      onPrimaryColorHexChange(hex || null);
-    }, [selectedColors, colorHexMap, onPrimaryColorHexChange]);
-
-    if (isLoading) {
-      return (
-        <div className="flex items-center justify-center py-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-        </div>
+  // Get product image based on selected color
+  const productImage = useMemo(() => {
+    if (!product?.galleryImages || product.galleryImages.length === 0) return null;
+    
+    // Try to find image matching selected color
+    if (selectedColors.length > 0) {
+      const colorImage = product.galleryImages.find(
+        img => img.color?.toLowerCase() === selectedColors[0].toLowerCase()
       );
+      if (colorImage) return colorImage.url;
+    }
+    
+    // Fallback to primary or first image
+    return product.galleryImages.find(img => img.isPrimary)?.url || product.galleryImages[0]?.url;
+  }, [product?.galleryImages, selectedColors]);
+
+  // When selection changes, notify parent of the primary color's hex
+  React.useEffect(() => {
+    if (!onPrimaryColorHexChange) return;
+
+    const primaryColor = selectedColors[0];
+    if (!primaryColor) {
+      onPrimaryColorHexChange(null);
+      return;
     }
 
-    if (!product) {
-      return (
-        <div className="text-center text-muted-foreground py-8">
-          <p>No product data available</p>
-        </div>
-      );
-    }
+    const hexFromVariant = colorHexMap[primaryColor];
+    const hex = hexFromVariant || getColorHex(primaryColor);
+    onPrimaryColorHexChange(hex || null);
+  }, [selectedColors, colorHexMap, onPrimaryColorHexChange]);
 
-    const productImage = product.galleryImages?.find(img => img.isPrimary)?.url || product.galleryImages?.[0]?.url;
-    const views = product.design?.views || [];
-    const dpi = product.design?.dpi || 300;
-  
+  // Get available sizes for a specific color
+  const getSizesForColor = (color: string): string[] => {
+    if (!product?.variants) return product?.availableSizes || [];
+    const sizes = new Set<string>();
+    product.variants.forEach(variant => {
+      if (variant.color === color && variant.isActive !== false) {
+        sizes.add(variant.size);
+      }
+    });
+    return Array.from(sizes).sort();
+  };
+
+  // Get price for a specific color and size
+  const getPriceForVariant = (color: string, size: string): number | undefined => {
+    return variantPriceMap[color]?.[size] || product?.catalogue?.basePrice;
+  };
+
+  if (isLoading) {
     return (
-      <div className="h-full overflow-y-auto">
-        <div className="space-y-4 p-4">
-          {/* Product Image */}
-          {/* {productImage && (
-             <div className="relative aspect-square bg-muted rounded-lg overflow-hidden">
-               <img
-                 src={productImage}
-                 alt={product.catalogue?.name || 'Product'}
-                 className="w-full h-full object-cover"
-               />
-             </div>
-           )} */}
-  
-          {/* Product Name */}
-          {/* <div>
-             <Label className="text-xs font-semibold uppercase text-muted-foreground mb-1 block">
-               Product Name
-             </Label>
-             <p className="font-semibold">{product.catalogue?.name || 'Unnamed Product'}</p>
-           </div> */}
-  
-          {/* Description */}
-          {/* {product.catalogue?.description && (
-             <div>
-               <Label className="text-xs font-semibold uppercase text-muted-foreground mb-1 block">
-                 Description
-               </Label>
-               <p className="text-sm text-muted-foreground">{product.catalogue.description}</p>
-             </div>
-           )} */}
-  
-          {/* Colors */}
-          {product.availableColors && product.availableColors.length > 0 && (
-            <div>
-              <Label className="text-xs font-semibold uppercase text-muted-foreground mb-2 block">
-                Select Colors
-              </Label>
-
-              {/* Dropdown using native details/summary for accessibility */}
-              <details className="relative">
-                <summary className="flex items-center justify-between p-2 border rounded-md cursor-pointer">
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-2">
-                      {selectedColors.length > 0 ? (
-                        <>
-                          <div className="flex -space-x-2">
-                            {selectedColors.slice(0, 3).map((c, i) => {
-                              const hex = colorHexMap[c] || getColorHex(c);
-                              return (
-                                <span
-                                  key={i}
-                                  className="w-5 h-5 rounded-full border border-border inline-block"
-                                  style={{ backgroundColor: hex }}
-                                />
-                              );
-                            })}
-                          </div>
-                          <span className="text-sm">{selectedColors.length} selected</span>
-                        </>
-                      ) : (
-                        <span className="text-sm text-muted-foreground">Choose colors</span>
-                      )}
-                    </div>
-                  </div>
-                  <span className="text-xs text-muted-foreground">▾</span>
-                </summary>
-
-                <div className="absolute left-0 right-0 mt-2 z-20 bg-background border rounded-md p-2 max-h-60 overflow-y-auto shadow-lg">
-                  <div className="space-y-1">
-                    {product.availableColors.map((color, index) => {
-                      const isSelected = selectedColors.includes(color);
-                      const colorHex = colorHexMap[color] || getColorHex(color);
-                      return (
-                        <label
-                          key={index}
-                          className="flex items-center gap-3 p-2 rounded-md hover:bg-muted/50 cursor-pointer"
-                        >
-                          <Checkbox
-                            checked={isSelected}
-                            onCheckedChange={() => onColorToggle?.(color)}
-                            className="cursor-pointer"
-                          />
-                          <span
-                            className="w-5 h-5 rounded-full border border-border flex-shrink-0 inline-block"
-                            style={{ backgroundColor: colorHex }}
-                            aria-hidden
-                          />
-                          <span className="text-sm flex-1">{color}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
-              </details>
-
-              {selectedColors.length > 0 && (
-                <p className="text-xs text-muted-foreground mt-2">
-                  {selectedColors.length} color{selectedColors.length > 1 ? 's' : ''} selected
-                </p>
-              )}
-            </div>
-          )}
-  
-          {/* Sizes */}
-          {product.availableSizes && product.availableSizes.length > 0 && (
-            <div>
-              <Label className="text-xs font-semibold uppercase text-muted-foreground mb-2 block">
-                Select Sizes
-              </Label>
-              <div className="flex flex-wrap gap-2">
-                {product.availableSizes.map((size, index) => {
-                  const isSelected = selectedSizes.includes(size);
-                  return (
-                    <Badge
-                      key={index}
-                      variant={isSelected ? "default" : "outline"}
-                      className={`text-xs px-3 py-1.5 ${
-                        onSizeToggle ? 'cursor-pointer hover:bg-primary/80 transition-colors' : ''
-                      }`}
-                      onClick={() => onSizeToggle?.(size)}
-                    >
-                      {size}
-                    </Badge>
-                  );
-                })}
-              </div>
-              {selectedSizes.length > 0 && (
-                <p className="text-xs text-muted-foreground mt-2">
-                  {selectedSizes.length} size{selectedSizes.length > 1 ? 's' : ''} selected
-                </p>
-              )}
-            </div>
-          )}
-  
-  
-          {/* Price */}
-          {product.catalogue?.basePrice && (
-            <div>
-              <Label className="text-xs font-semibold uppercase text-muted-foreground mb-1 block">
-                Base Price
-              </Label>
-              <p className="text-lg font-bold">${product.catalogue.basePrice.toFixed(2)}</p>
-            </div>
-          )}
-  
-          {/* Design Specifications */}
-          <div className="border-t pt-4">
-            <Label className="text-xs font-semibold uppercase text-muted-foreground mb-2 block">
-              Design Specifications
-            </Label>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">DPI:</span>
-                <span className="font-medium">{dpi}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Views:</span>
-                <span className="font-medium">{views.length}</span>
-              </div>
-            </div>
-          </div>
-  
-          {/* Available Views */}
-          {views.length > 0 && (
-            <div>
-              <Label className="text-xs font-semibold uppercase text-muted-foreground mb-2 block">
-                Available Views
-              </Label>
-              <div className="space-y-2">
-                {views.map((view) => (
-                  <div
-                    key={view.key}
-                    className="p-2 border rounded-lg flex items-center gap-2 hover:bg-muted/50 transition-colors"
-                  >
-                    <div className="w-12 h-12 bg-muted rounded overflow-hidden flex-shrink-0">
-                      {view.mockupImageUrl ? (
-                        <img
-                          src={view.mockupImageUrl}
-                          alt={view.key}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground">
-                          {view.key}
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium capitalize">{view.key}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {view.placeholders?.length || 0} print area{view.placeholders?.length !== 1 ? 's' : ''}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-  
-          {/* Print Area Info */}
-          {/* {views.length > 0 && (
-             <div className="border-t pt-4">
-               <Label className="text-xs font-semibold uppercase text-muted-foreground mb-2 block">
-                 Print Areas
-               </Label>
-               <div className="space-y-2 text-xs">
-                 {views.map((view) => {
-                   const viewDpi = product?.design?.dpi || 300;
-                   return (
-                     <div key={view.key} className="p-2 bg-muted rounded">
-                       <p className="font-medium capitalize mb-1">{view.key}</p>
-                       {view.placeholders && view.placeholders.length > 0 ? (
-                         <div className="space-y-1">
-                           {view.placeholders.map((placeholder: Placeholder, idx) => {
-                             const placeholderDpi = placeholder.dpi || viewDpi;
-                             const widthPx = placeholder.widthIn * placeholderDpi;
-                             const heightPx = placeholder.heightIn * placeholderDpi;
-                             return (
-                               <div key={placeholder.id || idx} className="text-muted-foreground">
-                                 <div className="font-medium">Area {idx + 1}</div>
-                                 <div>Size: {placeholder.widthIn}" × {placeholder.heightIn}" ({Math.round(widthPx)} × {Math.round(heightPx)}px)</div>
-                                 <div>Position: ({placeholder.xIn}", {placeholder.yIn}")</div>
-                                 {placeholder.rotationDeg !== undefined && placeholder.rotationDeg !== 0 && (
-                                   <div>Rotation: {placeholder.rotationDeg}°</div>
-                                 )}
-                                 {placeholder.scale !== undefined && placeholder.scale !== 1 && (
-                                   <div>Scale: {placeholder.scale}x</div>
-                                 )}
-                               </div>
-                             );
-                           })}
-                         </div>
-                       ) : (
-                         <p className="text-muted-foreground">No print areas defined</p>
-                       )}
-                     </div>
-                   );
-                 })}
-               </div>
-             </div>
-           )} */}
-        </div>
+      <div className="flex items-center justify-center py-8">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
       </div>
     );
-  };
+  }
+
+  if (!product) {
+    return (
+      <div className="text-center text-muted-foreground py-8">
+        <p>No product data available</p>
+      </div>
+    );
+  }
+
+  const availableColors = product.availableColors || [];
+  const availableSizes = product.availableSizes || [];
+
+  return (
+    <div className="h-full overflow-y-auto">
+      <div className="space-y-6 p-4">
+
+        {/* SELECT COLORS Section */}
+        {availableColors.length > 0 && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <Label className="text-sm font-semibold uppercase text-foreground">
+                SELECT COLORS
+              </Label>
+              {selectedColors.length > 0 && (
+                <span className="text-xs text-muted-foreground">
+                  {selectedColors.length} selected
+                </span>
+              )}
+            </div>
+
+            {/* Color Grid */}
+            <div className="grid grid-cols-1 gap-2">
+              {availableColors.map((color, index) => {
+                const isSelected = selectedColors.includes(color);
+                const colorHex = colorHexMap[color] || getColorHex(color);
+                const isExpanded = expandedColor === color;
+                const sizesForColor = getSizesForColor(color);
+
+                return (
+                  <div key={index} className="space-y-2">
+                    {/* Color Option */}
+                    <div
+                      className={`
+                        flex items-center gap-2 p-2 rounded-md border-2 transition-all
+                        ${isSelected 
+                          ? 'border-primary bg-primary/5' 
+                          : 'border-border hover:border-primary/50 hover:bg-muted/50'
+                        }
+                      `}
+                    >
+                      <Checkbox
+                        checked={isSelected}
+                        onCheckedChange={() => onColorToggle?.(color)}
+                        className="cursor-pointer"
+                      />
+                      <div
+                        className="w-6 h-6 rounded-full border-2 flex-shrink-0"
+                        style={{
+                          backgroundColor: colorHex,
+                          borderColor: color === 'White' || color === 'Clear' ? '#E5E7EB' : 'rgba(0, 0, 0, 0.2)',
+                        }}
+                      />
+                      <span className="text-sm font-medium flex-1">{color}</span>
+                      {sizesForColor.length > 0 && (
+                        <button
+                          onClick={() => setExpandedColor(isExpanded ? null : color)}
+                          className="p-1 hover:bg-muted rounded"
+                        >
+                          {isExpanded ? (
+                            <ChevronUp className="h-4 w-4" />
+                          ) : (
+                            <ChevronDown className="h-4 w-4" />
+                          )}
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Expanded Size List for this Color */}
+                    {isExpanded && sizesForColor.length > 0 && (
+                      <div className="ml-8 space-y-1.5 border-l-2 border-primary/20 pl-3">
+                        {sizesForColor.map((size, sizeIndex) => {
+                          // Get all selected sizes for this color (as an array)
+                          const colorSizes = selectedSizesByColor[color] || [];
+                          const isSizeSelected = colorSizes.includes(size);
+                          const variantPrice = getPriceForVariant(color, size);
+                          
+                          return (
+                            <div
+                              key={sizeIndex}
+                              className={`
+                                flex items-center justify-between gap-2 p-1.5 rounded cursor-pointer transition-all
+                                ${isSizeSelected 
+                                  ? 'bg-primary/10 border-l-2 border-primary pl-2' 
+                                  : 'hover:bg-muted/50'
+                                }
+                              `}
+                            >
+                              <div className="flex items-center gap-2">
+                                <Checkbox
+                                  checked={isSizeSelected}
+                                  onCheckedChange={() => {
+                                    if (onSizeToggleForColor) {
+                                      onSizeToggleForColor(color, size);
+                                    } else {
+                                      onSizeToggle?.(size);
+                                    }
+                                  }}
+                                  className="cursor-pointer"
+                                />
+                                <span className="text-sm">{size}</span>
+                              </div>
+                              {variantPrice !== undefined && (
+                                <span className={`text-sm font-semibold ${isSizeSelected ? 'text-primary' : ''}`}>
+                                  ${variantPrice.toFixed(2)}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+       
+
+       
+      </div>
+    </div>
+  );
+};

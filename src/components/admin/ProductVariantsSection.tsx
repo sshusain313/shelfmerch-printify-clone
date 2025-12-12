@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, memo } from 'react';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -21,6 +21,7 @@ interface ProductVariantsSectionProps {
   onSizesChange: (sizes: string[]) => void;
   onColorsChange: (colors: string[]) => void;
   onVariantsChange: (variants: ProductVariant[]) => void;
+  skuTemplate?: string;
   baseSku?: string; // Base SKU prefix for auto-generation
   categoryId?: string; // Category ID to determine variant options
   subcategoryId?: string; // Subcategory ID for more specific options
@@ -315,27 +316,10 @@ export const ProductVariantsSection = ({
     }
   };
 
-  const handleVariantToggle = (variantId: string, isActive: boolean) => {
-    onVariantsChange(
-      variants.map(v => v.id === variantId ? { ...v, isActive } : v)
-    );
-  };
-
-  const handleSkuChange = (variantId: string, sku: string) => {
-    onVariantsChange(
-      variants.map(v => v.id === variantId ? { ...v, sku } : v)
-    );
-  };
-
-  const handlePriceChange = (variantId: string, price: string) => {
-    const numericPrice = price === '' ? undefined : parseFloat(price);
-    // Only update if it's a valid number or empty string
-    if (price === '' || (!isNaN(numericPrice!) && numericPrice! >= 0)) {
-      onVariantsChange(
-        variants.map(v => v.id === variantId ? { ...v, price: numericPrice } : v)
-      );
-    }
-  };
+  // Update only a single variant by id. Keeps other variants untouched.
+  const handleVariantUpdate = useCallback((variantId: string, patch: Partial<ProductVariant>) => {
+    onVariantsChange(variants.map(v => v.id === variantId ? { ...v, ...patch } : v));
+  }, [variants, onVariantsChange]);
 
   const regenerateSkus = () => {
     onVariantsChange(
@@ -348,6 +332,115 @@ export const ProductVariantsSection = ({
       }))
     );
   };
+
+  // Localized row component to keep per-row state and avoid global updates
+  interface VariantRowProps {
+    variant: ProductVariant;
+    onUpdate: (id: string, patch: Partial<ProductVariant>) => void;
+  }
+
+  const VariantRow = memo(function VariantRow({ variant, onUpdate }: VariantRowProps) {
+    const [sku, setSku] = useState<string>(variant.sku ?? '');
+    const [priceStr, setPriceStr] = useState<string>(variant.price !== undefined ? String(variant.price) : '');
+    const [active, setActive] = useState<boolean>(!!variant.isActive);
+
+    useEffect(() => {
+      setSku(variant.sku ?? '');
+      setPriceStr(variant.price !== undefined ? String(variant.price) : '');
+      setActive(!!variant.isActive);
+    }, [variant.sku, variant.price, variant.isActive]);
+
+    const handleSkuLocalChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+      const v = e.target.value;
+      setSku(v);
+    }, []);
+
+    const commitSku = useCallback(() => {
+      onUpdate(variant.id, { sku });
+    }, [onUpdate, variant.id, sku]);
+
+    const handlePriceLocalChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+      const value = e.target.value;
+      // Allow empty, numbers, and decimal point
+      if (value === '' || /^\d*\.?\d*$/.test(value)) {
+        setPriceStr(value);
+      }
+    }, []);
+
+    const commitPrice = useCallback(() => {
+      const value = priceStr;
+      const numeric = value === '' || value === '.' ? undefined : parseFloat(value);
+      const newPrice = (value === '' || value === '.' || isNaN(numeric as number) || (numeric as number) < 0) ? undefined : numeric;
+      onUpdate(variant.id, { price: newPrice });
+    }, [onUpdate, variant.id, priceStr]);
+
+    const handleActiveChange = useCallback((checked: boolean) => {
+      setActive(checked);
+    }, []);
+
+    const commitActive = useCallback(() => {
+      onUpdate(variant.id, { isActive: active });
+    }, [onUpdate, variant.id, active]);
+
+    return (
+      <Card className="p-3">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex-1 grid grid-cols-4 gap-2 items-center">
+            <div>
+              <Label className="text-xs text-muted-foreground">Size</Label>
+              <p className="text-sm font-medium">{variant.size}</p>
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">Color</Label>
+              <p className="text-sm font-medium">{variant.color}</p>
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">SKU</Label>
+              <Input
+                value={sku}
+                onChange={handleSkuLocalChange}
+                onBlur={commitSku}
+                onKeyDown={(e) => e.key === 'Enter' && commitSku()}
+                className="h-8 text-sm"
+              />
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">Price</Label>
+              <Input
+                type="text"
+                inputMode="decimal"
+                value={priceStr}
+                onChange={handlePriceLocalChange}
+                onBlur={commitPrice}
+                onKeyDown={(e) => e.key === 'Enter' && commitPrice()}
+                placeholder="0.00"
+                className="h-8 text-sm"
+              />
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Label className="text-xs">Active</Label>
+            <Switch
+              checked={active}
+              onCheckedChange={(checked) => handleActiveChange(checked as boolean)}
+              onBlur={commitActive}
+              onKeyDown={(e: React.KeyboardEvent) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  commitActive();
+                }
+              }}
+            />
+          </div>
+        </div>
+      </Card>
+    );
+  }, (prev, next) => (
+    prev.variant.id === next.variant.id &&
+    prev.variant.sku === next.variant.sku &&
+    prev.variant.price === next.variant.price &&
+    prev.variant.isActive === next.variant.isActive
+  ));
 
   return (
     <div className="space-y-6">
@@ -494,47 +587,7 @@ export const ProductVariantsSection = ({
           
           <div className="space-y-2 max-h-[400px] overflow-y-auto">
             {variants.map((variant) => (
-              <Card key={variant.id} className="p-3">
-                <div className="flex items-center justify-between gap-4">
-                  <div className="flex-1 grid grid-cols-4 gap-2 items-center">
-                    <div>
-                      <Label className="text-xs text-muted-foreground">Size</Label>
-                      <p className="text-sm font-medium">{variant.size}</p>
-                    </div>
-                    <div>
-                      <Label className="text-xs text-muted-foreground">Color</Label>
-                      <p className="text-sm font-medium">{variant.color}</p>
-                    </div>
-                    <div>
-                      <Label className="text-xs text-muted-foreground">SKU</Label>
-                      <Input
-                        value={variant.sku}
-                        onChange={(e) => handleSkuChange(variant.id, e.target.value)}
-                        className="h-8 text-sm"
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-xs text-muted-foreground">Price</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={variant.price ?? ''}
-                        onChange={(e) => handlePriceChange(variant.id, e.target.value)}
-                        placeholder="0.00"
-                        className="h-8 text-sm"
-                      />
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Label className="text-xs">Active</Label>
-                    <Switch
-                      checked={variant.isActive}
-                      onCheckedChange={(checked) => handleVariantToggle(variant.id, checked)}
-                    />
-                  </div>
-                </div>
-              </Card>
+              <VariantRow key={variant.id} variant={variant} onUpdate={handleVariantUpdate} />
             ))}
           </div>
         </div>

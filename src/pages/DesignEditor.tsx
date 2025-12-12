@@ -148,6 +148,7 @@ const DesignEditor: React.FC = () => {
   // Canvas state
   const stageRef = useRef<any>(null);
   const transformerRef = useRef<any>(null);
+  const webglCanvasRef = useRef<HTMLDivElement | null>(null);
   const [elements, setElements] = useState<CanvasElement[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [zoom, setZoom] = useState(100);
@@ -185,8 +186,41 @@ const DesignEditor: React.FC = () => {
   const [showGrid, setShowGrid] = useState(false);
   const [showRulers, setShowRulers] = useState(false);
   const [previewMode, setPreviewMode] = useState(false); // true = hide overlay/panels, show only WebGL mockup
-  // Design URLs by placeholder ID for WebGL preview
-  const [designUrlsByPlaceholder, setDesignUrlsByPlaceholder] = useState<Record<string, string>>({});
+  const previewModeRef = useRef(false); // Ref to ensure previewMode persists across view changes
+  
+  // Sync ref with state
+  useEffect(() => {
+    previewModeRef.current = previewMode;
+  }, [previewMode]);
+  // Design URLs by placeholder ID for WebGL preview - stored per view
+  const [designUrlsByPlaceholder, setDesignUrlsByPlaceholder] = useState<Record<string, Record<string, string>>>({});
+  
+  // Helper functions for view-specific designUrlsByPlaceholder
+  const getDesignUrlsForView = useCallback((view: string): Record<string, string> => {
+    return designUrlsByPlaceholder[view] || {};
+  }, [designUrlsByPlaceholder]);
+
+  const setDesignUrlForView = useCallback((view: string, placeholderId: string, designUrl: string) => {
+    setDesignUrlsByPlaceholder(prev => ({
+      ...prev,
+      [view]: {
+        ...(prev[view] || {}),
+        [placeholderId]: designUrl,
+      },
+    }));
+  }, []);
+
+  const removeDesignUrlForView = useCallback((view: string, placeholderId: string) => {
+    setDesignUrlsByPlaceholder(prev => {
+      const viewDesigns = prev[view] || {};
+      const updated = { ...viewDesigns };
+      delete updated[placeholderId];
+      return {
+        ...prev,
+        [view]: updated,
+      };
+    });
+  }, []);
 
   // Product state
   const [product, setProduct] = useState<Product | null>(null);
@@ -194,7 +228,8 @@ const DesignEditor: React.FC = () => {
   const [mockupImage, setMockupImage] = useState<HTMLImageElement | null>(null);
   const [imageSize, setImageSize] = useState({ width: 0, height: 0, x: 0, y: 0 });
   const [selectedColors, setSelectedColors] = useState<string[]>([]);
-  const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
+  const [selectedSizes, setSelectedSizes] = useState<string[]>([]); // Keep for backward compatibility
+  const [selectedSizesByColor, setSelectedSizesByColor] = useState<Record<string, string[]>>({});
   const [primaryColorHex, setPrimaryColorHex] = useState<string | null>(null);
   const [isPublishing, setIsPublishing] = useState(false);
   const [displacementSettings, setDisplacementSettings] = useState<DisplacementSettings>({
@@ -859,6 +894,12 @@ const DesignEditor: React.FC = () => {
   const handleColorToggle = useCallback((color: string) => {
     setSelectedColors(prev => {
       if (prev.includes(color)) {
+        // When deselecting a color, clear its size selection
+        setSelectedSizesByColor(prevSizes => {
+          const newSizes = { ...prevSizes };
+          delete newSizes[color];
+          return newSizes;
+        });
         return prev.filter(c => c !== color);
       } else {
         return [...prev, color];
@@ -866,7 +907,7 @@ const DesignEditor: React.FC = () => {
     });
   }, []);
 
-  // Toggle size selection
+  // Toggle size selection (backward compatibility - for standalone size selection)
   const handleSizeToggle = useCallback((size: string) => {
     setSelectedSizes(prev => {
       if (prev.includes(size)) {
@@ -874,6 +915,21 @@ const DesignEditor: React.FC = () => {
       } else {
         return [...prev, size];
       }
+    });
+  }, []);
+
+  // Toggle size selection for a specific color (allows multiple sizes per color)
+  const handleSizeToggleForColor = useCallback((color: string, size: string) => {
+    setSelectedSizesByColor(prev => {
+      const colorSizes = prev[color] || [];
+      // If size is already selected, remove it; otherwise, add it
+      const updatedSizes = colorSizes.includes(size)
+        ? colorSizes.filter(s => s !== size)
+        : [...colorSizes, size];
+      return {
+        ...prev,
+        [color]: updatedSizes,
+      };
     });
   }, []);
 
@@ -916,19 +972,13 @@ const DesignEditor: React.FC = () => {
   // Handle image click from upload panel - apply to selected placeholder
   const handleImageClick = (imageUrl: string) => {
     if (selectedPlaceholderId) {
-      setDesignUrlsByPlaceholder(prev => ({
-        ...prev,
-        [selectedPlaceholderId]: imageUrl,
-      }));
+      setDesignUrlForView(currentView, selectedPlaceholderId, imageUrl);
       toast.success('Design applied to placeholder');
     } else if (placeholders.length === 1) {
       // Auto-select if only one placeholder
       setSelectedPlaceholderId(placeholders[0].id);
       selectedPlaceholderIdRef.current = placeholders[0].id;
-      setDesignUrlsByPlaceholder(prev => ({
-        ...prev,
-        [placeholders[0].id]: imageUrl,
-      }));
+      setDesignUrlForView(currentView, placeholders[0].id, imageUrl);
       toast.success('Design applied to placeholder');
     } else {
       toast.error('Please select a placeholder first');
@@ -1039,6 +1089,82 @@ const DesignEditor: React.FC = () => {
     toast.success(`Design exported as ${format.toUpperCase()}`);
   };
 
+  // Capture preview image from WebGL canvas
+  const capturePreviewImage = useCallback(async (): Promise<string | null> => {
+    try {
+      if (!webglCanvasRef.current) {
+        console.warn('WebGL canvas ref not available');
+        return null;
+      }
+
+      // Wait a bit for canvas to be ready
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Find the canvas element inside the WebGL container
+      // The canvas might be directly in the div or nested
+      let canvas = webglCanvasRef.current.querySelector('canvas');
+      
+      // If not found, try finding it in child elements
+      if (!canvas) {
+        const divs = webglCanvasRef.current.querySelectorAll('div');
+        for (const div of Array.from(divs)) {
+          canvas = div.querySelector('canvas');
+          if (canvas) break;
+        }
+      }
+
+      if (!canvas) {
+        console.warn('Canvas element not found in WebGL container');
+        return null;
+      }
+
+      // Convert canvas to blob and upload
+      return new Promise((resolve) => {
+        canvas.toBlob(async (blob) => {
+          if (!blob) {
+            console.error('Failed to convert canvas to blob');
+            resolve(null);
+            return;
+          }
+
+          try {
+            const formData = new FormData();
+            formData.append('image', blob, 'preview.png');
+
+            const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+            const token = localStorage.getItem('token');
+            
+            const headers: HeadersInit = {};
+            if (token) {
+              headers['Authorization'] = `Bearer ${token}`;
+            }
+
+            const response = await fetch(`${API_BASE_URL}/api/upload/image`, {
+              method: 'POST',
+              headers,
+              body: formData,
+            });
+
+            const data = await response.json();
+            if (data.success && data.url) {
+              console.log('Preview image uploaded successfully:', data.url);
+              resolve(data.url);
+            } else {
+              console.error('Failed to upload preview image:', data.message || 'Unknown error');
+              resolve(null);
+            }
+          } catch (error) {
+            console.error('Error uploading preview image:', error);
+            resolve(null);
+          }
+        }, 'image/png', 1.0);
+      });
+    } catch (error) {
+      console.error('Error capturing preview image:', error);
+      return null;
+    }
+  }, []);
+
   // Publish current product + design to the merchant's store
   const handlePublishToStore = useCallback(async () => {
     try {
@@ -1065,12 +1191,29 @@ const DesignEditor: React.FC = () => {
         return;
       }
 
-      // Prepare design payload
+      // Capture preview image
+      toast.info('Capturing preview image...');
+      const previewImageUrl = await capturePreviewImage();
+
+      // Prepare design payload with all views
+      const viewsData: Record<string, any> = {};
+      const availableViews = product?.design?.views || [];
+      
+      availableViews.forEach((view: ProductView) => {
+        const viewElements = elements.filter(el => el.view === view.key || (!el.view && view.key === 'front'));
+        viewsData[view.key] = {
+          elements: viewElements,
+          designUrlsByPlaceholder: designUrlsByPlaceholder[view.key] || {},
+        };
+      });
+
       const designPayload = {
-        elements,
-        view: currentView,
+        elements: elements, // All elements from all views
+        views: viewsData, // View-specific data
+        currentView,
         selectedColors,
         selectedSizes,
+        previewImageUrl, // Add preview image URL
         placeholders: placeholders.map(p => ({ id: p.id, x: p.x, y: p.y, width: p.width, height: p.height, rotation: p.rotation })),
         pxPerInch: PX_PER_INCH,
         canvas: { width: stageSize.width, height: stageSize.height, padding: canvasPadding },
@@ -1238,7 +1381,8 @@ const DesignEditor: React.FC = () => {
                   onFileUpload={handleFileUpload}
                   onUploadClick={() => document.getElementById('file-upload')?.click()}
                   imagePreview={uploadedImagePreview}
-                  onImageClick={handleImageClick}
+                  // Add uploaded images to canvas like other asset panels
+                  onImageClick={addImageToCanvas}
                   selectedPlaceholderId={selectedPlaceholderId}
                   placeholders={placeholders.map(p => ({
                     id: p.id,
@@ -1322,6 +1466,7 @@ const DesignEditor: React.FC = () => {
             <div className="relative w-full h-full flex items-center justify-center">
               {/* WebGL Canvas + Konva Overlay - Same positioning context */}
               <div
+                ref={webglCanvasRef}
                 className="relative bg-white shadow-lg"
                 style={{
                   transform: `scale(${zoom / 100})`,
@@ -1368,12 +1513,9 @@ const DesignEditor: React.FC = () => {
                   settings={displacementSettings}
                   onSettingsChange={setDisplacementSettings}
                   onDesignUpload={(placeholderId, designUrl) => {
-                    setDesignUrlsByPlaceholder(prev => ({
-                      ...prev,
-                      [placeholderId]: designUrl,
-                    }));
+                    setDesignUrlForView(currentView, placeholderId, designUrl);
                   }}
-                  designUrlsByPlaceholder={designUrlsByPlaceholder}
+                  designUrlsByPlaceholder={getDesignUrlsForView(currentView)}
                   onSelectPlaceholder={(id) => {
                     if (id) {
                       console.log('Placeholder selected via WebGL:', id);
@@ -1387,6 +1529,10 @@ const DesignEditor: React.FC = () => {
                   }}
                   previewMode={previewMode}
                   garmentTintHex={primaryColorHex}
+                  canvasElements={elements}
+                  currentView={currentView}
+                  canvasPadding={canvasPadding}
+                  PX_PER_INCH={PX_PER_INCH}
                 />
 
                 {/* Konva Overlay - Just for Grid & Rulers now */}
@@ -1663,7 +1809,7 @@ const DesignEditor: React.FC = () => {
                         })()}
 
                         {/* Transformer for selected element */}
-                        <Transformer ref={transformerRef} rotateEnabled={true} />
+                        {/* <Transformer ref={transformerRef} rotateEnabled={true} /> */}
                       </Layer>
                     </Stage>
                   </div>
@@ -1679,7 +1825,13 @@ const DesignEditor: React.FC = () => {
                       variant={currentView === viewKey ? 'default' : 'ghost'}
                       size="sm"
                       onClick={() => {
+                        // Explicitly preserve previewMode when switching views
+                        const currentPreviewMode = previewModeRef.current;
                         setCurrentView(viewKey as any);
+                        // Restore previewMode after view change to ensure it persists
+                        if (currentPreviewMode !== previewMode) {
+                          setPreviewMode(currentPreviewMode);
+                        }
                         // Clear selected placeholder when switching views
                         setSelectedPlaceholderId(null);
                         selectedPlaceholderIdRef.current = null;
@@ -1711,8 +1863,10 @@ const DesignEditor: React.FC = () => {
                   isLoading={isLoadingProduct}
                   selectedColors={selectedColors}
                   selectedSizes={selectedSizes}
+                  selectedSizesByColor={selectedSizesByColor}
                   onColorToggle={handleColorToggle}
                   onSizeToggle={handleSizeToggle}
+                  onSizeToggleForColor={handleSizeToggleForColor}
                   onPrimaryColorHexChange={setPrimaryColorHex}
                 />
               </TabsContent>
@@ -1721,19 +1875,12 @@ const DesignEditor: React.FC = () => {
                 <PropertiesPanel
                   selectedPlaceholderId={selectedPlaceholderId}
                   placeholders={placeholders}
-                  designUrlsByPlaceholder={designUrlsByPlaceholder}
+                  designUrlsByPlaceholder={getDesignUrlsForView(currentView)}
                   onDesignUpload={(placeholderId, designUrl) => {
-                    setDesignUrlsByPlaceholder(prev => ({
-                      ...prev,
-                      [placeholderId]: designUrl,
-                    }));
+                    setDesignUrlForView(currentView, placeholderId, designUrl);
                   }}
                   onDesignRemove={(placeholderId) => {
-                    setDesignUrlsByPlaceholder(prev => {
-                      const updated = { ...prev };
-                      delete updated[placeholderId];
-                      return updated;
-                    });
+                    removeDesignUrlForView(currentView, placeholderId);
                   }}
                   displacementSettings={displacementSettings}
                   onDisplacementSettingsChange={setDisplacementSettings}
@@ -1757,13 +1904,9 @@ const DesignEditor: React.FC = () => {
                     selectedPlaceholderIdRef.current = id;
                     setSelectedIds([]);
                   }}
-                  designUrlsByPlaceholder={designUrlsByPlaceholder}
+                  designUrlsByPlaceholder={getDesignUrlsForView(currentView)}
                   onDesignRemove={(placeholderId) => {
-                    setDesignUrlsByPlaceholder(prev => {
-                      const updated = { ...prev };
-                      delete updated[placeholderId];
-                      return updated;
-                    });
+                    removeDesignUrlForView(currentView, placeholderId);
                   }}
                   elements={elements}
                   selectedIds={selectedIds}
@@ -2516,241 +2659,241 @@ const PropertiesPanel: React.FC<{
   };
 
   // Show placeholder properties when placeholder is selected
-  if (selectedPlaceholderId && selectedPlaceholder) {
-    const designUrl = designUrlsByPlaceholder[selectedPlaceholderId];
-    const transform = designTransforms[selectedPlaceholderId] || { x: 0, y: 0, scale: 1 };
+  // if (selectedPlaceholderId && selectedPlaceholder) {
+  //   const designUrl = designUrlsByPlaceholder[selectedPlaceholderId];
+  //   const transform = designTransforms[selectedPlaceholderId] || { x: 0, y: 0, scale: 1 };
 
-    return (
-      <div className="space-y-6">
-        {/* Size Section */}
-        {designUrl && (
-          <div className="space-y-4">
-            <h3 className="text-sm font-semibold">Size</h3>
-            <div className="space-y-2">
-              <div>
-                <Label className="text-xs">Width: {Math.round(selectedPlaceholder.width * PX_PER_INCH)}px</Label>
-                <Slider
-                  value={[selectedPlaceholder.width * PX_PER_INCH]}
-                  onValueChange={([value]) => {
-                    // Update placeholder width
-                    const newWidth = value / PX_PER_INCH;
-                    // This would need to be handled by a callback, but keeping structure for now
-                  }}
-                  min={10}
-                  max={1000}
-                  step={1}
-                />
-              </div>
-              <div>
-                <Label className="text-xs">Height: {Math.round(selectedPlaceholder.height * PX_PER_INCH)}px</Label>
-                <Slider
-                  value={[selectedPlaceholder.height * PX_PER_INCH]}
-                  onValueChange={([value]) => {
-                    // Update placeholder height
-                    const newHeight = value / PX_PER_INCH;
-                    // This would need to be handled by a callback, but keeping structure for now
-                  }}
-                  min={10}
-                  max={1000}
-                  step={1}
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="lockAspect"
-                  className="w-4 h-4"
-                  checked={false}
-                  onChange={() => {}}
-                />
-                <Label htmlFor="lockAspect" className="text-xs cursor-pointer">
-                  🔒 Lock aspect ratio
-                </Label>
-              </div>
-            </div>
-          </div>
-        )}
+  //   return (
+  //     <div className="space-y-6">
+  //       {/* Size Section */}
+  //       {/* {designUrl && (
+  //         <div className="space-y-4">
+  //           <h3 className="text-sm font-semibold">Size</h3>
+  //           <div className="space-y-2">
+  //             <div>
+  //               <Label className="text-xs">Width: {Math.round(selectedPlaceholder.width * PX_PER_INCH)}px</Label>
+  //               <Slider
+  //                 value={[selectedPlaceholder.width * PX_PER_INCH]}
+  //                 onValueChange={([value]) => {
+  //                   // Update placeholder width
+  //                   const newWidth = value / PX_PER_INCH;
+  //                   // This would need to be handled by a callback, but keeping structure for now
+  //                 }}
+  //                 min={10}
+  //                 max={1000}
+  //                 step={1}
+  //               />
+  //             </div>
+  //             <div>
+  //               <Label className="text-xs">Height: {Math.round(selectedPlaceholder.height * PX_PER_INCH)}px</Label>
+  //               <Slider
+  //                 value={[selectedPlaceholder.height * PX_PER_INCH]}
+  //                 onValueChange={([value]) => {
+  //                   // Update placeholder height
+  //                   const newHeight = value / PX_PER_INCH;
+  //                   // This would need to be handled by a callback, but keeping structure for now
+  //                 }}
+  //                 min={10}
+  //                 max={1000}
+  //                 step={1}
+  //               />
+  //             </div>
+  //             <div className="flex items-center gap-2">
+  //               <input
+  //                 type="checkbox"
+  //                 id="lockAspect"
+  //                 className="w-4 h-4"
+  //                 checked={false}
+  //                 onChange={() => {}}
+  //               />
+  //               <Label htmlFor="lockAspect" className="text-xs cursor-pointer">
+  //                 🔒 Lock aspect ratio
+  //               </Label>
+  //             </div>
+  //           </div>
+  //         </div>
+  //       )} */}
 
-        {/* Position Section */}
-        {designUrl && (
-          <div className="space-y-4">
-            <h3 className="text-sm font-semibold">Position</h3>
-            <div className="space-y-2">
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <Label className="text-xs">X: {Math.round(transform.x * PX_PER_INCH)}px</Label>
-                </div>
-                <Slider
-                  value={[transform.x * PX_PER_INCH]}
-                  onValueChange={([value]) => {
-                    setDesignTransforms(prev => ({
-                      ...prev,
-                      [selectedPlaceholderId]: { ...transform, x: value / PX_PER_INCH },
-                    }));
-                  }}
-                  min={0}
-                  max={1000}
-                  step={1}
-                />
-              </div>
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <Label className="text-xs">Y: {Math.round(transform.y * PX_PER_INCH)}px</Label>
-                </div>
-                <Slider
-                  value={[transform.y * PX_PER_INCH]}
-                  onValueChange={([value]) => {
-                    setDesignTransforms(prev => ({
-                      ...prev,
-                      [selectedPlaceholderId]: { ...transform, y: value / PX_PER_INCH },
-                    }));
-                  }}
-                  min={0}
-                  max={1000}
-                  step={1}
-                />
-              </div>
-            </div>
-          </div>
-        )}
+  //       {/* Position Section */}
+  //       {/* {designUrl && (
+  //         <div className="space-y-4">
+  //           <h3 className="text-sm font-semibold">Position</h3>
+  //           <div className="space-y-2">
+  //             <div>
+  //               <div className="flex items-center justify-between mb-1">
+  //                 <Label className="text-xs">X: {Math.round(transform.x * PX_PER_INCH)}px</Label>
+  //               </div>
+  //               <Slider
+  //                 value={[transform.x * PX_PER_INCH]}
+  //                 onValueChange={([value]) => {
+  //                   setDesignTransforms(prev => ({
+  //                     ...prev,
+  //                     [selectedPlaceholderId]: { ...transform, x: value / PX_PER_INCH },
+  //                   }));
+  //                 }}
+  //                 min={0}
+  //                 max={1000}
+  //                 step={1}
+  //               />
+  //             </div>
+  //             <div>
+  //               <div className="flex items-center justify-between mb-1">
+  //                 <Label className="text-xs">Y: {Math.round(transform.y * PX_PER_INCH)}px</Label>
+  //               </div>
+  //               <Slider
+  //                 value={[transform.y * PX_PER_INCH]}
+  //                 onValueChange={([value]) => {
+  //                   setDesignTransforms(prev => ({
+  //                     ...prev,
+  //                     [selectedPlaceholderId]: { ...transform, y: value / PX_PER_INCH },
+  //                   }));
+  //                 }}
+  //                 min={0}
+  //                 max={1000}
+  //                 step={1}
+  //               />
+  //             </div>
+  //           </div>
+  //         </div>
+  //       )} */}
 
-        {/* Flip Section */}
-        {designUrl && (
-          <div className="space-y-4">
-            <h3 className="text-sm font-semibold">Flip</h3>
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="flipH"
-                  className="w-4 h-4"
-                  checked={false}
-                  onChange={() => {}}
-                />
-                <Label htmlFor="flipH" className="text-xs cursor-pointer">
-                  ↔️ Horizontal
-                </Label>
-              </div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="flipV"
-                  className="w-4 h-4"
-                  checked={false}
-                  onChange={() => {}}
-                />
-                <Label htmlFor="flipV" className="text-xs cursor-pointer">
-                  ↕️ Vertical
-                </Label>
-              </div>
-            </div>
-          </div>
-        )}
+  //       {/* Flip Section */}
+  //       {/* {designUrl && (
+  //         <div className="space-y-4">
+  //           <h3 className="text-sm font-semibold">Flip</h3>
+  //           <div className="space-y-2">
+  //             <div className="flex items-center gap-2">
+  //               <input
+  //                 type="checkbox"
+  //                 id="flipH"
+  //                 className="w-4 h-4"
+  //                 checked={false}
+  //                 onChange={() => {}}
+  //               />
+  //               <Label htmlFor="flipH" className="text-xs cursor-pointer">
+  //                 ↔️ Horizontal
+  //               </Label>
+  //             </div>
+  //             <div className="flex items-center gap-2">
+  //               <input
+  //                 type="checkbox"
+  //                 id="flipV"
+  //                 className="w-4 h-4"
+  //                 checked={false}
+  //                 onChange={() => {}}
+  //               />
+  //               <Label htmlFor="flipV" className="text-xs cursor-pointer">
+  //                 ↕️ Vertical
+  //               </Label>
+  //             </div>
+  //           </div>
+  //         </div>
+  //       )} */}
 
-        {/* Opacity Section */}
-        {designUrl && (
-          <div className="space-y-4">
-            <h3 className="text-sm font-semibold">Opacity</h3>
-            <div className="space-y-2">
-              <div>
-                <Label className="text-xs">Opacity: 100%</Label>
-                <Slider
-                  value={[100]}
-                  onValueChange={() => {}}
-                  min={0}
-                  max={100}
-                  step={1}
-                />
-              </div>
-            </div>
-          </div>
-        )}
+  //       {/* Opacity Section */}
+  //       {/* {designUrl && (
+  //         <div className="space-y-4">
+  //           <h3 className="text-sm font-semibold">Opacity</h3>
+  //           <div className="space-y-2">
+  //             <div>
+  //               <Label className="text-xs">Opacity: 100%</Label>
+  //               <Slider
+  //                 value={[100]}
+  //                 onValueChange={() => {}}
+  //                 min={0}
+  //                 max={100}
+  //                 step={1}
+  //               />
+  //             </div>
+  //           </div>
+  //         </div>
+  //       )} */}
 
-        {/* Blend Mode Section */}
-        {designUrl && (
-          <div className="space-y-4">
-            <h3 className="text-sm font-semibold">Blend Mode</h3>
-            <select
-              className="w-full px-3 py-2 border rounded-md bg-background text-sm"
-              value="normal"
-              onChange={() => {}}
-            >
-              <option value="normal">Normal</option>
-              <option value="multiply">Multiply</option>
-              <option value="screen">Screen</option>
-              <option value="overlay">Overlay</option>
-              <option value="darken">Darken</option>
-              <option value="lighten">Lighten</option>
-            </select>
-            <p className="text-xs text-muted-foreground">
-              Adjusts how the design blends with the mockup
-            </p>
-          </div>
-        )}
+  //       {/* Blend Mode Section */}
+  //       {/* {designUrl && (
+  //         <div className="space-y-4">
+  //           <h3 className="text-sm font-semibold">Blend Mode</h3>
+  //           <select
+  //             className="w-full px-3 py-2 border rounded-md bg-background text-sm"
+  //             value="normal"
+  //             onChange={() => {}}
+  //           >
+  //             <option value="normal">Normal</option>
+  //             <option value="multiply">Multiply</option>
+  //             <option value="screen">Screen</option>
+  //             <option value="overlay">Overlay</option>
+  //             <option value="darken">Darken</option>
+  //             <option value="lighten">Lighten</option>
+  //           </select>
+  //           <p className="text-xs text-muted-foreground">
+  //             Adjusts how the design blends with the mockup
+  //           </p>
+  //         </div>
+  //       )} */}
 
-        {/* Tune Realism (Displacement Settings) */}
-        <div className="space-y-4">
-          <h3 className="text-sm font-semibold">Tune Realism</h3>
-          <div className="space-y-2">
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <Label className="text-xs">Displacement X</Label>
-                <span className="text-xs">{displacementSettings.scaleX}</span>
-              </div>
-              <Slider
-                value={[displacementSettings.scaleX]}
-                onValueChange={([value]) => {
-                  onDisplacementSettingsChange({
-                    ...displacementSettings,
-                    scaleX: value
-                  });
-                }}
-                min={0}
-                max={100}
-                step={1}
-              />
-            </div>
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <Label className="text-xs">Displacement Y</Label>
-                <span className="text-xs">{displacementSettings.scaleY}</span>
-              </div>
-              <Slider
-                value={[displacementSettings.scaleY]}
-                onValueChange={([value]) => {
-                  onDisplacementSettingsChange({
-                    ...displacementSettings,
-                    scaleY: value
-                  });
-                }}
-                min={0}
-                max={100}
-                step={1}
-              />
-            </div>
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <Label className="text-xs">Fold Contrast</Label>
-                <span className="text-xs">{displacementSettings.contrastBoost.toFixed(1)}</span>
-              </div>
-              <Slider
-                value={[displacementSettings.contrastBoost]}
-                onValueChange={([value]) => {
-                  onDisplacementSettingsChange({
-                    ...displacementSettings,
-                    contrastBoost: value
-                  });
-                }}
-                min={1}
-                max={5}
-                step={0.1}
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  //       {/* Tune Realism (Displacement Settings) */}
+  //       <div className="space-y-4">
+  //         <h3 className="text-sm font-semibold">Tune Realism</h3>
+  //         <div className="space-y-2">
+  //           <div>
+  //             <div className="flex items-center justify-between mb-1">
+  //               <Label className="text-xs">Displacement X</Label>
+  //               <span className="text-xs">{displacementSettings.scaleX}</span>
+  //             </div>
+  //             <Slider
+  //               value={[displacementSettings.scaleX]}
+  //               onValueChange={([value]) => {
+  //                 onDisplacementSettingsChange({
+  //                   ...displacementSettings,
+  //                   scaleX: value
+  //                 });
+  //               }}
+  //               min={0}
+  //               max={100}
+  //               step={1}
+  //             />
+  //           </div>
+  //           <div>
+  //             <div className="flex items-center justify-between mb-1">
+  //               <Label className="text-xs">Displacement Y</Label>
+  //               <span className="text-xs">{displacementSettings.scaleY}</span>
+  //             </div>
+  //             <Slider
+  //               value={[displacementSettings.scaleY]}
+  //               onValueChange={([value]) => {
+  //                 onDisplacementSettingsChange({
+  //                   ...displacementSettings,
+  //                   scaleY: value
+  //                 });
+  //               }}
+  //               min={0}
+  //               max={100}
+  //               step={1}
+  //             />
+  //           </div>
+  //           <div>
+  //             <div className="flex items-center justify-between mb-1">
+  //               <Label className="text-xs">Fold Contrast</Label>
+  //               <span className="text-xs">{displacementSettings.contrastBoost.toFixed(1)}</span>
+  //             </div>
+  //             <Slider
+  //               value={[displacementSettings.contrastBoost]}
+  //               onValueChange={([value]) => {
+  //                 onDisplacementSettingsChange({
+  //                   ...displacementSettings,
+  //                   contrastBoost: value
+  //                 });
+  //               }}
+  //               min={1}
+  //               max={5}
+  //               step={0.1}
+  //             />
+  //           </div>
+  //         </div>
+  //       </div>
+  //     </div>
+  //   );
+  // }
 
   // Show element properties when element is selected
   if (selectedElement) {
@@ -2856,7 +2999,7 @@ const PropertiesPanel: React.FC<{
       {element.type === 'image' && (
         <>
           {/* Size Section */}
-          <div className="space-y-4">
+          {/* <div className="space-y-4">
             <h3 className="text-sm font-semibold">Size</h3>
             <div className="space-y-2">
               <div>
@@ -2906,10 +3049,10 @@ const PropertiesPanel: React.FC<{
                 </Label>
               </div>
             </div>
-          </div>
+          </div> */}
 
           {/* Position Section */}
-          <div className="space-y-4">
+          {/* <div className="space-y-4">
             <h3 className="text-sm font-semibold">Position</h3>
             <div className="space-y-2">
               <div>
@@ -2937,7 +3080,7 @@ const PropertiesPanel: React.FC<{
                 />
               </div>
             </div>
-          </div>
+          </div> */}
 
           {/* Flip Section */}
           <div className="space-y-4">
@@ -2971,7 +3114,7 @@ const PropertiesPanel: React.FC<{
           </div>
 
           {/* Opacity Section */}
-          <div className="space-y-4">
+          {/* <div className="space-y-4">
             <h3 className="text-sm font-semibold">Opacity</h3>
             <div className="space-y-2">
               <div>
@@ -2985,10 +3128,10 @@ const PropertiesPanel: React.FC<{
                 />
               </div>
             </div>
-          </div>
+          </div> */}
 
           {/* Blend Mode Section */}
-          <div className="space-y-4">
+          {/* <div className="space-y-4">
             <h3 className="text-sm font-semibold">Blend Mode</h3>
             <select
               className="w-full px-3 py-2 border rounded-md bg-background text-sm"
@@ -3005,10 +3148,10 @@ const PropertiesPanel: React.FC<{
             <p className="text-xs text-muted-foreground">
               Adjusts how the design blends with the mockup
             </p>
-          </div>
+          </div> */}
 
           {/* Tune Realism (Displacement Settings) */}
-          <div className="space-y-4">
+          {/* <div className="space-y-4">
             <h3 className="text-sm font-semibold">Tune Realism</h3>
             <div className="space-y-2">
               <div>
@@ -3066,13 +3209,13 @@ const PropertiesPanel: React.FC<{
                 />
               </div>
             </div>
-          </div>
+          </div> */}
         </>
       )}
 
-      {/* Common properties for all elements */}
+      {/* Common properties for elements */}
 
-      <div>
+      {/* <div>
         <Label>Opacity</Label>
         <Slider
           value={[element.opacity || 1]}
@@ -3081,7 +3224,7 @@ const PropertiesPanel: React.FC<{
           max={1}
           step={0.01}
         />
-      </div>
+      </div> */}
 
       <div>
         <Label>Rotation</Label>
@@ -3668,6 +3811,7 @@ interface LibraryPanelProps {
 
 const LibraryPanel: React.FC<LibraryPanelProps> = ({ onAddAsset, selectedPlaceholderId, placeholders = [] }) => {
   const [assets, setAssets] = useState<any[]>([]);
+  const [allAssets, setAllAssets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState<string>('graphics');
   const [searchTerm, setSearchTerm] = useState('');
@@ -3676,12 +3820,21 @@ const LibraryPanel: React.FC<LibraryPanelProps> = ({ onAddAsset, selectedPlaceho
     { value: 'graphics', label: 'Graphics' },
     { value: 'patterns', label: 'Patterns' },
     { value: 'icons', label: 'Icons' },
-    { value: 'shapes', label: 'Shapes' }
+    { value: 'shapes', label: 'Shapes' },
+    { value: 'logos', label: 'Logos' },
+    { value: 'all', label: 'All' }
   ];
 
   // Fetch assets from API
   useEffect(() => {
     const fetchAssets = async () => {
+      // If "All" is selected, don't fetch - use allAssets instead
+      if (selectedCategory === 'all') {
+        setAssets([]); // Clear assets, we'll use allAssets for display
+        setLoading(false);
+        return;
+      }
+
       setLoading(true);
       try {
         const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
@@ -3705,6 +3858,31 @@ const LibraryPanel: React.FC<LibraryPanelProps> = ({ onAddAsset, selectedPlaceho
 
     fetchAssets();
   }, [selectedCategory, searchTerm]);
+
+  useEffect(() => {
+    const fetchAllAssets = async () => {
+      try {
+        const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+        
+        // Fetch all assets without category filter
+        const response = await fetch(`${API_BASE_URL}/api/assets`);
+        const data = await response.json();
+
+        if (data.success) {
+          setAllAssets(data.data || []);
+          console.log(`Fetched ${data.data?.length || 0} total assets`);
+        } else {
+          console.error('Failed to fetch all assets:', data.message);
+          setAllAssets([]);
+        }
+      } catch (error) {
+        console.error('Failed to fetch all assets:', error);
+        setAllAssets([]);
+      }
+    };
+    
+    fetchAllAssets();
+  }, []);
 
   return (
     <div className="p-4 space-y-4">
@@ -3749,54 +3927,70 @@ const LibraryPanel: React.FC<LibraryPanelProps> = ({ onAddAsset, selectedPlaceho
         ))}
       </div>
 
-      {/* Assets grid */}
       {loading ? (
         <div className="flex items-center justify-center py-8">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
         </div>
-      ) : assets.length === 0 ? (
-        <div className="text-center py-8 text-muted-foreground text-sm">
-          No assets found
-        </div>
-      ) : (
-        <ScrollArea className="h-[500px]">
-          <div className="grid grid-cols-2 gap-2">
-            {assets.map((asset) => (
-              <div
-                key={asset._id}
-                className="relative aspect-square bg-muted rounded-lg overflow-hidden border-2 border-border hover:border-primary cursor-pointer transition-colors group"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  // Add asset to canvas using its fileUrl
-                  if (asset.fileUrl) {
-                    onAddAsset(asset.fileUrl);
-                  } else {
-                    toast.error('Asset file URL not available');
-                  }
-                }}
-                title={asset.title}
-              >
-                {asset.previewUrl ? (
-                  <img
-                    src={asset.previewUrl}
-                    alt={asset.title}
-                    className="w-full h-full object-contain p-2"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center">
-                    <Folder className="w-8 h-8 text-muted-foreground" />
+      ) : (() => {
+        // Determine which assets to display
+        const assetsToDisplay = selectedCategory === 'all' ? allAssets : assets;
+        
+        // Filter by search term if provided
+        const filteredAssets = searchTerm
+          ? assetsToDisplay.filter((asset) =>
+              asset.title?.toLowerCase().includes(searchTerm.toLowerCase())
+            )
+          : assetsToDisplay;
+
+        if (filteredAssets.length === 0) {
+          return (
+            <div className="text-center py-8 text-muted-foreground text-sm">
+              No assets found
+            </div>
+          );
+        }
+
+        return (
+          <ScrollArea className="h-[500px]">
+            <div className="grid grid-cols-2 gap-2">
+              {filteredAssets.map((asset) => (
+                <div
+                  key={asset._id}
+                  className="relative aspect-square bg-muted rounded-lg overflow-hidden border-2 border-border hover:border-primary cursor-pointer transition-colors group"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (asset.fileUrl) {
+                      onAddAsset(asset.fileUrl);
+                    } else {
+                      toast.error('Asset file URL not available');
+                    }
+                  }}
+                  title={asset.title}
+                >
+                  {asset.previewUrl ? (
+                    <img
+                      src={asset.previewUrl}
+                      alt={asset.title}
+                      className="w-full h-full object-contain p-2"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <Folder className="w-8 h-8 text-muted-foreground" />
+                    </div>
+                  )}
+
+                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                    <span className="text-white text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+                      {asset.title}
+                    </span>
                   </div>
-                )}
-                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
-                  <span className="text-white text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity">
-                    {asset.title}
-                  </span>
                 </div>
-              </div>
-            ))}
-          </div>
-        </ScrollArea>
-      )}
+              ))}
+            </div>
+          </ScrollArea>
+        );
+      })()}
+
     </div>
   );
 };
@@ -4008,6 +4202,7 @@ const TemplatesPanel: React.FC = () => {
     </div>
   );
 };
+
 
 export default DesignEditor;
 

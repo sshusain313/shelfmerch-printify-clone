@@ -177,6 +177,7 @@ router.post('/', protect, authorize('superadmin'), async (req, res) => {
         color: v.color,
         colorHex: v.colorHex,
         skuTemplate: v.sku || `${catalogue.productTypeCode}-${v.size}-${v.color}`,
+        basePrice: v.price !== undefined ? v.price : undefined,
         isActive: v.isActive !== false
       }));
 
@@ -205,7 +206,17 @@ router.post('/', protect, authorize('superadmin'), async (req, res) => {
       attributes: product.attributes,
       basePrice: product.basePrice
     };
-    productResponse.variants = createdVariants;
+    // Transform variants: basePrice -> price, skuTemplate -> sku for frontend compatibility
+    productResponse.variants = createdVariants.map(v => {
+      const variant = v.toObject ? v.toObject() : v;
+      return {
+        ...variant,
+        sku: variant.skuTemplate || variant.sku,
+        price: variant.basePrice,
+        skuTemplate: undefined, // Remove skuTemplate to avoid confusion
+        basePrice: undefined // Remove basePrice to avoid confusion
+      };
+    });
     productResponse.availableSizes = [...new Set(createdVariants.map(v => v.size))];
     productResponse.availableColors = [...new Set(createdVariants.map(v => v.color))];
 
@@ -321,6 +332,17 @@ router.get('/', protect, async (req, res) => {
     const transformedProducts = products.map(p => {
       const productObj = p.toObject();
       const variants = variantsByProduct[p._id] || [];
+      // Transform variants: basePrice -> price, skuTemplate -> sku for frontend compatibility
+      const transformedVariants = variants.map(v => {
+        const variant = v.toObject ? v.toObject() : v;
+        return {
+          ...variant,
+          sku: variant.skuTemplate || variant.sku,
+          price: variant.basePrice,
+          skuTemplate: undefined, // Remove skuTemplate to avoid confusion
+          basePrice: undefined // Remove basePrice to avoid confusion
+        };
+      });
       return {
         ...productObj,
         catalogue: {
@@ -333,9 +355,9 @@ router.get('/', protect, async (req, res) => {
           attributes: p.attributes,
           basePrice: p.basePrice
         },
-        variants: variants,
-        availableSizes: [...new Set(variants.map(v => v.size))],
-        availableColors: [...new Set(variants.map(v => v.color))]
+        variants: transformedVariants,
+        availableSizes: [...new Set(transformedVariants.map(v => v.size))],
+        availableColors: [...new Set(transformedVariants.map(v => v.color))]
       };
     });
 
@@ -469,6 +491,17 @@ router.get('/catalog/active', async (req, res) => {
     const transformedProducts = products.map(p => {
       const productObj = p.toObject();
       const variants = variantsByProduct[p._id] || [];
+      // Transform variants: basePrice -> price, skuTemplate -> sku for frontend compatibility
+      const transformedVariants = variants.map(v => {
+        const variant = v.toObject ? v.toObject() : v;
+        return {
+          ...variant,
+          sku: variant.skuTemplate || variant.sku,
+          price: variant.basePrice,
+          skuTemplate: undefined, // Remove skuTemplate to avoid confusion
+          basePrice: undefined // Remove basePrice to avoid confusion
+        };
+      });
       return {
         ...productObj,
         catalogue: {
@@ -481,9 +514,9 @@ router.get('/catalog/active', async (req, res) => {
           attributes: p.attributes,
           basePrice: p.basePrice
         },
-        variants: variants,
-        availableSizes: [...new Set(variants.map(v => v.size))],
-        availableColors: [...new Set(variants.map(v => v.color))]
+        variants: transformedVariants,
+        availableSizes: [...new Set(transformedVariants.map(v => v.size))],
+        availableColors: [...new Set(transformedVariants.map(v => v.color))]
       };
     });
 
@@ -543,7 +576,17 @@ router.get('/:id', protect, async (req, res) => {
       attributes: product.attributes,
       basePrice: product.basePrice
     };
-    productResponse.variants = variants;
+    // Transform variants: basePrice -> price, skuTemplate -> sku for frontend compatibility
+    productResponse.variants = variants.map(v => {
+      const variant = v.toObject ? v.toObject() : v;
+      return {
+        ...variant,
+        sku: variant.skuTemplate || variant.sku,
+        price: variant.basePrice,
+        skuTemplate: undefined, // Remove skuTemplate to avoid confusion
+        basePrice: undefined // Remove basePrice to avoid confusion
+      };
+    });
     productResponse.availableSizes = [...new Set(variants.map(v => v.size))];
     productResponse.availableColors = [...new Set(variants.map(v => v.color))];
 
@@ -627,6 +670,7 @@ router.put('/:id', protect, authorize('superadmin'), async (req, res) => {
           color: v.color,
           colorHex: v.colorHex,
           skuTemplate: v.sku || `${product.productTypeCode}-${v.size}-${v.color}`,
+          basePrice: v.price !== undefined ? v.price : undefined,
           isActive: v.isActive !== false
         }));
 
@@ -657,7 +701,17 @@ router.put('/:id', protect, authorize('superadmin'), async (req, res) => {
       attributes: product.attributes,
       basePrice: product.basePrice
     };
-    productResponse.variants = updatedVariants;
+    // Transform variants: basePrice -> price, skuTemplate -> sku for frontend compatibility
+    productResponse.variants = updatedVariants.map(v => {
+      const variant = v.toObject ? v.toObject() : v;
+      return {
+        ...variant,
+        sku: variant.skuTemplate || variant.sku,
+        price: variant.basePrice,
+        skuTemplate: undefined, // Remove skuTemplate to avoid confusion
+        basePrice: undefined // Remove basePrice to avoid confusion
+      };
+    });
     productResponse.availableSizes = [...new Set(updatedVariants.map(v => v.size))];
     productResponse.availableColors = [...new Set(updatedVariants.map(v => v.color))];
 

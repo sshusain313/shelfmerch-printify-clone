@@ -16,6 +16,7 @@ router.post('/', protect, authorize('superadmin'), async (req, res) => {
       color,
       colorHex,
       sku,
+      price,
       isActive
     } = req.body;
 
@@ -43,13 +44,24 @@ router.post('/', protect, authorize('superadmin'), async (req, res) => {
       color,
       colorHex,
       skuTemplate: sku || `${product.productTypeCode}-${size}-${color}`,
+      basePrice: price !== undefined ? price : undefined,
       isActive: isActive !== undefined ? isActive : true
     });
+
+    // Transform variant: basePrice -> price, skuTemplate -> sku for frontend compatibility
+    const variantObj = variant.toObject ? variant.toObject() : variant;
+    const transformedVariant = {
+      ...variantObj,
+      sku: variantObj.skuTemplate || variantObj.sku,
+      price: variantObj.basePrice,
+      skuTemplate: undefined, // Remove skuTemplate to avoid confusion
+      basePrice: undefined // Remove basePrice to avoid confusion
+    };
 
     res.status(201).json({
       success: true,
       message: 'Variant created successfully',
-      data: variant
+      data: transformedVariant
     });
   } catch (error) {
     console.error('Error creating variant:', error);
@@ -111,6 +123,7 @@ router.post('/bulk', protect, authorize('superadmin'), async (req, res) => {
       color: v.color,
       colorHex: v.colorHex,
       skuTemplate: v.sku || `${product.productTypeCode}-${v.size}-${v.color}`,
+      basePrice: v.price !== undefined ? v.price : undefined,
       isActive: v.isActive !== false
     }));
 
@@ -119,10 +132,22 @@ router.post('/bulk', protect, authorize('superadmin'), async (req, res) => {
       ordered: false // Continue on duplicate key errors
     });
 
+    // Transform variants: basePrice -> price, skuTemplate -> sku for frontend compatibility
+    const transformedVariants = createdVariants.map(v => {
+      const variant = v.toObject ? v.toObject() : v;
+      return {
+        ...variant,
+        sku: variant.skuTemplate || variant.sku,
+        price: variant.basePrice,
+        skuTemplate: undefined, // Remove skuTemplate to avoid confusion
+        basePrice: undefined // Remove basePrice to avoid confusion
+      };
+    });
+
     res.status(201).json({
       success: true,
-      message: `Successfully created ${createdVariants.length} variants`,
-      data: createdVariants
+      message: `Successfully created ${transformedVariants.length} variants`,
+      data: transformedVariants
     });
   } catch (error) {
     console.error('Error creating bulk variants:', error);
@@ -154,10 +179,22 @@ router.get('/product/:productId', protect, async (req, res) => {
       catalogProductId: req.params.productId
     }).sort({ size: 1, color: 1 });
 
+    // Transform variants: basePrice -> price, skuTemplate -> sku for frontend compatibility
+    const transformedVariants = variants.map(v => {
+      const variant = v.toObject ? v.toObject() : v;
+      return {
+        ...variant,
+        sku: variant.skuTemplate || variant.sku,
+        price: variant.basePrice,
+        skuTemplate: undefined, // Remove skuTemplate to avoid confusion
+        basePrice: undefined // Remove basePrice to avoid confusion
+      };
+    });
+
     res.json({
       success: true,
-      data: variants,
-      count: variants.length
+      data: transformedVariants,
+      count: transformedVariants.length
     });
   } catch (error) {
     console.error('Error fetching variants:', error);
@@ -184,9 +221,19 @@ router.get('/:id', protect, async (req, res) => {
       });
     }
 
+    // Transform variant: basePrice -> price, skuTemplate -> sku for frontend compatibility
+    const variantObj = variant.toObject ? variant.toObject() : variant;
+    const transformedVariant = {
+      ...variantObj,
+      sku: variantObj.skuTemplate || variantObj.sku,
+      price: variantObj.basePrice,
+      skuTemplate: undefined, // Remove skuTemplate to avoid confusion
+      basePrice: undefined // Remove basePrice to avoid confusion
+    };
+
     res.json({
       success: true,
-      data: variant
+      data: transformedVariant
     });
   } catch (error) {
     console.error('Error fetching variant:', error);
@@ -213,12 +260,13 @@ router.put('/:id', protect, authorize('superadmin'), async (req, res) => {
     }
 
     // Update fields
-    const { size, color, colorHex, sku, isActive } = req.body;
+    const { size, color, colorHex, sku, price, isActive } = req.body;
 
     if (size !== undefined) variant.size = size;
     if (color !== undefined) variant.color = color;
     if (colorHex !== undefined) variant.colorHex = colorHex;
     if (sku !== undefined) variant.skuTemplate = sku;
+    if (price !== undefined) variant.basePrice = price;
     if (isActive !== undefined) variant.isActive = isActive;
 
     variant.updatedAt = Date.now();

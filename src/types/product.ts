@@ -42,6 +42,7 @@ export interface ProductVariant {
   color: string;
   colorHex?: string;
   sku: string;
+  price?: number; // Optional price for this variant
   isActive: boolean;
 }
 
