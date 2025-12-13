@@ -17,6 +17,49 @@ const authLimiter = rateLimit({
   skip: (req) => req.method === 'OPTIONS' // Skip rate limiting for preflight
 });
 
+// @route   GET /api/auth/me/previews/:productId
+// @desc    Get current user's saved preview images for a product
+// @access  Private
+router.get('/me/previews/:productId', protect, async (req, res) => {
+  try {
+    const { productId } = req.params;
+    const user = await User.findById(req.user.id);
+    const map = user.previewImagesByProduct || new Map();
+    const previews = map.get(productId) || {};
+    res.status(200).json({ success: true, data: previews });
+  } catch (error) {
+    console.error('Get user previews error:', error);
+    res.status(500).json({ success: false, message: 'Server error while fetching previews' });
+  }
+});
+
+// @route   PUT /api/auth/me/previews/:productId
+// @desc    Upsert current user's preview images for a product (per view)
+// @access  Private
+router.put('/me/previews/:productId', protect, async (req, res) => {
+  try {
+    const { productId } = req.params;
+    const { previews } = req.body; // expected shape { [viewKey]: url }
+
+    if (!previews || typeof previews !== 'object') {
+      return res.status(400).json({ success: false, message: 'Invalid previews payload' });
+    }
+
+    const user = await User.findById(req.user.id);
+    if (!user.previewImagesByProduct) user.previewImagesByProduct = new Map();
+
+    const existing = user.previewImagesByProduct.get(productId) || {};
+    const merged = { ...existing, ...previews };
+    user.previewImagesByProduct.set(productId, merged);
+    await user.save({ validateBeforeSave: false });
+
+    res.status(200).json({ success: true, data: merged });
+  } catch (error) {
+    console.error('Update user previews error:', error);
+    res.status(500).json({ success: false, message: 'Server error while saving previews' });
+  }
+});
+
 // @route   POST /api/auth/register
 // @desc    Register a new user
 // @access  Public

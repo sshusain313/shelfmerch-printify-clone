@@ -81,6 +81,15 @@ const userSchema = new mongoose.Schema({
   timestamps: true
 });
 
+// Store per-user preview images per product: { [productId]: { [viewKey]: url } }
+userSchema.add({
+  previewImagesByProduct: {
+    type: Map,
+    of: Object,
+    default: {}
+  }
+});
+
 // Hash password before saving
 userSchema.pre('save', async function(next) {
   if (!this.isModified('password')) {

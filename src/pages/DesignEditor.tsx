@@ -186,19 +186,67 @@ const DesignEditor: React.FC = () => {
   const [showGrid, setShowGrid] = useState(false);
   const [showRulers, setShowRulers] = useState(false);
   const [previewMode, setPreviewMode] = useState(false); // true = hide overlay/panels, show only WebGL mockup
+  const [primaryColorHex, setPrimaryColorHex] = useState<string | null>(null);
   const previewModeRef = useRef(false); // Ref to ensure previewMode persists across view changes
-  
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false); // Track if there are unsaved changes
+
   // Sync ref with state
   useEffect(() => {
     previewModeRef.current = previewMode;
   }, [previewMode]);
+
+  const fetchUserPreviews = useCallback(async () => {
+    try {
+      if (!id) return;
+      const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+      const token = localStorage.getItem('token');
+      const resp = await fetch(`${API_BASE_URL}/api/auth/me/previews/${id}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        credentials: 'include',
+      });
+      const json = await resp.json().catch(() => ({}));
+      if (resp.ok && json?.success) {
+        const previews = (json.data || {}) as Record<string, string>;
+        setSavedPreviewImages(previews);
+      }
+    } catch (e) {
+      console.error('Failed to fetch user preview images:', e);
+    }
+  }, [id]);
+
+  // Only fetch saved previews when entering preview mode if there are no unsaved changes
+  useEffect(() => {
+    if (previewMode && !hasUnsavedChanges) {
+      fetchUserPreviews();
+    }
+  }, [previewMode, fetchUserPreviews, hasUnsavedChanges]);
+
+  // Only fetch saved previews when switching views in preview mode if there are no unsaved changes
+  useEffect(() => {
+    if (previewMode && !hasUnsavedChanges) {
+      fetchUserPreviews();
+    }
+  }, [currentView, previewMode, fetchUserPreviews, hasUnsavedChanges]);
   // Design URLs by placeholder ID for WebGL preview - stored per view
   const [designUrlsByPlaceholder, setDesignUrlsByPlaceholder] = useState<Record<string, Record<string, string>>>({});
-  
+
   // Helper functions for view-specific designUrlsByPlaceholder
   const getDesignUrlsForView = useCallback((view: string): Record<string, string> => {
     return designUrlsByPlaceholder[view] || {};
   }, [designUrlsByPlaceholder]);
+
+  // Helper to create a simple hash of design URLs for key generation
+  const getDesignUrlsHash = useCallback((view: string): string => {
+    const urls = getDesignUrlsForView(view);
+    const keys = Object.keys(urls).sort();
+    if (keys.length === 0) return 'no-designs';
+    // Create a simple hash from placeholder IDs and URL lengths
+    return keys.map(k => `${k.slice(0, 4)}-${urls[k]?.slice(-10) || ''}`).join('_');
+  }, [getDesignUrlsForView]);
 
   const setDesignUrlForView = useCallback((view: string, placeholderId: string, designUrl: string) => {
     setDesignUrlsByPlaceholder(prev => ({
@@ -208,6 +256,7 @@ const DesignEditor: React.FC = () => {
         [placeholderId]: designUrl,
       },
     }));
+    setHasUnsavedChanges(true); // Mark as having unsaved changes
   }, []);
 
   const removeDesignUrlForView = useCallback((view: string, placeholderId: string) => {
@@ -220,23 +269,35 @@ const DesignEditor: React.FC = () => {
         [view]: updated,
       };
     });
+    setHasUnsavedChanges(true); // Mark as having unsaved changes
   }, []);
 
   // Product state
   const [product, setProduct] = useState<Product | null>(null);
   const [isLoadingProduct, setIsLoadingProduct] = useState(true);
-  const [mockupImage, setMockupImage] = useState<HTMLImageElement | null>(null);
-  const [imageSize, setImageSize] = useState({ width: 0, height: 0, x: 0, y: 0 });
+  // Store mockup images per view to prevent losing previous mockups when switching
+  const [mockupImagesByView, setMockupImagesByView] = useState<Record<string, HTMLImageElement | null>>({});
+  const [imageSizesByView, setImageSizesByView] = useState<Record<string, { width: number; height: number; x: number; y: number }>>({});
+
+  // Current view's mockup (derived from mockupImagesByView)
+  const mockupImage = mockupImagesByView[currentView] || null;
+  const imageSize = imageSizesByView[currentView] || { width: 0, height: 0, x: 0, y: 0 };
   const [selectedColors, setSelectedColors] = useState<string[]>([]);
   const [selectedSizes, setSelectedSizes] = useState<string[]>([]); // Keep for backward compatibility
   const [selectedSizesByColor, setSelectedSizesByColor] = useState<Record<string, string[]>>({});
-  const [primaryColorHex, setPrimaryColorHex] = useState<string | null>(null);
   const [isPublishing, setIsPublishing] = useState(false);
   const [displacementSettings, setDisplacementSettings] = useState<DisplacementSettings>({
     scaleX: 20,
     scaleY: 20,
     contrastBoost: 1.5,
   });
+  const [savedPreviewImages, setSavedPreviewImages] = useState<Record<string, string>>({});
+
+  // Wrapper for displacement settings that marks unsaved changes
+  const handleDisplacementSettingsChange = useCallback((settings: DisplacementSettings) => {
+    setDisplacementSettings(settings);
+    setHasUnsavedChanges(true); // Mark as having unsaved changes
+  }, []);
 
   const tools = [
     {
@@ -325,6 +386,80 @@ const DesignEditor: React.FC = () => {
     setStageSize({ width: canvasWidth, height: canvasHeight });
   }, [canvasWidth, canvasHeight]);
 
+  // Function to load mockup for a specific view
+  const loadMockupForView = useCallback((viewKey: string, views: ProductView[]) => {
+    const view = views.find((v: ProductView) => v.key === viewKey);
+
+    if (view?.mockupImageUrl) {
+      const img = new window.Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        // Store mockup image per view
+        setMockupImagesByView(prev => ({
+          ...prev,
+          [viewKey]: img
+        }));
+
+        // Calculate size to fit canvas while maintaining aspect ratio with padding
+        const aspectRatio = img.width / img.height;
+        const maxWidth = effectiveCanvasWidth;
+        const maxHeight = effectiveCanvasHeight;
+
+        let width = maxWidth;
+        let height = maxWidth / aspectRatio;
+
+        // If height exceeds, fit to height instead
+        if (height > maxHeight) {
+          height = maxHeight;
+          width = maxHeight * aspectRatio;
+        }
+
+        // Center the image
+        const x = canvasPadding + (maxWidth - width) / 2;
+        const y = canvasPadding + (maxHeight - height) / 2;
+
+        const calculatedSize = { width, height, x, y };
+        // Store image size per view
+        setImageSizesByView(prev => ({
+          ...prev,
+          [viewKey]: calculatedSize
+        }));
+        setStageSize({ width: canvasWidth, height: canvasHeight });
+
+        console.log(`Mockup image loaded for ${viewKey} view:`, {
+          original: { width: img.width, height: img.height },
+          displayed: calculatedSize,
+          canvas: { width: canvasWidth, height: canvasHeight }
+        });
+      };
+      img.onerror = () => {
+        toast.error(`Failed to load mockup image for ${viewKey} view`);
+        console.error(`Failed to load mockup for ${viewKey} view`);
+        // Store null to prevent retrying
+        setMockupImagesByView(prev => ({
+          ...prev,
+          [viewKey]: null
+        }));
+        setImageSizesByView(prev => ({
+          ...prev,
+          [viewKey]: { width: 0, height: 0, x: 0, y: 0 }
+        }));
+      };
+      img.src = view.mockupImageUrl;
+    } else {
+      // No mockup available for this view
+      console.warn(`No mockup image found for ${viewKey} view`);
+      setMockupImagesByView(prev => ({
+        ...prev,
+        [viewKey]: null
+      }));
+      setImageSizesByView(prev => ({
+        ...prev,
+        [viewKey]: { width: 0, height: 0, x: 0, y: 0 }
+      }));
+    }
+  }, [effectiveCanvasWidth, effectiveCanvasHeight, canvasPadding, canvasWidth, canvasHeight]);
+
   // Fetch product data
   useEffect(() => {
     const fetchProduct = async () => {
@@ -345,54 +480,23 @@ const DesignEditor: React.FC = () => {
           });
 
           setProduct(response.data);
+          const previews = (response.data.design as any)?.previewImages || {};
+          if (previews && typeof previews === 'object') {
+            setSavedPreviewImages(previews);
+          }
 
           // Load mockup image for current view
-          const view = response.data.design?.views?.find((v: ProductView) => v.key === currentView);
-
-          if (view?.mockupImageUrl) {
-            const img = new window.Image();
-            img.crossOrigin = 'anonymous';
-            img.onload = () => {
-              setMockupImage(img);
-
-              // Calculate size to fit canvas while maintaining aspect ratio with padding
-              // This matches CanvasMockup.tsx logic exactly
-              const aspectRatio = img.width / img.height;
-              const maxWidth = effectiveCanvasWidth;
-              const maxHeight = effectiveCanvasHeight;
-
-              let width = maxWidth;
-              let height = maxWidth / aspectRatio;
-
-              // If height exceeds, fit to height instead
-              if (height > maxHeight) {
-                height = maxHeight;
-                width = maxHeight * aspectRatio;
-              }
-
-              // Center the image
-              const x = canvasPadding + (maxWidth - width) / 2;
-              const y = canvasPadding + (maxHeight - height) / 2;
-
-              setImageSize({ width, height, x, y });
-              setStageSize({ width: canvasWidth, height: canvasHeight });
-
-              console.log('Mockup image loaded and sized:', {
-                original: { width: img.width, height: img.height },
-                displayed: { width, height, x, y },
-                canvas: { width: canvasWidth, height: canvasHeight }
-              });
-            };
-            img.onerror = () => {
-              toast.error('Failed to load mockup image');
-            };
-            img.src = view.mockupImageUrl;
+          if (response.data.design?.views) {
+            loadMockupForView(currentView, response.data.design.views);
           }
 
           // Initialize displacement settings from product design (if present)
           if (response.data.design?.displacementSettings) {
             setDisplacementSettings(response.data.design.displacementSettings);
           }
+
+          // Reset unsaved changes flag when product is loaded (no changes yet)
+          setHasUnsavedChanges(false);
         }
       } catch (error) {
         console.error('Failed to fetch product:', error);
@@ -403,7 +507,26 @@ const DesignEditor: React.FC = () => {
     };
 
     fetchProduct();
-  }, [id, currentView, canvasWidth, canvasHeight, effectiveCanvasWidth, effectiveCanvasHeight, canvasPadding]);
+  }, [id, canvasWidth, canvasHeight, effectiveCanvasWidth, effectiveCanvasHeight, canvasPadding, loadMockupForView]);
+
+  // Load mockup when view changes (if not already loaded)
+  useEffect(() => {
+    if (product?.design?.views) {
+      // Only load if not already loaded for this view
+      const existingMockup = mockupImagesByView[currentView];
+      if (!existingMockup) {
+        console.log(`Loading mockup for view: ${currentView}`);
+        loadMockupForView(currentView, product.design.views);
+      } else {
+        console.log(`Using existing mockup for view: ${currentView}`);
+        // Update stage size when switching to a view that already has a mockup
+        const size = imageSizesByView[currentView];
+        if (size && size.width > 0) {
+          setStageSize({ width: canvasWidth, height: canvasHeight });
+        }
+      }
+    }
+  }, [currentView, product?.design?.views, loadMockupForView, mockupImagesByView, imageSizesByView, canvasWidth, canvasHeight]);
 
   // Reset selections when product changes
   useEffect(() => {
@@ -703,18 +826,21 @@ const DesignEditor: React.FC = () => {
     };
     setElements(prev => [...prev, newElement]);
     setSelectedIds([newElement.id]);
+    setHasUnsavedChanges(true); // Mark as having unsaved changes
     saveToHistory();
     return newElement.id;
   };
 
   const updateElement = (id: string, updates: Partial<CanvasElement>) => {
     setElements(prev => prev.map(el => el.id === id ? { ...el, ...updates } : el));
+    setHasUnsavedChanges(true); // Mark as having unsaved changes
   };
 
   const deleteSelected = () => {
     if (selectedIds.length > 0) {
       setElements(prev => prev.filter(el => !selectedIds.includes(el.id)));
       setSelectedIds([]);
+      setHasUnsavedChanges(true); // Mark as having unsaved changes
       saveToHistory();
     }
   };
@@ -905,6 +1031,7 @@ const DesignEditor: React.FC = () => {
         return [...prev, color];
       }
     });
+    setHasUnsavedChanges(true); // Mark as having unsaved changes
   }, []);
 
   // Toggle size selection (backward compatibility - for standalone size selection)
@@ -1089,6 +1216,59 @@ const DesignEditor: React.FC = () => {
     toast.success(`Design exported as ${format.toUpperCase()}`);
   };
 
+  const handleExportPreview = async (format: 'png' | 'jpg' = 'png') => {
+    try {
+      if (!webglCanvasRef.current) {
+        toast.error('Preview is not available to export');
+        return;
+      }
+
+      let canvas = webglCanvasRef.current.querySelector('canvas');
+      if (!canvas) {
+        const divs = webglCanvasRef.current.querySelectorAll('div');
+        for (const div of Array.from(divs)) {
+          canvas = div.querySelector('canvas');
+          if (canvas) break;
+        }
+      }
+
+      if (!canvas) {
+        toast.error('Could not find preview canvas to export');
+        return;
+      }
+
+      const mime = format === 'png' ? 'image/png' : 'image/jpeg';
+      const quality = 1.0;
+
+      // Ensure the latest frame is rendered before reading pixels
+      await new Promise(requestAnimationFrame);
+      await new Promise(requestAnimationFrame);
+
+      canvas.toBlob(
+        async (blob) => {
+          if (!blob) {
+            toast.error('Failed to generate image');
+            return;
+          }
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `preview.${format}`;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          URL.revokeObjectURL(url);
+          toast.success(`Preview exported as ${format.toUpperCase()}`);
+        },
+        mime,
+        quality
+      );
+    } catch (err) {
+      console.error('Error exporting preview image:', err);
+      toast.error('Error exporting preview image');
+    }
+  };
+
   // Capture preview image from WebGL canvas
   const capturePreviewImage = useCallback(async (): Promise<string | null> => {
     try {
@@ -1103,7 +1283,7 @@ const DesignEditor: React.FC = () => {
       // Find the canvas element inside the WebGL container
       // The canvas might be directly in the div or nested
       let canvas = webglCanvasRef.current.querySelector('canvas');
-      
+
       // If not found, try finding it in child elements
       if (!canvas) {
         const divs = webglCanvasRef.current.querySelectorAll('div');
@@ -1133,7 +1313,7 @@ const DesignEditor: React.FC = () => {
 
             const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
             const token = localStorage.getItem('token');
-            
+
             const headers: HeadersInit = {};
             if (token) {
               headers['Authorization'] = `Bearer ${token}`;
@@ -1198,7 +1378,7 @@ const DesignEditor: React.FC = () => {
       // Prepare design payload with all views
       const viewsData: Record<string, any> = {};
       const availableViews = product?.design?.views || [];
-      
+
       availableViews.forEach((view: ProductView) => {
         const viewElements = elements.filter(el => el.view === view.key || (!el.view && view.key === 'front'));
         viewsData[view.key] = {
@@ -1282,16 +1462,92 @@ const DesignEditor: React.FC = () => {
     }
   }, [user, product, elements, currentView, selectedColors, selectedSizes, placeholders, PX_PER_INCH, stageSize, canvasPadding, navigate]);
 
-  // Save design
-  const handleSave = () => {
-    const designData = {
-      elements,
-      view: currentView,
-      timestamp: Date.now()
-    };
-    // Save to backend/API
-    localStorage.setItem(`design_${id}`, JSON.stringify(designData));
-    toast.success('Design saved');
+  const handleSave = async () => {
+    try {
+      if (!webglCanvasRef.current || !id) {
+        toast.error('Preview is not available to save');
+        return;
+      }
+
+      let canvas = webglCanvasRef.current.querySelector('canvas');
+      if (!canvas) {
+        const divs = webglCanvasRef.current.querySelectorAll('div');
+        for (const div of Array.from(divs)) {
+          canvas = div.querySelector('canvas');
+          if (canvas) break;
+        }
+      }
+
+      if (!canvas) {
+        toast.error('Could not find preview canvas to save');
+        return;
+      }
+
+      await new Promise(requestAnimationFrame);
+      await new Promise(requestAnimationFrame);
+
+      await new Promise<void>((resolve, reject) => {
+        canvas!.toBlob(async (blob) => {
+          if (!blob) {
+            toast.error('Failed to generate image');
+            reject(new Error('blob null'));
+            return;
+          }
+
+          try {
+            const formData = new FormData();
+            formData.append('image', blob, `preview-${currentView}.png`);
+
+            const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+            const token = localStorage.getItem('token');
+            const headers: HeadersInit = {};
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+
+            const uploadResp = await fetch(`${API_BASE_URL}/api/upload/image`, {
+              method: 'POST',
+              headers,
+              body: formData,
+              credentials: 'include',
+            });
+            const uploadJson = await uploadResp.json().catch(() => ({}));
+            const uploadedUrl = uploadJson?.url as string | undefined;
+            if (uploadResp.ok && uploadJson?.success && uploadedUrl) {
+              const nextPreviewImages = { ...savedPreviewImages, [currentView]: uploadedUrl } as Record<string, string>;
+              setSavedPreviewImages(nextPreviewImages);
+
+              const saveResp = await fetch(`${API_BASE_URL}/api/auth/me/previews/${id}`, {
+                method: 'PUT',
+                headers: {
+                  'Content-Type': 'application/json',
+                  ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                },
+                credentials: 'include',
+                body: JSON.stringify({ previews: { [currentView]: uploadedUrl } }),
+              });
+              const saveJson = await saveResp.json().catch(() => ({}));
+              if (saveResp.ok && saveJson?.success) {
+                toast.success('Preview saved');
+                setHasUnsavedChanges(false); // Reset unsaved changes flag after successful save
+                resolve();
+              } else {
+                toast.error('Uploaded image, but failed to save to user previews');
+                resolve();
+              }
+            } else {
+              toast.error('Failed to upload preview image');
+              resolve();
+            }
+          } catch (e) {
+            console.error('Error saving preview image:', e);
+            toast.error('Error saving preview image');
+            resolve();
+          }
+        }, 'image/png', 1.0);
+      });
+    } catch (e) {
+      console.error('Save error:', e);
+      toast.error('Failed to save');
+    }
   };
 
   return (
@@ -1331,7 +1587,13 @@ const DesignEditor: React.FC = () => {
           <Button
             variant={previewMode ? 'default' : 'ghost'}
             size="sm"
-            onClick={() => setPreviewMode(true)}
+            onClick={() => {
+              setPreviewMode(true);
+              // Only fetch saved previews if there are no unsaved changes
+              if (!hasUnsavedChanges) {
+                fetchUserPreviews();
+              }
+            }}
           >
             Preview
           </Button>
@@ -1342,10 +1604,17 @@ const DesignEditor: React.FC = () => {
             <Save className="w-4 h-4 mr-2" />
             Save
           </Button>
-          <Button variant="default" size="sm" onClick={() => handleExport('png')}>
+          <Button variant="default" size="sm" onClick={() => handleExportPreview('png')}>
             <Download className="w-4 h-4 mr-2" />
             Export
           </Button>
+          {savedPreviewImages[currentView] && (
+            <a href={savedPreviewImages[currentView]} target="_blank" rel="noreferrer">
+              <Button variant="outline" size="sm">
+                Last Preview
+              </Button>
+            </a>
+          )}
         </div>
       </div>
 
@@ -1464,7 +1733,6 @@ const DesignEditor: React.FC = () => {
             </div>
           ) : currentViewData ? (
             <div className="relative w-full h-full flex items-center justify-center">
-              {/* WebGL Canvas + Konva Overlay - Same positioning context */}
               <div
                 ref={webglCanvasRef}
                 className="relative bg-white shadow-lg"
@@ -1473,67 +1741,82 @@ const DesignEditor: React.FC = () => {
                   transformOrigin: 'center'
                 }}
               >
-                <RealisticWebGLPreview
-                  mockupImageUrl={
-                    currentViewData.mockupImageUrl &&
-                      typeof currentViewData.mockupImageUrl === 'string' &&
-                      currentViewData.mockupImageUrl.trim() !== ''
-                      ? currentViewData.mockupImageUrl
-                      : null
-                  }
-                  activePlaceholder={
-                    currentViewData.placeholders?.find(
-                      (p) => p.id === selectedPlaceholderId,
-                    )
-                      ? ({
-                        ...currentViewData.placeholders.find(
-                          (p) => p.id === selectedPlaceholderId,
-                        )!,
-                        rotationDeg:
-                          currentViewData.placeholders.find(
-                            (p) => p.id === selectedPlaceholderId,
-                          )?.rotationDeg ?? 0,
-                      } as any)
-                      : null
-                  }
-                  placeholders={
-                    (currentViewData.placeholders || []).map((p) => ({
-                      ...p,
-                      rotationDeg: p.rotationDeg ?? 0,
-                    })) as any
-                  }
-                  physicalWidth={
-                    product?.design?.physicalDimensions?.width ??
-                    DEFAULT_PHYSICAL_WIDTH
-                  }
-                  physicalHeight={
-                    product?.design?.physicalDimensions?.height ??
-                    DEFAULT_PHYSICAL_HEIGHT
-                  }
-                  settings={displacementSettings}
-                  onSettingsChange={setDisplacementSettings}
-                  onDesignUpload={(placeholderId, designUrl) => {
-                    setDesignUrlForView(currentView, placeholderId, designUrl);
-                  }}
-                  designUrlsByPlaceholder={getDesignUrlsForView(currentView)}
-                  onSelectPlaceholder={(id) => {
-                    if (id) {
-                      console.log('Placeholder selected via WebGL:', id);
-                      setSelectedPlaceholderId(id);
-                      selectedPlaceholderIdRef.current = id;
-                      toast.info(`Placeholder ${id.slice(0, 8)}... selected`);
-                    } else {
-                      setSelectedPlaceholderId(null);
-                      selectedPlaceholderIdRef.current = null;
+                {previewMode && !hasUnsavedChanges && savedPreviewImages[currentView] ? (
+                  <img
+                    src={savedPreviewImages[currentView]}
+                    alt="Saved preview"
+                    className="block max-w-full max-h-full"
+                    style={{
+                      display: 'block',
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'contain',
+                    }}
+                  />
+                ) : (
+                  <RealisticWebGLPreview
+                    key={`preview-${currentView}-${currentViewData?.mockupImageUrl ? currentViewData.mockupImageUrl.slice(-20) : 'no-mockup'}-${getDesignUrlsHash(currentView)}`}
+                    mockupImageUrl={
+                      currentViewData?.mockupImageUrl &&
+                        typeof currentViewData.mockupImageUrl === 'string' &&
+                        currentViewData.mockupImageUrl.trim() !== ''
+                        ? currentViewData.mockupImageUrl
+                        : null
                     }
-                  }}
-                  previewMode={previewMode}
-                  garmentTintHex={primaryColorHex}
-                  canvasElements={elements}
-                  currentView={currentView}
-                  canvasPadding={canvasPadding}
-                  PX_PER_INCH={PX_PER_INCH}
-                />
+                    activePlaceholder={
+                      currentViewData.placeholders?.find(
+                        (p) => p.id === selectedPlaceholderId,
+                      )
+                        ? ({
+                          ...currentViewData.placeholders.find(
+                            (p) => p.id === selectedPlaceholderId,
+                          )!,
+                          rotationDeg:
+                            currentViewData.placeholders.find(
+                              (p) => p.id === selectedPlaceholderId,
+                            )?.rotationDeg ?? 0,
+                        } as any)
+                        : null
+                    }
+                    placeholders={
+                      (currentViewData.placeholders || []).map((p) => ({
+                        ...p,
+                        rotationDeg: p.rotationDeg ?? 0,
+                      })) as any
+                    }
+                    physicalWidth={
+                      product?.design?.physicalDimensions?.width ??
+                      DEFAULT_PHYSICAL_WIDTH
+                    }
+                    physicalHeight={
+                      product?.design?.physicalDimensions?.height ??
+                      DEFAULT_PHYSICAL_HEIGHT
+                    }
+                    settings={displacementSettings}
+                    onSettingsChange={handleDisplacementSettingsChange}
+                    onDesignUpload={(placeholderId, designUrl) => {
+                      setDesignUrlForView(currentView, placeholderId, designUrl);
+                    }}
+                    designUrlsByPlaceholder={getDesignUrlsForView(currentView)}
+                    onSelectPlaceholder={(id) => {
+                      if (id) {
+                        console.log('Placeholder selected via WebGL:', id);
+                        setSelectedPlaceholderId(id);
+                        selectedPlaceholderIdRef.current = id;
+                        toast.info(`Placeholder ${id.slice(0, 8)}... selected`);
+                      } else {
+                        setSelectedPlaceholderId(null);
+                        selectedPlaceholderIdRef.current = null;
+                      }
+                    }}
+                    previewMode={previewMode}
+                    garmentTintHex={primaryColorHex}
+                    canvasElements={elements}
+                    currentView={currentView}
+                    canvasPadding={canvasPadding}
+                    PX_PER_INCH={PX_PER_INCH}
+                  />
+                )}
 
                 {/* Konva Overlay - Just for Grid & Rulers now */}
                 {!previewMode && (
@@ -1681,13 +1964,13 @@ const DesignEditor: React.FC = () => {
                               : undefined;
                             const elPrintArea = placeholder
                               ? {
-                                  x: placeholder.x,
-                                  y: placeholder.y,
-                                  width: placeholder.width,
-                                  height: placeholder.height,
-                                  isPolygon: placeholder.isPolygon,
-                                  polygonPointsPx: placeholder.polygonPointsPx,
-                                }
+                                x: placeholder.x,
+                                y: placeholder.y,
+                                width: placeholder.width,
+                                height: placeholder.height,
+                                isPolygon: placeholder.isPolygon,
+                                polygonPointsPx: placeholder.polygonPointsPx,
+                              }
                               : printArea;
 
                             if (el.type === 'image') {
@@ -1883,7 +2166,7 @@ const DesignEditor: React.FC = () => {
                     removeDesignUrlForView(currentView, placeholderId);
                   }}
                   displacementSettings={displacementSettings}
-                  onDisplacementSettingsChange={setDisplacementSettings}
+                  onDisplacementSettingsChange={handleDisplacementSettingsChange}
                   selectedElementIds={selectedIds}
                   elements={elements}
                   onElementUpdate={(updates) => {
@@ -1919,10 +2202,12 @@ const DesignEditor: React.FC = () => {
                   onDelete={(id) => {
                     setElements(prev => prev.filter(el => el.id !== id));
                     setSelectedIds(prev => prev.filter(selectedId => selectedId !== id));
+                    setHasUnsavedChanges(true); // Mark as having unsaved changes
                     saveToHistory();
                   }}
                   onReorder={(newOrder) => {
                     setElements(newOrder);
+                    setHasUnsavedChanges(true); // Mark as having unsaved changes
                     saveToHistory();
                   }}
                 />
@@ -2154,10 +2439,10 @@ const ImageElement: React.FC<{
   // Constrain dragging within print area
   const dragBoundFunc = printArea && element.width && element.height
     ? (pos: { x: number; y: number }) => {
-        const constrainedX = Math.max(printArea.x, Math.min(pos.x, printArea.x + printArea.width - element.width!));
-        const constrainedY = Math.max(printArea.y, Math.min(pos.y, printArea.y + printArea.height - element.height!));
-        return { x: constrainedX, y: constrainedY };
-      }
+      const constrainedX = Math.max(printArea.x, Math.min(pos.x, printArea.x + printArea.width - element.width!));
+      const constrainedY = Math.max(printArea.y, Math.min(pos.y, printArea.y + printArea.height - element.height!));
+      return { x: constrainedX, y: constrainedY };
+    }
     : undefined;
 
   // Common image props
@@ -2614,392 +2899,392 @@ const PropertiesPanel: React.FC<{
   PX_PER_INCH,
   canvasPadding,
 }) => {
-  const [designTransforms, setDesignTransforms] = useState<Record<string, { x: number; y: number; scale: number }>>({});
-  const fileInputRef = useRef<HTMLInputElement>(null);
+    const [designTransforms, setDesignTransforms] = useState<Record<string, { x: number; y: number; scale: number }>>({});
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const selectedPlaceholder = selectedPlaceholderId
-    ? placeholders.find(p => p.id === selectedPlaceholderId)
-    : null;
+    const selectedPlaceholder = selectedPlaceholderId
+      ? placeholders.find(p => p.id === selectedPlaceholderId)
+      : null;
 
-  const selectedElement = selectedElementIds.length > 0
-    ? elements.find(el => el.id === selectedElementIds[0])
-    : null;
+    const selectedElement = selectedElementIds.length > 0
+      ? elements.find(el => el.id === selectedElementIds[0])
+      : null;
 
-  // Handle design file upload for placeholder
-  const handleDesignFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!selectedPlaceholderId || !e.target.files?.[0]) return;
+    // Handle design file upload for placeholder
+    const handleDesignFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (!selectedPlaceholderId || !e.target.files?.[0]) return;
 
-    const file = e.target.files[0];
-    const formData = new FormData();
-    formData.append('file', file);
+      const file = e.target.files[0];
+      const formData = new FormData();
+      formData.append('file', file);
 
-    try {
-      const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-      const response = await fetch(`${API_BASE_URL}/api/upload`, {
-        method: 'POST',
-        body: formData,
-      });
+      try {
+        const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+        const response = await fetch(`${API_BASE_URL}/api/upload`, {
+          method: 'POST',
+          body: formData,
+        });
 
-      const data = await response.json();
-      if (data.success && data.url) {
-        onDesignUpload(selectedPlaceholderId, data.url);
-        toast.success('Design uploaded successfully');
-      } else {
+        const data = await response.json();
+        if (data.success && data.url) {
+          onDesignUpload(selectedPlaceholderId, data.url);
+          toast.success('Design uploaded successfully');
+        } else {
+          toast.error('Failed to upload design');
+        }
+      } catch (error) {
+        console.error('Upload error:', error);
         toast.error('Failed to upload design');
       }
-    } catch (error) {
-      console.error('Upload error:', error);
-      toast.error('Failed to upload design');
-    }
 
-    // Reset input
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-  };
+      // Reset input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    };
 
-  // Show placeholder properties when placeholder is selected
-  // if (selectedPlaceholderId && selectedPlaceholder) {
-  //   const designUrl = designUrlsByPlaceholder[selectedPlaceholderId];
-  //   const transform = designTransforms[selectedPlaceholderId] || { x: 0, y: 0, scale: 1 };
+    // Show placeholder properties when placeholder is selected
+    // if (selectedPlaceholderId && selectedPlaceholder) {
+    //   const designUrl = designUrlsByPlaceholder[selectedPlaceholderId];
+    //   const transform = designTransforms[selectedPlaceholderId] || { x: 0, y: 0, scale: 1 };
 
-  //   return (
-  //     <div className="space-y-6">
-  //       {/* Size Section */}
-  //       {/* {designUrl && (
-  //         <div className="space-y-4">
-  //           <h3 className="text-sm font-semibold">Size</h3>
-  //           <div className="space-y-2">
-  //             <div>
-  //               <Label className="text-xs">Width: {Math.round(selectedPlaceholder.width * PX_PER_INCH)}px</Label>
-  //               <Slider
-  //                 value={[selectedPlaceholder.width * PX_PER_INCH]}
-  //                 onValueChange={([value]) => {
-  //                   // Update placeholder width
-  //                   const newWidth = value / PX_PER_INCH;
-  //                   // This would need to be handled by a callback, but keeping structure for now
-  //                 }}
-  //                 min={10}
-  //                 max={1000}
-  //                 step={1}
-  //               />
-  //             </div>
-  //             <div>
-  //               <Label className="text-xs">Height: {Math.round(selectedPlaceholder.height * PX_PER_INCH)}px</Label>
-  //               <Slider
-  //                 value={[selectedPlaceholder.height * PX_PER_INCH]}
-  //                 onValueChange={([value]) => {
-  //                   // Update placeholder height
-  //                   const newHeight = value / PX_PER_INCH;
-  //                   // This would need to be handled by a callback, but keeping structure for now
-  //                 }}
-  //                 min={10}
-  //                 max={1000}
-  //                 step={1}
-  //               />
-  //             </div>
-  //             <div className="flex items-center gap-2">
-  //               <input
-  //                 type="checkbox"
-  //                 id="lockAspect"
-  //                 className="w-4 h-4"
-  //                 checked={false}
-  //                 onChange={() => {}}
-  //               />
-  //               <Label htmlFor="lockAspect" className="text-xs cursor-pointer">
-  //                 🔒 Lock aspect ratio
-  //               </Label>
-  //             </div>
-  //           </div>
-  //         </div>
-  //       )} */}
+    //   return (
+    //     <div className="space-y-6">
+    //       {/* Size Section */}
+    //       {/* {designUrl && (
+    //         <div className="space-y-4">
+    //           <h3 className="text-sm font-semibold">Size</h3>
+    //           <div className="space-y-2">
+    //             <div>
+    //               <Label className="text-xs">Width: {Math.round(selectedPlaceholder.width * PX_PER_INCH)}px</Label>
+    //               <Slider
+    //                 value={[selectedPlaceholder.width * PX_PER_INCH]}
+    //                 onValueChange={([value]) => {
+    //                   // Update placeholder width
+    //                   const newWidth = value / PX_PER_INCH;
+    //                   // This would need to be handled by a callback, but keeping structure for now
+    //                 }}
+    //                 min={10}
+    //                 max={1000}
+    //                 step={1}
+    //               />
+    //             </div>
+    //             <div>
+    //               <Label className="text-xs">Height: {Math.round(selectedPlaceholder.height * PX_PER_INCH)}px</Label>
+    //               <Slider
+    //                 value={[selectedPlaceholder.height * PX_PER_INCH]}
+    //                 onValueChange={([value]) => {
+    //                   // Update placeholder height
+    //                   const newHeight = value / PX_PER_INCH;
+    //                   // This would need to be handled by a callback, but keeping structure for now
+    //                 }}
+    //                 min={10}
+    //                 max={1000}
+    //                 step={1}
+    //               />
+    //             </div>
+    //             <div className="flex items-center gap-2">
+    //               <input
+    //                 type="checkbox"
+    //                 id="lockAspect"
+    //                 className="w-4 h-4"
+    //                 checked={false}
+    //                 onChange={() => {}}
+    //               />
+    //               <Label htmlFor="lockAspect" className="text-xs cursor-pointer">
+    //                 🔒 Lock aspect ratio
+    //               </Label>
+    //             </div>
+    //           </div>
+    //         </div>
+    //       )} */}
 
-  //       {/* Position Section */}
-  //       {/* {designUrl && (
-  //         <div className="space-y-4">
-  //           <h3 className="text-sm font-semibold">Position</h3>
-  //           <div className="space-y-2">
-  //             <div>
-  //               <div className="flex items-center justify-between mb-1">
-  //                 <Label className="text-xs">X: {Math.round(transform.x * PX_PER_INCH)}px</Label>
-  //               </div>
-  //               <Slider
-  //                 value={[transform.x * PX_PER_INCH]}
-  //                 onValueChange={([value]) => {
-  //                   setDesignTransforms(prev => ({
-  //                     ...prev,
-  //                     [selectedPlaceholderId]: { ...transform, x: value / PX_PER_INCH },
-  //                   }));
-  //                 }}
-  //                 min={0}
-  //                 max={1000}
-  //                 step={1}
-  //               />
-  //             </div>
-  //             <div>
-  //               <div className="flex items-center justify-between mb-1">
-  //                 <Label className="text-xs">Y: {Math.round(transform.y * PX_PER_INCH)}px</Label>
-  //               </div>
-  //               <Slider
-  //                 value={[transform.y * PX_PER_INCH]}
-  //                 onValueChange={([value]) => {
-  //                   setDesignTransforms(prev => ({
-  //                     ...prev,
-  //                     [selectedPlaceholderId]: { ...transform, y: value / PX_PER_INCH },
-  //                   }));
-  //                 }}
-  //                 min={0}
-  //                 max={1000}
-  //                 step={1}
-  //               />
-  //             </div>
-  //           </div>
-  //         </div>
-  //       )} */}
+    //       {/* Position Section */}
+    //       {/* {designUrl && (
+    //         <div className="space-y-4">
+    //           <h3 className="text-sm font-semibold">Position</h3>
+    //           <div className="space-y-2">
+    //             <div>
+    //               <div className="flex items-center justify-between mb-1">
+    //                 <Label className="text-xs">X: {Math.round(transform.x * PX_PER_INCH)}px</Label>
+    //               </div>
+    //               <Slider
+    //                 value={[transform.x * PX_PER_INCH]}
+    //                 onValueChange={([value]) => {
+    //                   setDesignTransforms(prev => ({
+    //                     ...prev,
+    //                     [selectedPlaceholderId]: { ...transform, x: value / PX_PER_INCH },
+    //                   }));
+    //                 }}
+    //                 min={0}
+    //                 max={1000}
+    //                 step={1}
+    //               />
+    //             </div>
+    //             <div>
+    //               <div className="flex items-center justify-between mb-1">
+    //                 <Label className="text-xs">Y: {Math.round(transform.y * PX_PER_INCH)}px</Label>
+    //               </div>
+    //               <Slider
+    //                 value={[transform.y * PX_PER_INCH]}
+    //                 onValueChange={([value]) => {
+    //                   setDesignTransforms(prev => ({
+    //                     ...prev,
+    //                     [selectedPlaceholderId]: { ...transform, y: value / PX_PER_INCH },
+    //                   }));
+    //                 }}
+    //                 min={0}
+    //                 max={1000}
+    //                 step={1}
+    //               />
+    //             </div>
+    //           </div>
+    //         </div>
+    //       )} */}
 
-  //       {/* Flip Section */}
-  //       {/* {designUrl && (
-  //         <div className="space-y-4">
-  //           <h3 className="text-sm font-semibold">Flip</h3>
-  //           <div className="space-y-2">
-  //             <div className="flex items-center gap-2">
-  //               <input
-  //                 type="checkbox"
-  //                 id="flipH"
-  //                 className="w-4 h-4"
-  //                 checked={false}
-  //                 onChange={() => {}}
-  //               />
-  //               <Label htmlFor="flipH" className="text-xs cursor-pointer">
-  //                 ↔️ Horizontal
-  //               </Label>
-  //             </div>
-  //             <div className="flex items-center gap-2">
-  //               <input
-  //                 type="checkbox"
-  //                 id="flipV"
-  //                 className="w-4 h-4"
-  //                 checked={false}
-  //                 onChange={() => {}}
-  //               />
-  //               <Label htmlFor="flipV" className="text-xs cursor-pointer">
-  //                 ↕️ Vertical
-  //               </Label>
-  //             </div>
-  //           </div>
-  //         </div>
-  //       )} */}
+    //       {/* Flip Section */}
+    //       {/* {designUrl && (
+    //         <div className="space-y-4">
+    //           <h3 className="text-sm font-semibold">Flip</h3>
+    //           <div className="space-y-2">
+    //             <div className="flex items-center gap-2">
+    //               <input
+    //                 type="checkbox"
+    //                 id="flipH"
+    //                 className="w-4 h-4"
+    //                 checked={false}
+    //                 onChange={() => {}}
+    //               />
+    //               <Label htmlFor="flipH" className="text-xs cursor-pointer">
+    //                 ↔️ Horizontal
+    //               </Label>
+    //             </div>
+    //             <div className="flex items-center gap-2">
+    //               <input
+    //                 type="checkbox"
+    //                 id="flipV"
+    //                 className="w-4 h-4"
+    //                 checked={false}
+    //                 onChange={() => {}}
+    //               />
+    //               <Label htmlFor="flipV" className="text-xs cursor-pointer">
+    //                 ↕️ Vertical
+    //               </Label>
+    //             </div>
+    //           </div>
+    //         </div>
+    //       )} */}
 
-  //       {/* Opacity Section */}
-  //       {/* {designUrl && (
-  //         <div className="space-y-4">
-  //           <h3 className="text-sm font-semibold">Opacity</h3>
-  //           <div className="space-y-2">
-  //             <div>
-  //               <Label className="text-xs">Opacity: 100%</Label>
-  //               <Slider
-  //                 value={[100]}
-  //                 onValueChange={() => {}}
-  //                 min={0}
-  //                 max={100}
-  //                 step={1}
-  //               />
-  //             </div>
-  //           </div>
-  //         </div>
-  //       )} */}
+    //       {/* Opacity Section */}
+    //       {/* {designUrl && (
+    //         <div className="space-y-4">
+    //           <h3 className="text-sm font-semibold">Opacity</h3>
+    //           <div className="space-y-2">
+    //             <div>
+    //               <Label className="text-xs">Opacity: 100%</Label>
+    //               <Slider
+    //                 value={[100]}
+    //                 onValueChange={() => {}}
+    //                 min={0}
+    //                 max={100}
+    //                 step={1}
+    //               />
+    //             </div>
+    //           </div>
+    //         </div>
+    //       )} */}
 
-  //       {/* Blend Mode Section */}
-  //       {/* {designUrl && (
-  //         <div className="space-y-4">
-  //           <h3 className="text-sm font-semibold">Blend Mode</h3>
-  //           <select
-  //             className="w-full px-3 py-2 border rounded-md bg-background text-sm"
-  //             value="normal"
-  //             onChange={() => {}}
-  //           >
-  //             <option value="normal">Normal</option>
-  //             <option value="multiply">Multiply</option>
-  //             <option value="screen">Screen</option>
-  //             <option value="overlay">Overlay</option>
-  //             <option value="darken">Darken</option>
-  //             <option value="lighten">Lighten</option>
-  //           </select>
-  //           <p className="text-xs text-muted-foreground">
-  //             Adjusts how the design blends with the mockup
-  //           </p>
-  //         </div>
-  //       )} */}
+    //       {/* Blend Mode Section */}
+    //       {/* {designUrl && (
+    //         <div className="space-y-4">
+    //           <h3 className="text-sm font-semibold">Blend Mode</h3>
+    //           <select
+    //             className="w-full px-3 py-2 border rounded-md bg-background text-sm"
+    //             value="normal"
+    //             onChange={() => {}}
+    //           >
+    //             <option value="normal">Normal</option>
+    //             <option value="multiply">Multiply</option>
+    //             <option value="screen">Screen</option>
+    //             <option value="overlay">Overlay</option>
+    //             <option value="darken">Darken</option>
+    //             <option value="lighten">Lighten</option>
+    //           </select>
+    //           <p className="text-xs text-muted-foreground">
+    //             Adjusts how the design blends with the mockup
+    //           </p>
+    //         </div>
+    //       )} */}
 
-  //       {/* Tune Realism (Displacement Settings) */}
-  //       <div className="space-y-4">
-  //         <h3 className="text-sm font-semibold">Tune Realism</h3>
-  //         <div className="space-y-2">
-  //           <div>
-  //             <div className="flex items-center justify-between mb-1">
-  //               <Label className="text-xs">Displacement X</Label>
-  //               <span className="text-xs">{displacementSettings.scaleX}</span>
-  //             </div>
-  //             <Slider
-  //               value={[displacementSettings.scaleX]}
-  //               onValueChange={([value]) => {
-  //                 onDisplacementSettingsChange({
-  //                   ...displacementSettings,
-  //                   scaleX: value
-  //                 });
-  //               }}
-  //               min={0}
-  //               max={100}
-  //               step={1}
-  //             />
-  //           </div>
-  //           <div>
-  //             <div className="flex items-center justify-between mb-1">
-  //               <Label className="text-xs">Displacement Y</Label>
-  //               <span className="text-xs">{displacementSettings.scaleY}</span>
-  //             </div>
-  //             <Slider
-  //               value={[displacementSettings.scaleY]}
-  //               onValueChange={([value]) => {
-  //                 onDisplacementSettingsChange({
-  //                   ...displacementSettings,
-  //                   scaleY: value
-  //                 });
-  //               }}
-  //               min={0}
-  //               max={100}
-  //               step={1}
-  //             />
-  //           </div>
-  //           <div>
-  //             <div className="flex items-center justify-between mb-1">
-  //               <Label className="text-xs">Fold Contrast</Label>
-  //               <span className="text-xs">{displacementSettings.contrastBoost.toFixed(1)}</span>
-  //             </div>
-  //             <Slider
-  //               value={[displacementSettings.contrastBoost]}
-  //               onValueChange={([value]) => {
-  //                 onDisplacementSettingsChange({
-  //                   ...displacementSettings,
-  //                   contrastBoost: value
-  //                 });
-  //               }}
-  //               min={1}
-  //               max={5}
-  //               step={0.1}
-  //             />
-  //           </div>
-  //         </div>
-  //       </div>
-  //     </div>
-  //   );
-  // }
+    //       {/* Tune Realism (Displacement Settings) */}
+    //       <div className="space-y-4">
+    //         <h3 className="text-sm font-semibold">Tune Realism</h3>
+    //         <div className="space-y-2">
+    //           <div>
+    //             <div className="flex items-center justify-between mb-1">
+    //               <Label className="text-xs">Displacement X</Label>
+    //               <span className="text-xs">{displacementSettings.scaleX}</span>
+    //             </div>
+    //             <Slider
+    //               value={[displacementSettings.scaleX]}
+    //               onValueChange={([value]) => {
+    //                 onDisplacementSettingsChange({
+    //                   ...displacementSettings,
+    //                   scaleX: value
+    //                 });
+    //               }}
+    //               min={0}
+    //               max={100}
+    //               step={1}
+    //             />
+    //           </div>
+    //           <div>
+    //             <div className="flex items-center justify-between mb-1">
+    //               <Label className="text-xs">Displacement Y</Label>
+    //               <span className="text-xs">{displacementSettings.scaleY}</span>
+    //             </div>
+    //             <Slider
+    //               value={[displacementSettings.scaleY]}
+    //               onValueChange={([value]) => {
+    //                 onDisplacementSettingsChange({
+    //                   ...displacementSettings,
+    //                   scaleY: value
+    //                 });
+    //               }}
+    //               min={0}
+    //               max={100}
+    //               step={1}
+    //             />
+    //           </div>
+    //           <div>
+    //             <div className="flex items-center justify-between mb-1">
+    //               <Label className="text-xs">Fold Contrast</Label>
+    //               <span className="text-xs">{displacementSettings.contrastBoost.toFixed(1)}</span>
+    //             </div>
+    //             <Slider
+    //               value={[displacementSettings.contrastBoost]}
+    //               onValueChange={([value]) => {
+    //                 onDisplacementSettingsChange({
+    //                   ...displacementSettings,
+    //                   contrastBoost: value
+    //                 });
+    //               }}
+    //               min={1}
+    //               max={5}
+    //               step={0.1}
+    //             />
+    //           </div>
+    //         </div>
+    //       </div>
+    //     </div>
+    //   );
+    // }
 
-  // Show element properties when element is selected
-  if (selectedElement) {
-    const element = selectedElement;
-    const onUpdate = onElementUpdate;
+    // Show element properties when element is selected
+    if (selectedElement) {
+      const element = selectedElement;
+      const onUpdate = onElementUpdate;
 
-    return (
-      <div className="space-y-4">
-      {element.type === 'text' && (
-        <>
-          <div>
-            <Label>Text</Label>
-            <Input
-              value={element.text || ''}
-              onChange={(e) => onUpdate({ text: e.target.value })}
-            />
-          </div>
+      return (
+        <div className="space-y-4">
+          {element.type === 'text' && (
+            <>
+              <div>
+                <Label>Text</Label>
+                <Input
+                  value={element.text || ''}
+                  onChange={(e) => onUpdate({ text: e.target.value })}
+                />
+              </div>
 
-          <div>
-            <Label>Font Family</Label>
-            <select
-              value={element.fontFamily || 'Arial'}
-              onChange={(e) => onUpdate({ fontFamily: e.target.value })}
-              className="w-full px-3 py-2 border rounded-md bg-background"
-            >
-              <option value="Arial">Arial</option>
-              <option value="Helvetica">Helvetica</option>
-              <option value="Times New Roman">Times New Roman</option>
-              <option value="Courier New">Courier New</option>
-              <option value="Georgia">Georgia</option>
-              <option value="Verdana">Verdana</option>
-              {/* Add popular fonts from our list */}
-              <optgroup label="Google Fonts">
-                {['ABeeZee', 'Abel', 'Abril Fatface', 'Acme', 'Aladin', 'Alex Brush', 'Anton', 'Bangers', 'Caveat', 'Cinzel', 'Comfortaa', 'Dancing Script', 'Great Vibes', 'Indie Flower', 'Lobster', 'Montserrat', 'Open Sans', 'Oswald', 'Pacifico', 'Playfair Display', 'Poppins', 'Raleway', 'Roboto', 'Rubik'].map(font => (
-                  <option key={font} value={font}>{font}</option>
-                ))}
-              </optgroup>
-            </select>
-          </div>
+              <div>
+                <Label>Font Family</Label>
+                <select
+                  value={element.fontFamily || 'Arial'}
+                  onChange={(e) => onUpdate({ fontFamily: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-md bg-background"
+                >
+                  <option value="Arial">Arial</option>
+                  <option value="Helvetica">Helvetica</option>
+                  <option value="Times New Roman">Times New Roman</option>
+                  <option value="Courier New">Courier New</option>
+                  <option value="Georgia">Georgia</option>
+                  <option value="Verdana">Verdana</option>
+                  {/* Add popular fonts from our list */}
+                  <optgroup label="Google Fonts">
+                    {['ABeeZee', 'Abel', 'Abril Fatface', 'Acme', 'Aladin', 'Alex Brush', 'Anton', 'Bangers', 'Caveat', 'Cinzel', 'Comfortaa', 'Dancing Script', 'Great Vibes', 'Indie Flower', 'Lobster', 'Montserrat', 'Open Sans', 'Oswald', 'Pacifico', 'Playfair Display', 'Poppins', 'Raleway', 'Roboto', 'Rubik'].map(font => (
+                      <option key={font} value={font}>{font}</option>
+                    ))}
+                  </optgroup>
+                </select>
+              </div>
 
-          <div>
-            <Label>Font Size</Label>
-            <Slider
-              value={[element.fontSize || 24]}
-              onValueChange={([value]) => onUpdate({ fontSize: value })}
-              min={8}
-              max={500}
-              step={1}
-            />
-          </div>
+              <div>
+                <Label>Font Size</Label>
+                <Slider
+                  value={[element.fontSize || 24]}
+                  onValueChange={([value]) => onUpdate({ fontSize: value })}
+                  min={8}
+                  max={500}
+                  step={1}
+                />
+              </div>
 
-          <div>
-            <Label>Letter Spacing</Label>
-            <Slider
-              value={[element.letterSpacing || 0]}
-              onValueChange={([value]) => onUpdate({ letterSpacing: value })}
-              min={-10}
-              max={50}
-              step={1}
-            />
-          </div>
+              <div>
+                <Label>Letter Spacing</Label>
+                <Slider
+                  value={[element.letterSpacing || 0]}
+                  onValueChange={([value]) => onUpdate({ letterSpacing: value })}
+                  min={-10}
+                  max={50}
+                  step={1}
+                />
+              </div>
 
-          <div className="flex items-center justify-between">
-            <Label>Curved Text</Label>
-            <Switch
-              checked={element.curved || false}
-              onCheckedChange={(checked) => onUpdate({ curved: checked, curveRadius: checked ? (element.curveRadius || 200) : undefined })}
-            />
-          </div>
+              <div className="flex items-center justify-between">
+                <Label>Curved Text</Label>
+                <Switch
+                  checked={element.curved || false}
+                  onCheckedChange={(checked) => onUpdate({ curved: checked, curveRadius: checked ? (element.curveRadius || 200) : undefined })}
+                />
+              </div>
 
-          {element.curved && (
-            <div>
-              <Label>Curve Radius</Label>
-              <Slider
-                value={[element.curveRadius || 200]}
-                onValueChange={([value]) => onUpdate({ curveRadius: value })}
-                min={50}
-                max={1000}
-                step={10}
-              />
-            </div>
+              {element.curved && (
+                <div>
+                  <Label>Curve Radius</Label>
+                  <Slider
+                    value={[element.curveRadius || 200]}
+                    onValueChange={([value]) => onUpdate({ curveRadius: value })}
+                    min={50}
+                    max={1000}
+                    step={10}
+                  />
+                </div>
+              )}
+
+              <div>
+                <Label>Color</Label>
+                <div className="flex gap-2">
+                  <Input
+                    type="color"
+                    value={element.fill || '#000000'}
+                    onChange={(e) => onUpdate({ fill: e.target.value })}
+                    className="w-16 h-10"
+                  />
+                  <Input
+                    value={element.fill || '#000000'}
+                    onChange={(e) => onUpdate({ fill: e.target.value })}
+                    placeholder="#000000"
+                  />
+                </div>
+              </div>
+            </>
           )}
 
-          <div>
-            <Label>Color</Label>
-            <div className="flex gap-2">
-              <Input
-                type="color"
-                value={element.fill || '#000000'}
-                onChange={(e) => onUpdate({ fill: e.target.value })}
-                className="w-16 h-10"
-              />
-              <Input
-                value={element.fill || '#000000'}
-                onChange={(e) => onUpdate({ fill: e.target.value })}
-                placeholder="#000000"
-              />
-            </div>
-          </div>
-        </>
-      )}
-
-      {element.type === 'image' && (
-        <>
-          {/* Size Section */}
-          {/* <div className="space-y-4">
+          {element.type === 'image' && (
+            <>
+              {/* Size Section */}
+              {/* <div className="space-y-4">
             <h3 className="text-sm font-semibold">Size</h3>
             <div className="space-y-2">
               <div>
@@ -3051,8 +3336,8 @@ const PropertiesPanel: React.FC<{
             </div>
           </div> */}
 
-          {/* Position Section */}
-          {/* <div className="space-y-4">
+              {/* Position Section */}
+              {/* <div className="space-y-4">
             <h3 className="text-sm font-semibold">Position</h3>
             <div className="space-y-2">
               <div>
@@ -3082,39 +3367,39 @@ const PropertiesPanel: React.FC<{
             </div>
           </div> */}
 
-          {/* Flip Section */}
-          <div className="space-y-4">
-            <h3 className="text-sm font-semibold">Flip</h3>
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="flipH"
-                  className="w-4 h-4"
-                  checked={element.flipX || false}
-                  onChange={(e) => onUpdate({ flipX: e.target.checked })}
-                />
-                <Label htmlFor="flipH" className="text-xs cursor-pointer">
-                  ↔️ Horizontal
-                </Label>
+              {/* Flip Section */}
+              <div className="space-y-4">
+                <h3 className="text-sm font-semibold">Flip</h3>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="flipH"
+                      className="w-4 h-4"
+                      checked={element.flipX || false}
+                      onChange={(e) => onUpdate({ flipX: e.target.checked })}
+                    />
+                    <Label htmlFor="flipH" className="text-xs cursor-pointer">
+                      ↔️ Horizontal
+                    </Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="flipV"
+                      className="w-4 h-4"
+                      checked={element.flipY || false}
+                      onChange={(e) => onUpdate({ flipY: e.target.checked })}
+                    />
+                    <Label htmlFor="flipV" className="text-xs cursor-pointer">
+                      ↕️ Vertical
+                    </Label>
+                  </div>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="flipV"
-                  className="w-4 h-4"
-                  checked={element.flipY || false}
-                  onChange={(e) => onUpdate({ flipY: e.target.checked })}
-                />
-                <Label htmlFor="flipV" className="text-xs cursor-pointer">
-                  ↕️ Vertical
-                </Label>
-              </div>
-            </div>
-          </div>
 
-          {/* Opacity Section */}
-          {/* <div className="space-y-4">
+              {/* Opacity Section */}
+              {/* <div className="space-y-4">
             <h3 className="text-sm font-semibold">Opacity</h3>
             <div className="space-y-2">
               <div>
@@ -3130,8 +3415,8 @@ const PropertiesPanel: React.FC<{
             </div>
           </div> */}
 
-          {/* Blend Mode Section */}
-          {/* <div className="space-y-4">
+              {/* Blend Mode Section */}
+              {/* <div className="space-y-4">
             <h3 className="text-sm font-semibold">Blend Mode</h3>
             <select
               className="w-full px-3 py-2 border rounded-md bg-background text-sm"
@@ -3150,8 +3435,8 @@ const PropertiesPanel: React.FC<{
             </p>
           </div> */}
 
-          {/* Tune Realism (Displacement Settings) */}
-          {/* <div className="space-y-4">
+              {/* Tune Realism (Displacement Settings) */}
+              {/* <div className="space-y-4">
             <h3 className="text-sm font-semibold">Tune Realism</h3>
             <div className="space-y-2">
               <div>
@@ -3210,12 +3495,12 @@ const PropertiesPanel: React.FC<{
               </div>
             </div>
           </div> */}
-        </>
-      )}
+            </>
+          )}
 
-      {/* Common properties for elements */}
+          {/* Common properties for elements */}
 
-      {/* <div>
+          {/* <div>
         <Label>Opacity</Label>
         <Slider
           value={[element.opacity || 1]}
@@ -3226,27 +3511,27 @@ const PropertiesPanel: React.FC<{
         />
       </div> */}
 
-      <div>
-        <Label>Rotation</Label>
-        <Slider
-          value={[element.rotation || 0]}
-          onValueChange={([value]) => onUpdate({ rotation: value })}
-          min={-180}
-          max={180}
-          step={1}
-        />
-      </div>
-    </div>
-    );
-  }
+          <div>
+            <Label>Rotation</Label>
+            <Slider
+              value={[element.rotation || 0]}
+              onValueChange={([value]) => onUpdate({ rotation: value })}
+              min={-180}
+              max={180}
+              step={1}
+            />
+          </div>
+        </div>
+      );
+    }
 
-  // Fallback when nothing is selected
-  return (
-    <div className="text-center text-muted-foreground py-8">
-      <p className="text-sm">Select a placeholder or element to edit properties</p>
-    </div>
-  );
-};
+    // Fallback when nothing is selected
+    return (
+      <div className="text-center text-muted-foreground py-8">
+        <p className="text-sm">Select a placeholder or element to edit properties</p>
+      </div>
+    );
+  };
 
 const LayersPanel: React.FC<{
   placeholders: Array<{ id: string; x: number; y: number; width: number; height: number; rotation: number; original: Placeholder }>;
@@ -3273,131 +3558,129 @@ const LayersPanel: React.FC<{
   onDelete,
   onReorder,
 }) => {
-  return (
-    <div className="space-y-4">
-      {/* Placeholders Section */}
-      {placeholders.length > 0 && (
-        <div className="space-y-2">
-          <Label className="text-sm font-semibold uppercase text-muted-foreground">Placeholders</Label>
+    return (
+      <div className="space-y-4">
+        {/* Placeholders Section */}
+        {placeholders.length > 0 && (
           <div className="space-y-2">
-            {placeholders.map((placeholder) => {
-              const designUrl = designUrlsByPlaceholder[placeholder.id];
-              const isSelected = selectedPlaceholderId === placeholder.id;
+            <Label className="text-sm font-semibold uppercase text-muted-foreground">Placeholders</Label>
+            <div className="space-y-2">
+              {placeholders.map((placeholder) => {
+                const designUrl = designUrlsByPlaceholder[placeholder.id];
+                const isSelected = selectedPlaceholderId === placeholder.id;
 
-              return (
-                <div
-                  key={placeholder.id}
-                  className={`p-3 border rounded-lg cursor-pointer transition-colors ${
-                    isSelected ? 'border-primary bg-primary/5' : 'hover:bg-muted'
-                  }`}
-                  onClick={() => onSelectPlaceholder(placeholder.id)}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                      <div className="w-8 h-8 rounded border bg-muted flex items-center justify-center flex-shrink-0">
-                        {designUrl ? (
-                          <img src={designUrl} alt="Design" className="w-full h-full object-contain rounded" />
-                        ) : (
-                          <Square className="w-4 h-4 text-muted-foreground" />
+                return (
+                  <div
+                    key={placeholder.id}
+                    className={`p-3 border rounded-lg cursor-pointer transition-colors ${isSelected ? 'border-primary bg-primary/5' : 'hover:bg-muted'
+                      }`}
+                    onClick={() => onSelectPlaceholder(placeholder.id)}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <div className="w-8 h-8 rounded border bg-muted flex items-center justify-center flex-shrink-0">
+                          {designUrl ? (
+                            <img src={designUrl} alt="Design" className="w-full h-full object-contain rounded" />
+                          ) : (
+                            <Square className="w-4 h-4 text-muted-foreground" />
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">
+                            Placeholder {placeholder.id.slice(0, 8)}...
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {placeholder.original.widthIn.toFixed(1)}" × {placeholder.original.heightIn.toFixed(1)}"
+                            {designUrl && ' • Design'}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        {designUrl && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onDesignRemove(placeholder.id);
+                            }}
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </Button>
                         )}
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">
-                          Placeholder {placeholder.id.slice(0, 8)}...
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {placeholder.original.widthIn.toFixed(1)}" × {placeholder.original.heightIn.toFixed(1)}"
-                          {designUrl && ' • Design'}
-                        </p>
-                      </div>
                     </div>
-                    <div className="flex items-center gap-1">
-                      {designUrl && (
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Canvas Elements Section */}
+        {elements.length > 0 && (
+          <div className="space-y-2 border-t pt-4">
+            <Label className="text-sm font-semibold uppercase text-muted-foreground">Canvas Elements</Label>
+            <div className="space-y-2">
+              {elements
+                .sort((a, b) => (b.zIndex || 0) - (a.zIndex || 0))
+                .map((element) => (
+                  <div
+                    key={element.id}
+                    className={`p-3 border rounded-lg cursor-pointer transition-colors ${selectedIds.includes(element.id) ? 'border-primary bg-primary/5' : 'hover:bg-muted'
+                      }`}
+                    onClick={() => onSelectElement(element.id)}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        {element.type === 'image' && <ImageIcon className="w-4 h-4 flex-shrink-0" />}
+                        {element.type === 'text' && <Type className="w-4 h-4 flex-shrink-0" />}
+                        {element.type === 'shape' && <Square className="w-4 h-4 flex-shrink-0" />}
+                        <span className="text-sm font-medium truncate">
+                          {element.type === 'text' ? (element.text || 'Text') : `${element.type} ${element.id.slice(0, 4)}`}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1">
                         <Button
                           variant="ghost"
                           size="icon"
                           className="h-6 w-6"
                           onClick={(e) => {
                             e.stopPropagation();
-                            onDesignRemove(placeholder.id);
+                            onUpdate(element.id, { visible: element.visible !== false ? false : true });
+                          }}
+                        >
+                          {element.visible !== false ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onDelete(element.id);
                           }}
                         >
                           <Trash2 className="w-3 h-3" />
                         </Button>
-                      )}
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
+                ))}
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Canvas Elements Section */}
-      {elements.length > 0 && (
-        <div className="space-y-2 border-t pt-4">
-          <Label className="text-sm font-semibold uppercase text-muted-foreground">Canvas Elements</Label>
-          <div className="space-y-2">
-            {elements
-              .sort((a, b) => (b.zIndex || 0) - (a.zIndex || 0))
-              .map((element) => (
-                <div
-                  key={element.id}
-                  className={`p-3 border rounded-lg cursor-pointer transition-colors ${
-                    selectedIds.includes(element.id) ? 'border-primary bg-primary/5' : 'hover:bg-muted'
-                  }`}
-                  onClick={() => onSelectElement(element.id)}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                      {element.type === 'image' && <ImageIcon className="w-4 h-4 flex-shrink-0" />}
-                      {element.type === 'text' && <Type className="w-4 h-4 flex-shrink-0" />}
-                      {element.type === 'shape' && <Square className="w-4 h-4 flex-shrink-0" />}
-                      <span className="text-sm font-medium truncate">
-                        {element.type === 'text' ? (element.text || 'Text') : `${element.type} ${element.id.slice(0, 4)}`}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onUpdate(element.id, { visible: element.visible !== false ? false : true });
-                        }}
-                      >
-                        {element.visible !== false ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onDelete(element.id);
-                        }}
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              ))}
+        {/* Empty State */}
+        {placeholders.length === 0 && elements.length === 0 && (
+          <div className="text-center text-muted-foreground py-8">
+            <p className="text-sm">No placeholders or elements</p>
           </div>
-        </div>
-      )}
-
-      {/* Empty State */}
-      {placeholders.length === 0 && elements.length === 0 && (
-        <div className="text-center text-muted-foreground py-8">
-          <p className="text-sm">No placeholders or elements</p>
-        </div>
-      )}
-    </div>
-  );
-};
+        )}
+      </div>
+    );
+  };
 
 
 // Panel Components - UploadPanel is now imported from shared component
@@ -3863,7 +4146,7 @@ const LibraryPanel: React.FC<LibraryPanelProps> = ({ onAddAsset, selectedPlaceho
     const fetchAllAssets = async () => {
       try {
         const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-        
+
         // Fetch all assets without category filter
         const response = await fetch(`${API_BASE_URL}/api/assets`);
         const data = await response.json();
@@ -3880,7 +4163,7 @@ const LibraryPanel: React.FC<LibraryPanelProps> = ({ onAddAsset, selectedPlaceho
         setAllAssets([]);
       }
     };
-    
+
     fetchAllAssets();
   }, []);
 
@@ -3934,12 +4217,12 @@ const LibraryPanel: React.FC<LibraryPanelProps> = ({ onAddAsset, selectedPlaceho
       ) : (() => {
         // Determine which assets to display
         const assetsToDisplay = selectedCategory === 'all' ? allAssets : assets;
-        
+
         // Filter by search term if provided
         const filteredAssets = searchTerm
           ? assetsToDisplay.filter((asset) =>
-              asset.title?.toLowerCase().includes(searchTerm.toLowerCase())
-            )
+            asset.title?.toLowerCase().includes(searchTerm.toLowerCase())
+          )
           : assetsToDisplay;
 
         if (filteredAssets.length === 0) {

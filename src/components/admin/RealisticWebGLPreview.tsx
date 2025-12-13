@@ -140,10 +140,10 @@ export const RealisticWebGLPreview: React.FC<RealisticWebGLPreviewProps> = ({
     const match = /^([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(normalized);
     return match
       ? {
-          r: Number.parseInt(match[1], 16),
-          g: Number.parseInt(match[2], 16),
-          b: Number.parseInt(match[3], 16),
-        }
+        r: Number.parseInt(match[1], 16),
+        g: Number.parseInt(match[2], 16),
+        b: Number.parseInt(match[3], 16),
+      }
       : { r: 0, g: 0, b: 0 }; // Default to black if invalid hex
   };
 
@@ -151,12 +151,12 @@ export const RealisticWebGLPreview: React.FC<RealisticWebGLPreviewProps> = ({
   // Uses standard luminance formula: luminance = 0.2126 * R + 0.7152 * G + 0.0722 * B
   const isDarkHex = (hex?: string | null): boolean => {
     if (!hex || typeof hex !== 'string') return false;
-    
+
     try {
       const rgb = hexToRgb(hex);
       // Calculate luminance using the standard formula (normalized to 0-1 range)
       const luminance = (0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b) / 255;
-      
+
       // Return true if luminance is below threshold (0.5 = medium gray)
       // Dark colors have a lower luminance value
       return luminance < 0.5;
@@ -173,12 +173,18 @@ export const RealisticWebGLPreview: React.FC<RealisticWebGLPreviewProps> = ({
 
     const app = new Application();
 
+    // Create a canvas and WebGL2 context with preserveDrawingBuffer enabled
+    const canvas = document.createElement('canvas');
+    const gl = canvas.getContext('webgl2', { preserveDrawingBuffer: true }) as WebGL2RenderingContext | null;
+
     app
       .init({
         width: CANVAS_WIDTH,
         height: CANVAS_HEIGHT,
         backgroundAlpha: 0,
         preference: 'webgl',
+        view: canvas,
+        context: gl || undefined,
       })
       .then(() => {
         if (containerRef.current) {
@@ -644,8 +650,13 @@ export const RealisticWebGLPreview: React.FC<RealisticWebGLPreviewProps> = ({
       // Reset metrics; they will be recomputed for the active placeholder
       setActiveDesignMetrics(null);
 
+      // Use externalDesignUrls directly to ensure we get the latest values
+      const currentDesignUrls = Object.keys(externalDesignUrls).length > 0
+        ? externalDesignUrls
+        : internalDesignUrls;
+
       for (const placeholder of placeholders) {
-        const designUrl = designUrlsByPlaceholder[placeholder.id];
+        const designUrl = currentDesignUrls[placeholder.id];
         if (!designUrl) continue;
 
         const designTex = await Assets.load(designUrl);
@@ -844,7 +855,7 @@ export const RealisticWebGLPreview: React.FC<RealisticWebGLPreviewProps> = ({
     };
 
     loadDesigns();
-  }, [appReady, designUrlsByPlaceholder, placeholders, mockupImageUrl, activePlaceholder, filterToken, onSelectPlaceholder, previewMode, garmentTintHex]);
+  }, [appReady, externalDesignUrls, placeholders, mockupImageUrl, activePlaceholder, filterToken, onSelectPlaceholder, previewMode, garmentTintHex]);
 
   // Update blend mode and opacity of existing design sprites when garment color changes
   useEffect(() => {
@@ -878,13 +889,13 @@ export const RealisticWebGLPreview: React.FC<RealisticWebGLPreviewProps> = ({
     container.children.forEach((c: any) => {
       if (previewMode) {
         c.eventMode = 'none';
-        try { c.cursor = 'default'; } catch {}
+        try { c.cursor = 'default'; } catch { }
         if (typeof c.removeAllListeners === 'function') {
           c.removeAllListeners();
         }
       } else {
         c.eventMode = 'static';
-        try { c.cursor = 'move'; } catch {}
+        try { c.cursor = 'move'; } catch { }
       }
     });
   }, [previewMode, appReady]);
@@ -945,32 +956,32 @@ export const RealisticWebGLPreview: React.FC<RealisticWebGLPreviewProps> = ({
         // Skip if sprite already exists and update it
         if (canvasSprites.has(element.id)) {
           const existingSprite = canvasSprites.get(element.id)!;
-          
+
           // Ensure anchor is set to center (in case it wasn't set before)
           if (existingSprite.anchor.x !== 0.5 || existingSprite.anchor.y !== 0.5) {
             existingSprite.anchor.set(0.5, 0.5);
           }
-          
+
           // Update size first
           if (element.width && element.height) {
             existingSprite.width = element.width;
             existingSprite.height = element.height;
           }
-          
+
           // Update position - adjust for centered anchor
           const spriteWidth = existingSprite.width;
           const spriteHeight = existingSprite.height;
           existingSprite.x = element.x + spriteWidth / 2;
           existingSprite.y = element.y + spriteHeight / 2;
-          
+
           // Update rotation
           if (element.rotation !== undefined) {
             existingSprite.rotation = (element.rotation * Math.PI) / 180;
           }
-          
+
           // Update opacity
           existingSprite.alpha = element.opacity !== undefined ? element.opacity : 1;
-          
+
           // Update flip - with centered anchor, this will flip around center without moving
           if (element.flipX) {
             existingSprite.scale.x = Math.abs(existingSprite.scale.x) * -1;
