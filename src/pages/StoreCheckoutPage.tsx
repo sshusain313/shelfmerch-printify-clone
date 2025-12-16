@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { CartItem, Store, ShippingAddress } from '@/types';
 import { getTheme } from '@/lib/themes';
 import { storeApi, checkoutApi } from '@/lib/api';
+import { useStoreAuth } from '@/contexts/StoreAuthContext';
 import {
   ArrowLeft,
   CreditCard,
@@ -66,6 +67,17 @@ const StoreCheckoutPage: React.FC = () => {
       setCart(locationState.cart);
     }
   }, [locationState]);
+
+  const { isAuthenticated } = useStoreAuth();
+
+  useEffect(() => {
+    if (store && !isAuthenticated) {
+      // Redirect to auth page, preserving the cart state so it's available after login
+      navigate(`/store/${store.subdomain}/auth?redirect=checkout`, {
+        state: locationState
+      });
+    }
+  }, [isAuthenticated, store, navigate, locationState]);
 
   const theme = store ? getTheme(store.theme) : getTheme('modern');
 

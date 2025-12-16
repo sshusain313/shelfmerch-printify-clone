@@ -1,3 +1,4 @@
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -14,22 +15,50 @@ import {
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { storeOrdersApi } from '@/lib/api';
+import { Order } from '@/types';
 
 const Orders = () => {
   const { user, logout, isAdmin } = useAuth();
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // Mock orders data
-  const orders = [
-    { id: '1001', product: 'Bella Canvas 3001', customer: 'John Doe', status: 'Completed', date: '2025-10-28', amount: '$24.99' },
-    { id: '1002', product: 'Premium Hoodie', customer: 'Jane Smith', status: 'Processing', date: '2025-10-29', amount: '$49.99' },
-    { id: '1003', product: 'Canvas Tote Bag', customer: 'Bob Johnson', status: 'Shipped', date: '2025-10-30', amount: '$18.50' },
-  ];
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadOrders = async () => {
+      try {
+        setIsLoading(true);
+        const data = await storeOrdersApi.listForMerchant();
+        if (isMounted) {
+          setOrders(data);
+        }
+      } catch (err: any) {
+        if (isMounted) {
+          setError(err?.message || 'Failed to load orders');
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    loadOrders();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'Completed': return 'bg-green-500/10 text-green-500';
-      case 'Processing': return 'bg-yellow-500/10 text-yellow-500';
-      case 'Shipped': return 'bg-blue-500/10 text-blue-500';
+      case 'paid': return 'bg-green-500/10 text-green-500';
+      case 'fulfilled': return 'bg-blue-500/10 text-blue-500';
+      case 'on-hold': return 'bg-yellow-500/10 text-yellow-500';
+      case 'cancelled': return 'bg-red-500/10 text-red-500';
+      case 'refunded': return 'bg-purple-500/10 text-purple-500';
       default: return 'bg-muted text-muted-foreground';
     }
   };
@@ -121,6 +150,14 @@ const Orders = () => {
           </div>
 
           {/* Orders Table */}
+          {error && (
+            <p className="mb-4 text-sm text-destructive">{error}</p>
+          )}
+          {isLoading ? (
+            <p className="text-sm text-muted-foreground">Loading orders...</p>
+          ) : orders.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No orders found yet.</p>
+          ) : (
           <Card className="overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full">
@@ -138,21 +175,30 @@ const Orders = () => {
                   {orders.map((order) => (
                     <tr key={order.id} className="hover:bg-muted/30 transition-colors">
                       <td className="px-6 py-4 text-sm font-medium">#{order.id}</td>
-                      <td className="px-6 py-4 text-sm">{order.product}</td>
-                      <td className="px-6 py-4 text-sm">{order.customer}</td>
-                      <td className="px-6 py-4 text-sm text-muted-foreground">{order.date}</td>
+                      <td className="px-6 py-4 text-sm">
+                        {order.items && order.items.length > 0
+                          ? order.items[0].productName || `${order.items.length} items`
+                          : 'No items'}
+                      </td>
+                      <td className="px-6 py-4 text-sm">{order.customerEmail}</td>
+                      <td className="px-6 py-4 text-sm text-muted-foreground">
+                        {order.createdAt ? new Date(order.createdAt).toLocaleDateString() : '-'}
+                      </td>
                       <td className="px-6 py-4">
                         <Badge className={getStatusColor(order.status)}>
                           {order.status}
                         </Badge>
                       </td>
-                      <td className="px-6 py-4 text-sm font-semibold">{order.amount}</td>
+                      <td className="px-6 py-4 text-sm font-semibold">
+                        {order.total !== undefined ? `$${order.total.toFixed(2)}` : '-'}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           </Card>
+          )}
         </div>
       </main>
     </div>

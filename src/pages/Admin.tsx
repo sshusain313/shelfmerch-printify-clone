@@ -78,7 +78,7 @@ import { WalletManagement } from '@/components/admin/WalletManagement';
 import { InvoiceManagement } from '@/components/admin/InvoiceManagement';
 import { AuditLogs } from '@/components/admin/AuditLogs';
 import { PayoutManagement } from '@/components/admin/PayoutManagement';
-import { productApi } from '@/lib/api';
+import { productApi, storeOrdersApi } from '@/lib/api';
 import { toast } from 'sonner';
 import { CatalogToolbar } from '@/components/admin/CatalogToolbar';
 import { BaseProductsTable } from '@/components/admin/BaseProductsTable';
@@ -96,7 +96,7 @@ const Admin = () => {
   const [announcementText, setAnnouncementText] = useState('');
   const [totalUsers, setTotalUsers] = useState<number>(0);
   const [isLoadingUsers, setIsLoadingUsers] = useState(true);
-  
+
   // Products from database
   const [databaseProducts, setDatabaseProducts] = useState<any[]>([]);
   const [isLoadingProducts, setIsLoadingProducts] = useState(false);
@@ -109,16 +109,29 @@ const Admin = () => {
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [sortBy, setSortBy] = useState('newest');
 
-  // Admin sees ALL data across platform (from localStorage)
+  // Admin sees ALL data across platform (stores/products from localStorage snapshot)
   const allStores = JSON.parse(localStorage.getItem('shelfmerch_all_stores') || '[]') as StoreType[];
   const allProducts = JSON.parse(localStorage.getItem('shelfmerch_all_products') || '[]') as Product[];
-  const allOrders = JSON.parse(localStorage.getItem('shelfmerch_all_orders') || '[]') as Order[];
-  
+
+  // Live platform orders for Admin Orders tab (superadmin only)
+  const [platformOrders, setPlatformOrders] = useState<Order[]>([]);
+  const [isLoadingOrders, setIsLoadingOrders] = useState(false);
+  const [ordersError, setOrdersError] = useState<string | null>(null);
+
   // Calculate real stats from data
-  const totalRevenue = allOrders.reduce((sum, order) => sum + order.total, 0);
+  const totalRevenue = platformOrders.reduce((sum, order) => sum + (order.total || 0), 0);
   const activeStores = allStores.length;
   const totalProducts = allProducts.length;
-  const pendingOrders = allOrders.filter(o => o.status === 'on-hold').length;
+  const pendingOrders = platformOrders.filter(o => o.status === 'on-hold').length;
+
+  const statusOptions: Array<{ value: Order['status']; label: string }> = [
+    { value: 'on-hold', label: 'On hold' },
+    { value: 'in-production', label: 'In production' },
+    { value: 'shipped', label: 'Shipped' },
+    { value: 'delivered', label: 'Delivered' },
+    { value: 'refunded', label: 'Refunded' },
+    { value: 'cancelled', label: 'Cancelled' },
+  ];
 
   // Fetch total user count from backend
   useEffect(() => {
@@ -164,7 +177,7 @@ const Admin = () => {
           page: 1,
           limit: 1,
         });
-        
+
         if (response && response.success !== false) {
           const pagination = response.pagination || { total: 0 };
           setProductsCount(pagination.total || 0);
@@ -183,6 +196,28 @@ const Admin = () => {
 
     fetchProductsCount();
   }, [user?.role, totalProducts]);
+
+  // Fetch platform-wide orders for Orders tab (superadmin)
+  useEffect(() => {
+    const fetchOrders = async () => {
+      if (user?.role !== 'superadmin') return;
+      if (activeTab !== 'orders') return;
+
+      setIsLoadingOrders(true);
+      setOrdersError(null);
+      try {
+        const data = await storeOrdersApi.listForMerchant();
+        setPlatformOrders(Array.isArray(data) ? data : []);
+      } catch (error: any) {
+        console.error('Failed to fetch platform orders:', error);
+        setOrdersError(error?.message || 'Failed to load orders');
+      } finally {
+        setIsLoadingOrders(false);
+      }
+    };
+
+    fetchOrders();
+  }, [user?.role, activeTab]);
 
   // Filter and sort products
   const filteredAndSortedProducts = useMemo(() => {
@@ -224,11 +259,11 @@ const Admin = () => {
     if (activeTab !== 'products') {
       return;
     }
-    
+
     if (user?.role !== 'superadmin') {
       return;
     }
-    
+
     console.log('Fetching products from database...', { productsPage, productsSearchQuery });
     setIsLoadingProducts(true);
     try {
@@ -237,14 +272,14 @@ const Admin = () => {
         limit: 20,
         search: productsSearchQuery.trim() || undefined,
       });
-      
+
       console.log('Products API response:', response);
-      
+
       // Handle response structure
       if (response && response.success !== false) {
         const productsArray = Array.isArray(response.data) ? response.data : [];
         const pagination = response.pagination || { total: productsArray.length };
-        
+
         console.log(`Loaded ${productsArray.length} products out of ${pagination.total} total`);
         setDatabaseProducts(productsArray);
         setProductsTotal(pagination.total || productsArray.length);
@@ -287,33 +322,33 @@ const Admin = () => {
   }, [activeTab, productsPage, productsSearchQuery, user?.role, fetchProducts]);
 
   const stats = [
-    { 
-      label: 'Monthly Revenue', 
-      value: `$${totalRevenue.toLocaleString()}`, 
-      change: '+23%', 
+    {
+      label: 'Monthly Revenue',
+      value: `$${totalRevenue.toLocaleString()}`,
+      change: '+23%',
       trend: 'up',
-      icon: DollarSign 
+      icon: DollarSign
     },
-    { 
-      label: 'Active Stores', 
-      value: activeStores.toString(), 
-      change: '+15%', 
+    {
+      label: 'Active Stores',
+      value: activeStores.toString(),
+      change: '+15%',
       trend: 'up',
-      icon: Store 
+      icon: Store
     },
-    { 
-      label: 'Base Products', 
-      value: isLoadingProductsCount ? '...' : (productsCount > 0 ? productsCount.toString() : totalProducts.toString()), 
-      change: '+8%', 
+    {
+      label: 'Base Products',
+      value: isLoadingProductsCount ? '...' : (productsCount > 0 ? productsCount.toString() : totalProducts.toString()),
+      change: '+8%',
       trend: 'up',
-      icon: Package 
+      icon: Package
     },
-    { 
-      label: 'Orders Delivered', 
-      value: allOrders.filter(o => o.status === 'delivered').length.toString(), 
-      change: '+12%', 
+    {
+      label: 'Orders Delivered',
+      value: platformOrders.filter(o => o.status === 'delivered').length.toString(),
+      change: '+12%',
       trend: 'up',
-      icon: Truck 
+      icon: Truck
     },
   ];
 
@@ -384,7 +419,7 @@ const Admin = () => {
               </Button>
             </nav>
           </div>
-          
+
           <div className="flex items-center gap-3">
             <Dialog>
               <DialogTrigger asChild>
@@ -415,7 +450,7 @@ const Admin = () => {
                 </div>
               </DialogContent>
             </Dialog>
-            
+
             <div className="flex items-center gap-2 border-l pl-3">
               <div className="text-right hidden sm:block">
                 <p className="text-sm font-medium">{user?.name}</p>
@@ -441,8 +476,8 @@ const Admin = () => {
             <p className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
               Core
             </p>
-            <Button 
-              variant={activeTab === 'overview' ? 'secondary' : 'ghost'} 
+            <Button
+              variant={activeTab === 'overview' ? 'secondary' : 'ghost'}
               className={cn(
                 "w-full justify-start",
                 activeTab === 'overview' && "bg-secondary font-semibold"
@@ -452,8 +487,8 @@ const Admin = () => {
               <TrendingUp className="mr-2 h-4 w-4" />
               Overview
             </Button>
-            <Button 
-              variant={activeTab === 'products' ? 'secondary' : 'ghost'} 
+            <Button
+              variant={activeTab === 'products' ? 'secondary' : 'ghost'}
               className={cn(
                 "w-full justify-start relative",
                 activeTab === 'products' && "bg-secondary font-semibold before:absolute before:left-0 before:top-0 before:bottom-0 before:w-1 before:bg-primary before:rounded-r"
@@ -463,8 +498,8 @@ const Admin = () => {
               <Package className="mr-2 h-4 w-4" />
               Product Catalog
             </Button>
-            <Button 
-              variant={activeTab === 'orders' ? 'secondary' : 'ghost'} 
+            <Button
+              variant={activeTab === 'orders' ? 'secondary' : 'ghost'}
               className={cn(
                 "w-full justify-start",
                 activeTab === 'orders' && "bg-secondary font-semibold"
@@ -474,8 +509,8 @@ const Admin = () => {
               <ShoppingBag className="mr-2 h-4 w-4" />
               Orders
             </Button>
-            <Button 
-              variant={activeTab === 'fulfillment' ? 'secondary' : 'ghost'} 
+            <Button
+              variant={activeTab === 'fulfillment' ? 'secondary' : 'ghost'}
               className={cn(
                 "w-full justify-start",
                 activeTab === 'fulfillment' && "bg-secondary font-semibold"
@@ -492,8 +527,8 @@ const Admin = () => {
             <p className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
               Finance
             </p>
-            <Button 
-              variant={activeTab === 'wallets' ? 'secondary' : 'ghost'} 
+            <Button
+              variant={activeTab === 'wallets' ? 'secondary' : 'ghost'}
               className={cn(
                 "w-full justify-start",
                 activeTab === 'wallets' && "bg-secondary font-semibold"
@@ -503,8 +538,8 @@ const Admin = () => {
               <Wallet className="mr-2 h-4 w-4" />
               Wallets
             </Button>
-            <Button 
-              variant={activeTab === 'invoices' ? 'secondary' : 'ghost'} 
+            <Button
+              variant={activeTab === 'invoices' ? 'secondary' : 'ghost'}
               className={cn(
                 "w-full justify-start",
                 activeTab === 'invoices' && "bg-secondary font-semibold"
@@ -521,8 +556,8 @@ const Admin = () => {
             <p className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
               Platform
             </p>
-            <Button 
-              variant={activeTab === 'stores' ? 'secondary' : 'ghost'} 
+            <Button
+              variant={activeTab === 'stores' ? 'secondary' : 'ghost'}
               className={cn(
                 "w-full justify-start",
                 activeTab === 'stores' && "bg-secondary font-semibold"
@@ -532,8 +567,8 @@ const Admin = () => {
               <Store className="mr-2 h-4 w-4" />
               Active Stores
             </Button>
-            <Button 
-              variant={activeTab === 'users' ? 'secondary' : 'ghost'} 
+            <Button
+              variant={activeTab === 'users' ? 'secondary' : 'ghost'}
               className={cn(
                 "w-full justify-start",
                 activeTab === 'users' && "bg-secondary font-semibold"
@@ -543,8 +578,8 @@ const Admin = () => {
               <Users className="mr-2 h-4 w-4" />
               User Management
             </Button>
-            <Button 
-              variant={activeTab === 'settings' ? 'secondary' : 'ghost'} 
+            <Button
+              variant={activeTab === 'settings' ? 'secondary' : 'ghost'}
               className={cn(
                 "w-full justify-start",
                 activeTab === 'settings' && "bg-secondary font-semibold"
@@ -564,7 +599,7 @@ const Admin = () => {
                 Variant Options
               </Link>
             </Button>
-               <Button
+            <Button
               variant="ghost"
               className="w-full justify-start"
               asChild
@@ -584,8 +619,8 @@ const Admin = () => {
                 Catalogue Fields
               </Link>
             </Button>
-            <Button 
-              variant={activeTab === 'audit' ? 'secondary' : 'ghost'} 
+            <Button
+              variant={activeTab === 'audit' ? 'secondary' : 'ghost'}
               className={cn(
                 "w-full justify-start",
                 activeTab === 'audit' && "bg-secondary font-semibold"
@@ -602,8 +637,8 @@ const Admin = () => {
             <p className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
               Insights
             </p>
-            <Button 
-              variant={activeTab === 'analytics' ? 'secondary' : 'ghost'} 
+            <Button
+              variant={activeTab === 'analytics' ? 'secondary' : 'ghost'}
               className={cn(
                 "w-full justify-start",
                 activeTab === 'analytics' && "bg-secondary font-semibold"
@@ -613,8 +648,8 @@ const Admin = () => {
               <BarChart3 className="mr-2 h-4 w-4" />
               Analytics
             </Button>
-            <Button 
-              variant={activeTab === 'marketing' ? 'secondary' : 'ghost'} 
+            <Button
+              variant={activeTab === 'marketing' ? 'secondary' : 'ghost'}
               className={cn(
                 "w-full justify-start",
                 activeTab === 'marketing' && "bg-secondary font-semibold"
@@ -624,8 +659,8 @@ const Admin = () => {
               <Megaphone className="mr-2 h-4 w-4" />
               Marketing
             </Button>
-            <Button 
-              variant={activeTab === 'support' ? 'secondary' : 'ghost'} 
+            <Button
+              variant={activeTab === 'support' ? 'secondary' : 'ghost'}
               className={cn(
                 "w-full justify-start",
                 activeTab === 'support' && "bg-secondary font-semibold"
@@ -709,12 +744,12 @@ const Admin = () => {
                         <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                         <XAxis dataKey="month" stroke="hsl(var(--muted-foreground))" />
                         <YAxis stroke="hsl(var(--muted-foreground))" />
-                        <Tooltip 
-                          contentStyle={{ 
-                            backgroundColor: 'hsl(var(--card))', 
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: 'hsl(var(--card))',
                             border: '1px solid hsl(var(--border))',
                             borderRadius: '8px'
-                          }} 
+                          }}
                         />
                         <Line type="monotone" dataKey="revenue" stroke="hsl(var(--primary))" strokeWidth={2} />
                       </LineChart>
@@ -780,7 +815,7 @@ const Admin = () => {
                             </div>
                           </TableCell>
                           <TableCell>{product.sales} units</TableCell>
-                  <TableCell>${product.revenue.toLocaleString()}</TableCell>
+                          <TableCell>${product.revenue.toLocaleString()}</TableCell>
                           <TableCell>
                             <Badge variant="secondary">{allStores.find(s => s.userId === product.userId)?.storeName || 'Unknown'}</Badge>
                           </TableCell>
@@ -1132,25 +1167,25 @@ const Admin = () => {
                 <Card>
                   <CardContent className="p-6">
                     <p className="text-sm text-muted-foreground">Pending</p>
-                    <p className="text-2xl font-bold mt-1">{allOrders.filter(o => o.status === 'on-hold').length}</p>
+                    <p className="text-2xl font-bold mt-1">{platformOrders.filter(o => o.status === 'on-hold').length}</p>
                   </CardContent>
                 </Card>
                 <Card>
                   <CardContent className="p-6">
                     <p className="text-sm text-muted-foreground">In Production</p>
-                    <p className="text-2xl font-bold mt-1">{allOrders.filter(o => o.status === 'in-production').length}</p>
+                    <p className="text-2xl font-bold mt-1">{platformOrders.filter(o => o.status === 'in-production').length}</p>
                   </CardContent>
                 </Card>
                 <Card>
                   <CardContent className="p-6">
                     <p className="text-sm text-muted-foreground">Shipped</p>
-                    <p className="text-2xl font-bold mt-1">{allOrders.filter(o => o.status === 'shipped').length}</p>
+                    <p className="text-2xl font-bold mt-1">{platformOrders.filter(o => o.status === 'shipped').length}</p>
                   </CardContent>
                 </Card>
                 <Card>
                   <CardContent className="p-6">
                     <p className="text-sm text-muted-foreground">Delivered</p>
-                    <p className="text-2xl font-bold mt-1">{allOrders.filter(o => o.status === 'delivered').length}</p>
+                    <p className="text-2xl font-bold mt-1">{platformOrders.filter(o => o.status === 'delivered').length}</p>
                   </CardContent>
                 </Card>
               </div>
@@ -1181,52 +1216,116 @@ const Admin = () => {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Order ID</TableHead>
-                        <TableHead>Customer</TableHead>
-                        <TableHead>Store</TableHead>
-                        <TableHead>Items</TableHead>
-                        <TableHead>Total</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {allOrders.slice(0, 10).map((order) => (
-                        <TableRow key={order.id}>
-                          <TableCell className="font-medium">{order.id.slice(0, 8)}</TableCell>
-                          <TableCell>{order.customerEmail}</TableCell>
-                          <TableCell>
-                            <Badge variant="secondary">
-                              {allStores.find(s => s.id === order.storeId)?.storeName || 'Direct'}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>{order.items.length}</TableCell>
-                          <TableCell>${order.total.toFixed(2)}</TableCell>
-                          <TableCell>
-                            <Badge 
-                              variant="secondary" 
-                              className={
-                                order.status === 'delivered' ? 'bg-green-500/10 text-green-500' :
-                                order.status === 'shipped' ? 'bg-blue-500/10 text-blue-500' :
-                                order.status === 'in-production' ? 'bg-yellow-500/10 text-yellow-500' :
-                                'bg-muted text-muted-foreground'
-                              }
-                            >
-                              {order.status}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <Button variant="ghost" size="sm">
-                              <ChevronRight className="h-4 w-4" />
-                            </Button>
-                          </TableCell>
+                  {ordersError && (
+                    <p className="mb-4 text-sm text-destructive">{ordersError}</p>
+                  )}
+                  {isLoadingOrders ? (
+                    <p className="text-sm text-muted-foreground">Loading orders...</p>
+                  ) : platformOrders.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No orders found.</p>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Order ID</TableHead>
+                          <TableHead>Customer</TableHead>
+                          <TableHead>Store</TableHead>
+                          <TableHead>Items</TableHead>
+                          <TableHead>Total</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {platformOrders.slice(0, 10).map((order: any) => {
+                          const orderId = (order.id || order._id || '').toString();
+                          const storeName = order.storeId && typeof order.storeId === 'object'
+                            ? order.storeId.name
+                            : 'Direct';
+
+                          const currentStatus = order.status as Order['status'];
+
+                          const getStatusBadgeClass = (status: Order['status']) => {
+                            switch (status) {
+                              case 'delivered':
+                                return 'bg-green-500/10 text-green-500';
+                              case 'shipped':
+                                return 'bg-blue-500/10 text-blue-500';
+                              case 'in-production':
+                                return 'bg-yellow-500/10 text-yellow-500';
+                              case 'refunded':
+                                return 'bg-purple-500/10 text-purple-500';
+                              case 'cancelled':
+                                return 'bg-red-500/10 text-red-500';
+                              case 'on-hold':
+                              default:
+                                return 'bg-muted text-muted-foreground';
+                            }
+                          };
+
+                          return (
+                            <TableRow key={orderId || Math.random()}>
+                              <TableCell className="font-medium">{orderId ? orderId.slice(0, 8) : '-'}</TableCell>
+                              <TableCell>{order.customerEmail}</TableCell>
+                              <TableCell>
+                                <Badge variant="secondary">
+                                  {storeName || 'Direct'}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>{order.items?.length ?? 0}</TableCell>
+                              <TableCell>${order.total?.toFixed(2) ?? '0.00'}</TableCell>
+                              <TableCell>
+                                <Select
+                                  value={currentStatus}
+                                  onValueChange={async (value) => {
+                                    try {
+                                      const newStatus = value as Order['status'];
+                                      await storeOrdersApi.updateStatus(orderId, newStatus);
+                                      setPlatformOrders((prev) =>
+                                        prev.map((o) => {
+                                          const oId = (o as any)._id || (o as any).id;
+                                          const targetId = (order as any)._id || (order as any).id;
+                                          return oId === targetId
+                                            ? { ...o, status: newStatus }
+                                            : o;
+                                        })
+                                      );
+                                    } catch (error) {
+                                      console.error('Failed to update order status:', error);
+                                      toast.error('Failed to update order status');
+                                    }
+                                  }}
+                                >
+                                  <SelectTrigger className="w-32 h-8 text-xs">
+                                    <SelectValue>
+                                      <Badge
+                                        variant="secondary"
+                                        className={getStatusBadgeClass(currentStatus)}
+                                      >
+                                        {currentStatus}
+                                      </Badge>
+                                    </SelectValue>
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {statusOptions.map((opt) => (
+                                      <SelectItem key={opt.value} value={opt.value}>
+                                        {opt.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <Button variant="ghost" size="sm">
+                                  <ChevronRight className="h-4 w-4" />
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          )
+                        })}
+                      </TableBody>
+                    </Table>
+                  )}
                 </CardContent>
               </Card>
             </>
@@ -1270,11 +1369,11 @@ const Admin = () => {
                         <TableRow key={partner.id}>
                           <TableCell className="font-medium">{partner.name}</TableCell>
                           <TableCell>
-                            <Badge 
-                              variant="secondary" 
+                            <Badge
+                              variant="secondary"
                               className={
                                 partner.status === 'active' ? 'bg-green-500/10 text-green-500' :
-                                'bg-yellow-500/10 text-yellow-500'
+                                  'bg-yellow-500/10 text-yellow-500'
                               }
                             >
                               {partner.status}
@@ -1283,7 +1382,7 @@ const Admin = () => {
                           <TableCell>
                             <div className="flex items-center gap-2">
                               <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-                                <div 
+                                <div
                                   className={`h-full ${partner.performance >= 95 ? 'bg-green-500' : 'bg-yellow-500'}`}
                                   style={{ width: `${partner.performance}%` }}
                                 />
@@ -1390,24 +1489,24 @@ const Admin = () => {
                           <TableCell>{ticket.user}</TableCell>
                           <TableCell>{ticket.subject}</TableCell>
                           <TableCell>
-                            <Badge 
+                            <Badge
                               variant="secondary"
                               className={
                                 ticket.priority === 'high' ? 'bg-destructive/10 text-destructive' :
-                                ticket.priority === 'medium' ? 'bg-yellow-500/10 text-yellow-500' :
-                                'bg-muted text-muted-foreground'
+                                  ticket.priority === 'medium' ? 'bg-yellow-500/10 text-yellow-500' :
+                                    'bg-muted text-muted-foreground'
                               }
                             >
                               {ticket.priority}
                             </Badge>
                           </TableCell>
                           <TableCell>
-                            <Badge 
+                            <Badge
                               variant="secondary"
                               className={
                                 ticket.status === 'resolved' ? 'bg-green-500/10 text-green-500' :
-                                ticket.status === 'in-progress' ? 'bg-blue-500/10 text-blue-500' :
-                                'bg-muted text-muted-foreground'
+                                  ticket.status === 'in-progress' ? 'bg-blue-500/10 text-blue-500' :
+                                    'bg-muted text-muted-foreground'
                               }
                             >
                               {ticket.status}
@@ -1465,7 +1564,7 @@ const Admin = () => {
                   </div>
                   <div>
                     <label className="text-sm font-medium">Message</label>
-                    <Textarea 
+                    <Textarea
                       placeholder="Write your announcement..."
                       rows={6}
                       value={announcementText}
@@ -1550,12 +1649,12 @@ const Admin = () => {
                         <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                         <XAxis dataKey="month" stroke="hsl(var(--muted-foreground))" />
                         <YAxis stroke="hsl(var(--muted-foreground))" />
-                        <Tooltip 
-                          contentStyle={{ 
-                            backgroundColor: 'hsl(var(--card))', 
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: 'hsl(var(--card))',
                             border: '1px solid hsl(var(--border))',
                             borderRadius: '8px'
-                          }} 
+                          }}
                         />
                         <Bar dataKey="revenue" fill="hsl(var(--primary))" />
                       </BarChart>
@@ -1574,12 +1673,12 @@ const Admin = () => {
                         <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                         <XAxis dataKey="month" stroke="hsl(var(--muted-foreground))" />
                         <YAxis stroke="hsl(var(--muted-foreground))" />
-                        <Tooltip 
-                          contentStyle={{ 
-                            backgroundColor: 'hsl(var(--card))', 
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: 'hsl(var(--card))',
                             border: '1px solid hsl(var(--border))',
                             borderRadius: '8px'
-                          }} 
+                          }}
                         />
                         <Line type="monotone" dataKey="orders" stroke="hsl(var(--primary))" strokeWidth={2} />
                       </LineChart>
@@ -1598,7 +1697,7 @@ const Admin = () => {
                     <div>
                       <p className="text-sm text-muted-foreground">Avg. Order Value</p>
                       <p className="text-2xl font-bold mt-1">
-                        ${(totalRevenue / (allOrders.length || 1)).toFixed(2)}
+                        ${(totalRevenue / (platformOrders.length || 1)).toFixed(2)}
                       </p>
                     </div>
                     <div>

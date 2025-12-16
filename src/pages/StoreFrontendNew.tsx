@@ -12,7 +12,6 @@ import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { useStoreAuth } from '@/contexts/StoreAuthContext';
 import CartDrawer from '@/components/storefront/CartDrawer';
-import StoreAuthModal from '@/components/storefront/StoreAuthModal';
 import SectionRenderer from '@/components/builder/SectionRenderer';
 
 const StoreFrontendNew = () => {
@@ -40,16 +39,9 @@ const StoreFrontendNew = () => {
       }
       try {
         setSpLoading(true);
-        const resp = await storeProductsApi.list(spFilter);
+        const resp = await storeProductsApi.listPublic(store.id);
         if (resp.success) {
-          const all = resp.data || [];
-          // Filter products for this specific store
-          const forStore = all.filter(
-            (sp: any) =>
-              sp.storeId === store.id ||
-              sp.storeId === store._id || // depending on serialization
-              String(sp.storeId) === String(store.id)
-          );
+          const forStore = resp.data || [];
           setStoreProducts(forStore);
 
           // Map StoreProduct documents into frontend Product shape for rendering / cart
@@ -226,7 +218,6 @@ const StoreFrontendNew = () => {
   };
 
   const { isAuthenticated, checkAuth } = useStoreAuth();
-  const [authModalOpen, setAuthModalOpen] = useState(false);
 
   // Check auth on mount
   useEffect(() => {
@@ -239,7 +230,7 @@ const StoreFrontendNew = () => {
     if (!store) return;
 
     if (!isAuthenticated) {
-      setAuthModalOpen(true);
+      navigate(`/store/${store.subdomain}/auth?redirect=checkout`, { state: { cart } });
       return;
     }
 
@@ -503,20 +494,6 @@ const StoreFrontendNew = () => {
         onRemove={handleRemoveFromCart}
         onCheckout={handleCheckout}
       />
-
-      <StoreAuthModal
-        open={authModalOpen}
-        onOpenChange={setAuthModalOpen}
-        subdomain={subdomain || ''}
-        onSuccess={() => {
-          setAuthModalOpen(false);
-          // Proceed to checkout if cart is open
-          if (cartOpen) {
-            handleCheckout();
-          }
-        }}
-      />
-
     </div>
   );
 };

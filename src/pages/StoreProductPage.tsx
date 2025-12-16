@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Product, Store, CartItem } from '@/types';
 import { storeApi, storeProductsApi } from '@/lib/api';
 import { getTheme } from '@/lib/themes';
+import { useStoreAuth } from '@/contexts/StoreAuthContext';
 import SectionRenderer from '@/components/builder/SectionRenderer';
 import CartDrawer from '@/components/storefront/CartDrawer';
 import { Button } from '@/components/ui/button';
@@ -58,7 +59,7 @@ const ImageMagnifier: React.FC<ImageMagnifierProps> = ({ src, zoom = 2, alt }) =
       const customDomain = `${subdomain}.shelfmerch.com`;
       // Update document title and meta tags
       document.title = `${subdomain.charAt(0).toUpperCase() + subdomain.slice(1)} - ShelfMerch Store`;
-      
+
       // You can also update the displayed URL using history API (cosmetic only)
       // Note: This won't actually change the domain, but shows the concept
       window.history.replaceState(null, '', `/store/${subdomain}`);
@@ -79,16 +80,11 @@ const ImageMagnifier: React.FC<ImageMagnifierProps> = ({ src, zoom = 2, alt }) =
       }
       try {
         setSpLoading(true);
-        const resp = await storeProductsApi.list(spFilter);
+        // Use public API
+        const resp = await storeProductsApi.listPublic(store.id);
         if (resp.success) {
-          const all = resp.data || [];
-          // Filter products for this specific store
-          const forStore = all.filter(
-            (sp: any) =>
-              sp.storeId === store.id ||
-              sp.storeId === store._id || // depending on serialization
-              String(sp.storeId) === String(store.id)
-          );
+          const forStore = resp.data || [];
+          // No need to filter by storeId manually as the public endpoint does it
           setStoreProducts(forStore);
 
           // Map StoreProduct documents into frontend Product shape for rendering / cart
@@ -98,8 +94,8 @@ const ImageMagnifier: React.FC<ImageMagnifierProps> = ({ src, zoom = 2, alt }) =
               typeof sp.sellingPrice === 'number'
                 ? sp.sellingPrice
                 : typeof sp.price === 'number'
-                ? sp.price
-                : 0;
+                  ? sp.price
+                  : 0;
 
             const primaryImage =
               sp.galleryImages?.find((img: any) => img.isPrimary)?.url ||
@@ -153,7 +149,7 @@ const ImageMagnifier: React.FC<ImageMagnifierProps> = ({ src, zoom = 2, alt }) =
 
     loadSP();
   }, [store, spFilter]);
-  
+
 
   const handleMouseMove = (event: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
     const { left, top, width, height } = event.currentTarget.getBoundingClientRect();
@@ -177,9 +173,8 @@ const ImageMagnifier: React.FC<ImageMagnifierProps> = ({ src, zoom = 2, alt }) =
       <img
         src={src}
         alt={alt}
-        className={`h-full w-full object-cover transition-opacity duration-200 ${
-          isHovering ? 'opacity-0' : 'opacity-100'
-        }`}
+        className={`h-full w-full object-cover transition-opacity duration-200 ${isHovering ? 'opacity-0' : 'opacity-100'
+          }`}
       />
     </div>
   );
@@ -269,21 +264,16 @@ const StoreProductPage: React.FC = () => {
         setStore(foundStore);
         // 2) Load all published + active store products for this merchant,
         //    then filter down to this specific store for recommendations, etc.
-        const spResp = await storeProductsApi.list({
-          status: 'published',
-          isActive: true,
-        });
+        // 2) Load all published + active store products for this store
+        const spResp = await storeProductsApi.listPublic(foundStore.id);
 
         if (!spResp.success) {
           setProducts([]);
         } else {
-          const all = spResp.data || [];
-          const forStore = all.filter(
-            (sp: any) =>
-              sp.storeId === foundStore.id ||
-              sp.storeId === (foundStore as any)._id ||
-              String(sp.storeId) === String(foundStore.id)
-          );
+          const forStore = spResp.data || [];
+
+          // No need to filter by storeId manually
+
 
           // Map StoreProduct docs into frontend Product shape for listing/recommendations
           const mapped: Product[] = forStore.map((sp: any) => {
@@ -292,8 +282,8 @@ const StoreProductPage: React.FC = () => {
               typeof sp.sellingPrice === 'number'
                 ? sp.sellingPrice
                 : typeof sp.price === 'number'
-                ? sp.price
-                : 0;
+                  ? sp.price
+                  : 0;
 
             const primaryImage =
               sp.galleryImages?.find((img: any) => img.isPrimary)?.url ||
@@ -355,8 +345,8 @@ const StoreProductPage: React.FC = () => {
             typeof sp.sellingPrice === 'number'
               ? sp.sellingPrice
               : typeof sp.price === 'number'
-              ? sp.price
-              : 0;
+                ? sp.price
+                : 0;
 
           const primaryImage =
             sp.galleryImages?.find((img: any) => img.isPrimary)?.url ||
@@ -448,6 +438,46 @@ const StoreProductPage: React.FC = () => {
     return typeof specific === 'number' ? specific : product.price;
   }, [product, variantPriceMap, selectedColor, selectedSize]);
 
+  // Compute available sizes for the selected color
+  const availableSizes = useMemo(() => {
+    if (!product || !selectedColor) return [];
+
+    // Get sizes that actually exist in the map for this color
+    const sizesForColor = variantPriceMap[selectedColor] ? Object.keys(variantPriceMap[selectedColor]) : [];
+
+    // Intersect with the product's master size list to maintain order (if desired)
+    // or just use sizesForColor if the master list order isn't critical.
+    // Here we'll filter the master list to keep the UI consistent with the "all sizes" list but gray out or hide unavailable ones.
+    // The user requested "only fetch those size variants available", implying we should hide unavailable ones.
+
+    return product.variants.sizes.filter(size => sizesForColor.includes(size));
+  }, [product, selectedColor, variantPriceMap]);
+
+  // Effect to ensure selectedSize is valid when color changes
+  useEffect(() => {
+    if (!selectedColor) return;
+
+    const sizesForColor = variantPriceMap[selectedColor] ? Object.keys(variantPriceMap[selectedColor]) : [];
+
+    // If currently selected size is not valid for this color
+    if (selectedSize && !sizesForColor.includes(selectedSize)) {
+      if (sizesForColor.length > 0) {
+        // Try to keep selection if possible, otherwise pick first available
+        // But since we know it's NOT included, we must pick a new one.
+        // Logic: prioritize 'L', 'M', 'S' maybe? Or just first one.
+        // Let's just pick the first available one to be safe.
+        // Ideally we pick the "closest" size but that's complex.
+        setSelectedSize(sizesForColor[0]);
+      } else {
+        setSelectedSize('');
+      }
+    }
+    // If no size selected but we have sizes, pick one
+    else if (!selectedSize && sizesForColor.length > 0) {
+      setSelectedSize(sizesForColor[0]);
+    }
+  }, [selectedColor, variantPriceMap]); // Intentionally omitting selectedSize to avoid loops, though we read it inside.
+
   // Cart is kept only in memory for this session; no local/session storage
 
   const handleAddToCart = useCallback(() => {
@@ -500,8 +530,8 @@ const StoreProductPage: React.FC = () => {
     setCart((prev) =>
       prev.map((item) =>
         item.productId === productIdValue &&
-        item.variant.color === variant.color &&
-        item.variant.size === variant.size
+          item.variant.color === variant.color &&
+          item.variant.size === variant.size
           ? { ...item, quantity: nextQuantity }
           : item,
       ),
@@ -521,8 +551,19 @@ const StoreProductPage: React.FC = () => {
     );
   };
 
+  const { isAuthenticated } = useStoreAuth();
+
   const handleCheckout = () => {
     if (!store) return;
+
+    // Check auth before checkout on product page too
+    // Note: StoreProductPage doesn't have direct access to auth context yet, let's fix that
+    if (!isAuthenticated) {
+      navigate(`/store/${store.subdomain}/auth?redirect=checkout`, {
+        state: { cart, storeId: store.id, subdomain: store.subdomain },
+      });
+      return;
+    }
     navigate(`/store/${store.subdomain}/checkout`, {
       state: { cart, storeId: store.id, subdomain: store.subdomain },
     });
@@ -558,8 +599,8 @@ const StoreProductPage: React.FC = () => {
     product.mockupUrls && product.mockupUrls.length > 0
       ? product.mockupUrls
       : product.mockupUrl
-      ? [product.mockupUrl]
-      : [];
+        ? [product.mockupUrl]
+        : [];
 
   const renderTrustBadgeIcon = (icon?: string) => {
     switch (icon) {
@@ -664,9 +705,9 @@ const StoreProductPage: React.FC = () => {
     const trustBadges = Array.isArray(settings?.trustBadges) && settings?.trustBadges.length > 0
       ? settings.trustBadges
       : [
-          { icon: 'Truck', title: 'Fast fulfillment', text: 'Ships in 2-3 business days' },
-          { icon: 'ShieldCheck', title: 'Quality guarantee', text: '30-day hassle-free returns' },
-        ];
+        { icon: 'Truck', title: 'Fast fulfillment', text: 'Ships in 2-3 business days' },
+        { icon: 'ShieldCheck', title: 'Quality guarantee', text: '30-day hassle-free returns' },
+      ];
     const showReviews = settings?.showReviews ?? true;
     const showSizeChart = settings?.showSizeChart ?? true;
 
@@ -685,9 +726,8 @@ const StoreProductPage: React.FC = () => {
                     <button
                       key={index}
                       onClick={() => setActiveImage(image)}
-                      className={`rounded-lg border transition-all ${
-                        activeImage === image ? 'border-primary ring-2 ring-primary/30' : 'border-muted'
-                      }`}
+                      className={`rounded-lg border transition-all ${activeImage === image ? 'border-primary ring-2 ring-primary/30' : 'border-muted'
+                        }`}
                     >
                       <img src={image} alt={`${product.name} mockup ${index + 1}`} className="aspect-square w-full object-cover" />
                     </button>
@@ -762,7 +802,7 @@ const StoreProductPage: React.FC = () => {
             <div>
               <p className="text-sm font-medium mb-2">Size</p>
               <div className="flex flex-wrap gap-2">
-                {product.variants.sizes.map((size) => (
+                {availableSizes.length > 0 ? availableSizes.map((size) => (
                   <Button
                     key={size}
                     variant={selectedSize === size ? 'default' : 'outline'}
@@ -772,7 +812,9 @@ const StoreProductPage: React.FC = () => {
                   >
                     {size}
                   </Button>
-                ))}
+                )) : (
+                  <p className="text-sm text-muted-foreground italic">No sizes available for this color</p>
+                )}
               </div>
             </div>
 

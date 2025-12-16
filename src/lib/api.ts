@@ -153,22 +153,79 @@ export const storeProductsApi = {
     const json = await response.json();
     return json as { success: boolean; data: any };
   },
+
+  // List public products for a store
+  listPublic: async (storeId: string) => {
+    const response = await fetch(`${API_BASE_URL}/store-products/public/${storeId}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new ApiError(errorData.message || 'Failed to fetch store products', response.status, errorData.errors);
+    }
+
+    const json = await response.json();
+    return json as { success: boolean; data: any[] };
+  },
 };
 
-// Storefront Checkout API
+// Store orders API (merchant dashboard)
+export const storeOrdersApi = {
+  // List store orders for the current user:
+  // - merchant: orders for their stores
+  // - superadmin: orders for all active stores
+  listForMerchant: async () => {
+    return apiRequest<any[]>('/store-orders');
+  },
+  // Update order status (superadmin only)
+  updateStatus: async (
+    id: string,
+    status: 'on-hold' | 'in-production' | 'shipped' | 'delivered' | 'refunded' | 'cancelled'
+  ) => {
+    return apiRequest<any>(`/store-orders/${encodeURIComponent(id)}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    });
+  },
+};
+
+// Storefront Checkout API (uses store-customer token, not merchant token)
 export const checkoutApi = {
   // Place an order for a public store by subdomain
   placeOrder: async (
     subdomain: string,
     payload: { cart: any[]; shippingInfo: any }
   ) => {
-    return apiRequest<{ success: boolean; data: any; message?: string }>(
-      `/store-checkout/${encodeURIComponent(subdomain)}`,
+    const storeTokenKey = `store_token_${subdomain}`;
+    const storeToken = localStorage.getItem(storeTokenKey);
+
+    const response = await fetch(
+      `${API_BASE_URL}/store-checkout/${encodeURIComponent(subdomain)}`,
       {
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(storeToken ? { Authorization: `Bearer ${storeToken}` } : {}),
+        },
+        credentials: 'include',
         body: JSON.stringify(payload),
       }
     );
+
+    const data = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      return (data || {
+        success: false,
+        message: 'Failed to place order',
+      }) as { success: boolean; data: any; message?: string };
+    }
+
+    return data as { success: boolean; data: any; message?: string };
   },
 };
 
@@ -1207,10 +1264,10 @@ export const uploadApi = {
 // Assets API
 export const assetsApi = {
   // Get all published assets (public)
-  getAll: async (params?: { 
-    category?: string; 
-    type?: string; 
-    tags?: string; 
+  getAll: async (params?: {
+    category?: string;
+    type?: string;
+    tags?: string;
     search?: string;
     page?: number;
     limit?: number;
@@ -1238,9 +1295,9 @@ export const assetsApi = {
   },
 
   // Admin: Get all assets (including unpublished)
-  adminGetAll: async (params?: { 
-    category?: string; 
-    type?: string; 
+  adminGetAll: async (params?: {
+    category?: string;
+    type?: string;
     isPublished?: boolean;
     page?: number;
     limit?: number;

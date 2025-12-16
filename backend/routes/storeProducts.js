@@ -109,6 +109,35 @@ router.post('/', protect, authorize('merchant', 'superadmin'), async (req, res) 
   }
 });
 
+// @route   GET /api/store-products/public/:storeId
+// @desc    List all public, active, published products for a specific store
+// @access  Public
+router.get('/public/:storeId', async (req, res) => {
+  try {
+    const { storeId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(storeId)) {
+      return res.status(400).json({ success: false, message: 'Invalid store ID' });
+    }
+
+    const products = await StoreProduct.find({
+      storeId: storeId,
+      isActive: true,
+      status: 'published',
+    })
+      .sort({ updatedAt: -1 })
+      .lean();
+
+    // Optionally populate catalog data if needed for the list view (e.g. min price from variants)
+    // For now returning basic product info is usually enough for the grid
+
+    return res.json({ success: true, data: products });
+  } catch (error) {
+    console.error('Error listing public store products:', error);
+    return res.status(500).json({ success: false, message: 'Failed to list store products' });
+  }
+});
+
 // @route   GET /api/store-products/public/:storeId/:productId
 // @desc    Get a specific store product for public storefront viewing
 // @access  Public

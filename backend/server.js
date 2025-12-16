@@ -31,6 +31,7 @@ const assetsRoutes = require('./routes/assets');
 const storeRoutes = require('./routes/stores');
 const storeProductsRoutes = require('./routes/storeProducts');
 const storeCheckoutRoutes = require('./routes/storeCheckout');
+const storeOrdersRoutes = require('./routes/storeOrders');
 
 // Initialize Express app
 const app = express();
@@ -154,6 +155,7 @@ app.use('/api/assets', assetsRoutes);
 app.use('/api/stores', storeRoutes);
 app.use('/api/store-products', storeProductsRoutes);
 app.use('/api/store-checkout', storeCheckoutRoutes);
+app.use('/api/store-orders', storeOrdersRoutes);
 app.use('/api/store-auth', require('./routes/storeAuth'));
 app.use('/api', storeCheckoutRoutes);
 

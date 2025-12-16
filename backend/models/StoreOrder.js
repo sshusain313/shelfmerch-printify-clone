@@ -46,7 +46,7 @@ const StoreOrderSchema = new mongoose.Schema(
     total: Number,
     status: {
       type: String,
-      enum: ['on-hold', 'paid', 'fulfilled', 'cancelled', 'refunded'],
+      enum: ['on-hold', 'paid', 'in-production', 'shipped', 'delivered', 'fulfilled', 'cancelled', 'refunded'],
       default: 'on-hold',
       index: true,
     },
