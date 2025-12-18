@@ -125,11 +125,13 @@ router.get('/public/:storeId', async (req, res) => {
       isActive: true,
       status: 'published',
     })
+      .populate({
+        path: 'catalogProductId',
+        select: 'name description categoryId subcategoryIds productTypeCode',
+        lean: true
+      })
       .sort({ updatedAt: -1 })
       .lean();
-
-    // Optionally populate catalog data if needed for the list view (e.g. min price from variants)
-    // For now returning basic product info is usually enough for the grid
 
     return res.json({ success: true, data: products });
   } catch (error) {
@@ -154,7 +156,13 @@ router.get('/public/:storeId/:productId', async (req, res) => {
       storeId: storeId,
       isActive: true,
       status: 'published',
-    }).lean();
+    })
+      .populate({
+        path: 'catalogProductId',
+        select: 'name description categoryId subcategoryIds productTypeCode',
+        lean: true
+      })
+      .lean();
 
     if (!storeProduct) {
       return res.status(404).json({ success: false, message: 'Product not found' });
@@ -211,6 +219,83 @@ router.get('/', protect, authorize('merchant', 'superadmin'), async (req, res) =
   }
 });
 
+// @route   PATCH /api/store-products/:id/design-preview
+// @desc    Update design preview images in designData for a store product
+// @access  Private (merchant, superadmin)
+router.patch('/:id/design-preview', protect, authorize('merchant', 'superadmin'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { viewKey, previewUrl, elements, designUrlsByPlaceholder } = req.body;
+
+    if (!viewKey || !previewUrl) {
+      return res.status(400).json({ success: false, message: 'viewKey and previewUrl are required' });
+    }
+
+    const sp = await StoreProduct.findById(id);
+    if (!sp) return res.status(404).json({ success: false, message: 'Store product not found' });
+
+    const store = await Store.findById(sp.storeId);
+    if (!store) return res.status(404).json({ success: false, message: 'Store not found' });
+    if (req.user.role !== 'superadmin' && String(store.merchant) !== String(req.user._id)) {
+      return res.status(403).json({ success: false, message: 'Not authorized' });
+    }
+
+    // Initialize designData if it doesn't exist
+    if (!sp.designData) {
+      sp.designData = {};
+    }
+
+    // Initialize views object if it doesn't exist
+    if (!sp.designData.views) {
+      sp.designData.views = {};
+    }
+
+    // Initialize previewImagesByView if it doesn't exist
+    if (!sp.designData.previewImagesByView) {
+      sp.designData.previewImagesByView = {};
+    }
+
+    // Update the preview for this view
+    sp.designData.previewImagesByView[viewKey] = previewUrl;
+
+    // Update view-specific data
+    if (!sp.designData.views[viewKey]) {
+      sp.designData.views[viewKey] = {};
+    }
+    sp.designData.views[viewKey].previewImageUrl = previewUrl;
+
+    // Update elements and designUrlsByPlaceholder if provided
+    if (elements !== undefined) {
+      sp.designData.views[viewKey].elements = elements;
+    }
+    if (designUrlsByPlaceholder !== undefined) {
+      sp.designData.views[viewKey].designUrlsByPlaceholder = designUrlsByPlaceholder;
+    }
+
+    // If this is the front view, also update the primary preview
+    if (viewKey === 'front') {
+      sp.designData.previewImageUrl = previewUrl;
+    }
+
+    // Mark the designData as modified so Mongoose saves it
+    sp.markModified('designData');
+    await sp.save();
+
+    return res.json({ 
+      success: true, 
+      message: `Preview saved for ${viewKey} view`,
+      data: {
+        viewKey,
+        previewUrl,
+        designData: sp.designData
+      }
+    });
+  } catch (error) {
+    console.error('Error updating design preview:', error);
+    return res.status(500).json({ success: false, message: 'Failed to update design preview' });
+  }
+});
+
 // @route   PATCH /api/store-products/:id
 // @desc    Update store product fields (status, isActive, pricing, title, etc.)
 // @access  Private (merchant, superadmin)
@@ -243,6 +328,12 @@ router.patch('/:id', protect, authorize('merchant', 'superadmin'), async (req, r
     if (updates.sellingPrice !== undefined) sp.sellingPrice = updates.sellingPrice;
     if (updates.compareAtPrice !== undefined) sp.compareAtPrice = updates.compareAtPrice;
     if (Array.isArray(updates.tags)) sp.tags = updates.tags;
+
+    // Handle designData updates
+    if (updates.designData !== undefined) {
+      sp.designData = { ...(sp.designData || {}), ...updates.designData };
+      sp.markModified('designData');
+    }
 
     await sp.save();
     return res.json({ success: true, data: sp });

@@ -29,6 +29,7 @@ const catalogueFieldsRoutes = require('./routes/catalogueFields');
 const uploadRoutes = require('./routes/upload');
 const assetsRoutes = require('./routes/assets');
 const storeRoutes = require('./routes/stores');
+const storeBuilderRoutes = require('./routes/storeBuilder');
 const storeProductsRoutes = require('./routes/storeProducts');
 const storeCheckoutRoutes = require('./routes/storeCheckout');
 const storeOrdersRoutes = require('./routes/storeOrders');
@@ -153,6 +154,7 @@ app.use('/api/catalogue-fields', catalogueFieldsRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/assets', assetsRoutes);
 app.use('/api/stores', storeRoutes);
+app.use('/api/stores', storeBuilderRoutes); // Builder routes under /api/stores/:id/builder
 app.use('/api/store-products', storeProductsRoutes);
 app.use('/api/store-checkout', storeCheckoutRoutes);
 app.use('/api/store-orders', storeOrdersRoutes);

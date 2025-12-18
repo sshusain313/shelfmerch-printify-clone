@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useCallback } from 'react';
+import React, { useEffect, useMemo, useCallback, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { BuilderProvider, useBuilder } from '@/contexts/BuilderContext';
 import { Button } from '@/components/ui/button';
@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { useData } from '@/contexts/DataContext';
 import { componentLibrary } from '@/lib/builderComponents';
 import { BuilderSection, SectionType } from '@/types/builder';
+import { storeApi } from '@/lib/api';
 import {
   Undo2,
   Redo2,
@@ -17,6 +18,8 @@ import {
   Smartphone,
   Plus,
   ChevronRight,
+  Loader2,
+  Upload,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { DndContext, PointerSensor, KeyboardSensor, useSensor, useSensors } from '@dnd-kit/core';
@@ -47,7 +50,9 @@ const categories = ['layout', 'content', 'commerce', 'marketing'] as const;
 const BuilderDemo: React.FC = () => {
   const { storeId } = useParams<{ storeId: string }>();
   const navigate = useNavigate();
-  const { store, products } = useData();
+  const { products } = useData();
+  const [store, setStore] = useState<any>(null);
+  const [storeLoading, setStoreLoading] = useState(true);
   const {
     builder,
     previewMode,
@@ -63,7 +68,10 @@ const BuilderDemo: React.FC = () => {
     canRedo,
     saveDraft,
     publishBuilder,
-    loadBuilder,
+    loadFromBackend,
+    isSaving,
+    isPublishing,
+    isLoading,
     selectedSectionId,
     setSelectedSection,
     setActivePage,
@@ -71,23 +79,42 @@ const BuilderDemo: React.FC = () => {
 
   const activePage = getActivePage();
 
+  // Load store data from backend
   useEffect(() => {
-    if (!store || store.userId !== storeId) {
-      toast.error('Store not found');
-      navigate('/stores');
-      return;
-    }
-
-    if (store.builder) {
-      loadBuilder(store.builder);
-    } else {
-      const draftKey = `store_builder_draft_${store.id}`;
-      const draft = localStorage.getItem(draftKey);
-      if (draft) {
-        loadBuilder(JSON.parse(draft));
+    const loadStore = async () => {
+      if (!storeId) {
+        navigate('/stores');
+        return;
       }
+
+      try {
+        setStoreLoading(true);
+        const response = await storeApi.getById(storeId, true);
+        
+        if (response.success && response.data) {
+          setStore(response.data);
+        } else {
+          toast.error('Store not found');
+          navigate('/stores');
+        }
+      } catch (error: any) {
+        console.error('Error loading store:', error);
+        toast.error(error?.message || 'Failed to load store');
+        navigate('/stores');
+      } finally {
+        setStoreLoading(false);
+      }
+    };
+
+    loadStore();
+  }, [storeId, navigate]);
+
+  // Load builder data once store is loaded
+  useEffect(() => {
+    if (store?.id) {
+      loadFromBackend(store.id);
     }
-  }, [store, storeId, navigate, loadBuilder]);
+  }, [store?.id, loadFromBackend]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -177,15 +204,50 @@ const BuilderDemo: React.FC = () => {
     toast.success(`${component.name} added`);
   };
 
-  const handleSaveDraft = () => {
+  const handleSaveDraft = async () => {
     if (store) {
-      saveDraft(store.id);
+      await saveDraft(store.id);
     }
   };
 
-  const handlePublish = () => {
+  const handlePublish = async () => {
     if (store) {
-      publishBuilder(store.id);
+      await publishBuilder(store.id);
+    }
+  };
+
+  // Check if there's a local draft that hasn't been uploaded to backend
+  const [hasLocalDraft, setHasLocalDraft] = useState(false);
+  
+  useEffect(() => {
+    if (store?.id) {
+      const draftKey = `store_builder_draft_${store.id}`;
+      const localDraft = localStorage.getItem(draftKey);
+      setHasLocalDraft(!!localDraft);
+    }
+  }, [store?.id]);
+
+  const handleImportLocalDraft = async () => {
+    if (!store?.id) return;
+    
+    const draftKey = `store_builder_draft_${store.id}`;
+    const localDraft = localStorage.getItem(draftKey);
+    
+    if (!localDraft) {
+      toast.info('No local draft found');
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(localDraft);
+      // Save to backend
+      await saveDraft(store.id);
+      toast.success('Local draft imported to backend');
+      // Clear local draft after successful import
+      localStorage.removeItem(draftKey);
+      setHasLocalDraft(false);
+    } catch (e) {
+      toast.error('Failed to import local draft');
     }
   };
 
@@ -225,10 +287,24 @@ const BuilderDemo: React.FC = () => {
     updateSection(sectionId, updates);
   };
 
+  if (storeLoading || isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-muted-foreground">Loading store builder…</p>
+        </div>
+      </div>
+    );
+  }
+
   if (!store) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
-        <p>Loading store…</p>
+        <div className="flex flex-col items-center gap-3">
+          <p className="text-muted-foreground">Store not found</p>
+          <Button onClick={() => navigate('/stores')}>Back to stores</Button>
+        </div>
       </div>
     );
   }
@@ -257,13 +333,27 @@ const BuilderDemo: React.FC = () => {
               <Redo2 className="h-4 w-4" />
             </Button>
             <Separator orientation="vertical" className="h-6 mx-2" />
-            <Button variant="outline" size="sm" onClick={handleSaveDraft}>
-              <Save className="h-4 w-4 mr-2" />
-              Save draft
+            {hasLocalDraft && (
+              <Button variant="outline" size="sm" onClick={handleImportLocalDraft}>
+                <Upload className="h-4 w-4 mr-2" />
+                Import local draft
+              </Button>
+            )}
+            <Button variant="outline" size="sm" onClick={handleSaveDraft} disabled={isSaving}>
+              {isSaving ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4 mr-2" />
+              )}
+              {isSaving ? 'Saving…' : 'Save draft'}
             </Button>
-            <Button size="sm" onClick={handlePublish}>
-              <Eye className="h-4 w-4 mr-2" />
-              Publish
+            <Button size="sm" onClick={handlePublish} disabled={isPublishing}>
+              {isPublishing ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Eye className="h-4 w-4 mr-2" />
+              )}
+              {isPublishing ? 'Publishing…' : 'Publish'}
             </Button>
           </div>
         </div>

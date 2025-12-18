@@ -20,7 +20,9 @@ import {
   Plus,
   ArrowRight,
   ExternalLink,
-  Info
+  Info,
+  Paintbrush,
+  CheckCircle2,
 } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 
@@ -223,18 +225,43 @@ const Stores = () => {
                         <h3 className="font-bold text-lg">{store.storeName}</h3>
                         <p className="text-sm text-muted-foreground">{store.subdomain}.shelfmerch.com</p>
                       </div>
-                      <Badge variant="outline" className="text-xs">Active</Badge>
+                      <div className="flex items-center gap-2">
+                        {store.useBuilder && (
+                          <Badge variant="secondary" className="text-xs flex items-center gap-1 bg-green-100 text-green-700 border-green-200">
+                            <CheckCircle2 className="w-3 h-3" />
+                            Builder
+                          </Badge>
+                        )}
+                        <Badge variant="outline" className="text-xs">Active</Badge>
+                      </div>
                     </div>
 
-                    <div className="flex items-center gap-2 pt-2">
-                      <Button variant="outline" size="sm" className="flex-1" asChild>
-                        <a href={getStoreUrl(store.subdomain)} target="_blank" rel="noreferrer">
-                          <ExternalLink className="w-4 h-4 mr-2" />
-                          Visit Store
-                        </a>
-                      </Button>
-                      <Button variant="default" size="sm" className="flex-1" onClick={() => toast.info('Dashboard coming soon')}>
-                        Dashboard
+                    {store.builderLastPublishedAt && (
+                      <p className="text-xs text-muted-foreground">
+                        Last published: {new Date(store.builderLastPublishedAt).toLocaleDateString()}
+                      </p>
+                    )}
+
+                    <div className="flex flex-col gap-2 pt-2">
+                      <div className="flex items-center gap-2">
+                        <Button variant="outline" size="sm" className="flex-1" asChild>
+                          <a href={getStoreUrl(store.subdomain)} target="_blank" rel="noreferrer">
+                            <ExternalLink className="w-4 h-4 mr-2" />
+                            Visit Store
+                          </a>
+                        </Button>
+                        <Button variant="default" size="sm" className="flex-1" onClick={() => toast.info('Dashboard coming soon')}>
+                          Dashboard
+                        </Button>
+                      </div>
+                      <Button 
+                        variant="secondary" 
+                        size="sm" 
+                        className="w-full"
+                        onClick={() => navigate(`/stores/${store.id}/builder`)}
+                      >
+                        <Paintbrush className="w-4 h-4 mr-2" />
+                        Customize Storefront
                       </Button>
                     </div>
                   </Card>

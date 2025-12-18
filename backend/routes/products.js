@@ -150,6 +150,7 @@ router.post('/', protect, authorize('superadmin'), async (req, res) => {
       basePrice: catalogue.basePrice,
       design: {
         views: filteredViews,
+        sampleMockups: Array.isArray(design.sampleMockups) ? design.sampleMockups : [],
         dpi: design.dpi || 300,
         physicalDimensions: design.physicalDimensions
       },

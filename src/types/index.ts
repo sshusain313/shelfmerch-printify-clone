@@ -24,6 +24,18 @@ export interface Product {
     colors: string[];
     sizes: string[];
   };
+  categoryId?: string;
+  subcategoryId?: string;
+  subcategoryIds?: string[];
+  // Reference to catalog product (populated from backend) for collection filtering
+  catalogProduct?: {
+    _id?: string;
+    name?: string;
+    description?: string;
+    categoryId?: string;
+    subcategoryIds?: string[];
+    productTypeCode?: string;
+  };
   createdAt: string;
   updatedAt: string;
 }
@@ -107,6 +119,7 @@ export interface Store {
   };
   useBuilder?: boolean;
   builder?: StoreBuilder;
+  builderLastPublishedAt?: string;
 }
 
 export interface DashboardStats {

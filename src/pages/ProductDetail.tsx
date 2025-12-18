@@ -1027,12 +1027,12 @@ const ProductDetail = () => {
             <Accordion type="multiple" className="w-full">
             {product.faqs?.map((faq: any, index: number)=>{
                 return (
-            <AccordionItem value={`faq-${index}`} key={faq._id} >
+            <AccordionItem value={`faq-${index}`} key={faq._id || `faq-${index}`} >
               <AccordionTrigger>
               <h3 className="text-lg font-semibold">{faq.question}</h3>
               </AccordionTrigger>
             <AccordionContent>
-                <div key={faq._id}>
+                <div>
                   <p className="text-sm text-muted-foreground">{faq.answer}</p>
                 </div>
               </AccordionContent>

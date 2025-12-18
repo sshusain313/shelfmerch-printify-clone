@@ -59,12 +59,19 @@ const StoreFrontendNew = () => {
               (Array.isArray(sp.galleryImages) && sp.galleryImages[0]?.url) ||
               undefined;
 
+            // Extract catalog product data (populated from backend)
+            const catalogProduct = sp.catalogProductId && typeof sp.catalogProductId === 'object' 
+              ? sp.catalogProductId 
+              : null;
+            const catalogProductId = catalogProduct?._id?.toString() || 
+                                   (typeof sp.catalogProductId === 'string' ? sp.catalogProductId : '');
+
             return {
               id,
               userId: store.userId,
-              name: sp.title || sp.name || 'Untitled product',
-              description: sp.description,
-              baseProduct: sp.catalogProductId || '',
+              name: sp.title || sp.name || catalogProduct?.name || 'Untitled product',
+              description: sp.description || catalogProduct?.description,
+              baseProduct: catalogProductId,
               price: basePrice,
               compareAtPrice:
                 typeof sp.compareAtPrice === 'number' ? sp.compareAtPrice : undefined,
@@ -78,6 +85,16 @@ const StoreFrontendNew = () => {
                 colors: [],
                 sizes: [],
               },
+              // Include category/subcategory from catalog product for collection filtering
+              categoryId: catalogProduct?.categoryId?.toString() || catalogProduct?.categoryId,
+              subcategoryId: catalogProduct?.subcategoryIds?.[0]?.toString() || 
+                            (Array.isArray(catalogProduct?.subcategoryIds) && catalogProduct.subcategoryIds[0]) ||
+                            catalogProduct?.subcategoryIds?.[0],
+              subcategoryIds: Array.isArray(catalogProduct?.subcategoryIds)
+                ? catalogProduct.subcategoryIds.map((id: any) => id?.toString() || id)
+                : [],
+              // Store reference to catalog product for collection filtering
+              catalogProduct: catalogProduct,
               createdAt: sp.createdAt || new Date().toISOString(),
               updatedAt: sp.updatedAt || new Date().toISOString(),
             };
@@ -263,6 +280,13 @@ const StoreFrontendNew = () => {
   const usingBuilder = store.useBuilder && store.builder;
   const activePage = usingBuilder ? store.builder!.pages.find(p => p.slug === '/') : null;
 
+  // Check if builder has header/footer sections
+  const hasBuilderHeader = activePage?.sections.some(s => s.type === 'header' && s.visible);
+  const hasBuilderFooter = activePage?.sections.some(s => s.type === 'footer' && s.visible);
+
+  // Get builder global styles for theming
+  const builderStyles = usingBuilder ? store.builder!.globalStyles : null;
+
   return (
     <div className="min-h-screen bg-background">
       {/* Simulated Custom Domain Bar */}
@@ -271,56 +295,61 @@ const StoreFrontendNew = () => {
         <span className="text-muted-foreground ml-2">• Powered by ShelfMerch</span>
       </div>
 
-      {/* Store Header */}
-      <header className="border-b bg-card sticky top-0 z-50">
-        <div className="container mx-auto px-4">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center space-x-8">
-              <h1 className="text-2xl font-bold" style={{ color: theme.colors.primary }}>
-                {store.storeName}
-              </h1>
-              <nav className="hidden md:flex space-x-6">
-                <a
-                  href="#products"
-                  className="text-sm hover:text-primary transition-colors"
+      {/* Store Header - only show if builder doesn't have a header section */}
+      {!hasBuilderHeader && (
+        <header className="border-b bg-card sticky top-0 z-50">
+          <div className="container mx-auto px-4">
+            <div className="flex items-center justify-between h-16">
+              <div className="flex items-center space-x-8">
+                <h1 
+                  className="text-2xl font-bold" 
+                  style={{ color: builderStyles?.primaryColor || theme.colors.primary }}
                 >
-                  Products
-                </a>
-                <a href="#about" className="text-sm hover:text-primary transition-colors">
-                  About
-                </a>
-                <a
-                  href="#contact"
-                  className="text-sm hover:text-primary transition-colors"
+                  {store.storeName}
+                </h1>
+                <nav className="hidden md:flex space-x-6">
+                  <a
+                    href="#products"
+                    className="text-sm hover:text-primary transition-colors"
+                  >
+                    Products
+                  </a>
+                  <a href="#about" className="text-sm hover:text-primary transition-colors">
+                    About
+                  </a>
+                  <a
+                    href="#contact"
+                    className="text-sm hover:text-primary transition-colors"
+                  >
+                    Contact
+                  </a>
+                </nav>
+              </div>
+              <div className="flex items-center space-x-4">
+                <Button variant="ghost" size="icon">
+                  <Search className="h-5 w-5" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="relative"
+                  onClick={() => setCartOpen(true)}
                 >
-                  Contact
-                </a>
-              </nav>
-            </div>
-            <div className="flex items-center space-x-4">
-              <Button variant="ghost" size="icon">
-                <Search className="h-5 w-5" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="relative"
-                onClick={() => setCartOpen(true)}
-              >
-                <ShoppingCart className="h-5 w-5" />
-                {cartItemCount > 0 && (
-                  <span className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center">
-                    {cartItemCount}
-                  </span>
-                )}
-              </Button>
-              <Button variant="ghost" size="icon" className="md:hidden">
-                <Menu className="h-5 w-5" />
-              </Button>
+                  <ShoppingCart className="h-5 w-5" />
+                  {cartItemCount > 0 && (
+                    <span className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center">
+                      {cartItemCount}
+                    </span>
+                  )}
+                </Button>
+                <Button variant="ghost" size="icon" className="md:hidden">
+                  <Menu className="h-5 w-5" />
+                </Button>
+              </div>
             </div>
           </div>
-        </div>
-      </header>
+        </header>
+      )}
 
       {/* Render Builder Layout or Default Layout */}
       {usingBuilder && activePage ? (
@@ -473,17 +502,19 @@ const StoreFrontendNew = () => {
         </>
       )}
 
-      {/* Footer */}
-      <footer className="border-t py-8">
-        <div className="container mx-auto px-4 text-center">
-          <p className="text-sm text-muted-foreground">
-            © 2025 {store.storeName}. Powered by{' '}
-            <Link to="/" className="text-primary hover:underline">
-              ShelfMerch
-            </Link>
-          </p>
-        </div>
-      </footer>
+      {/* Footer - only show if builder doesn't have a footer section */}
+      {!hasBuilderFooter && (
+        <footer className="border-t py-8">
+          <div className="container mx-auto px-4 text-center">
+            <p className="text-sm text-muted-foreground">
+              © 2025 {store.storeName}. Powered by{' '}
+              <Link to="/" className="text-primary hover:underline">
+                ShelfMerch
+              </Link>
+            </p>
+          </div>
+        </footer>
+      )}
 
       {/* Cart Drawer */}
       <CartDrawer

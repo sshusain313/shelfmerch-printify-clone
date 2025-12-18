@@ -79,6 +79,7 @@ import { InvoiceManagement } from '@/components/admin/InvoiceManagement';
 import { AuditLogs } from '@/components/admin/AuditLogs';
 import { PayoutManagement } from '@/components/admin/PayoutManagement';
 import { productApi, storeOrdersApi } from '@/lib/api';
+import { storeApi } from '@/lib/api';
 import { toast } from 'sonner';
 import { CatalogToolbar } from '@/components/admin/CatalogToolbar';
 import { BaseProductsTable } from '@/components/admin/BaseProductsTable';
@@ -108,6 +109,9 @@ const Admin = () => {
   const [statusFilter, setStatusFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [sortBy, setSortBy] = useState('newest');
+  const [stores, setStores] = useState<StoreType[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Admin sees ALL data across platform (stores/products from localStorage snapshot)
   const allStores = JSON.parse(localStorage.getItem('shelfmerch_all_stores') || '[]') as StoreType[];
@@ -298,6 +302,36 @@ const Admin = () => {
     }
   }, [activeTab, user?.role, productsPage, productsSearchQuery]);
 
+// Fetch All Stores
+useEffect(() => {
+  let isMounted = true;
+
+  const loadStores = async () => {
+    try {
+      setLoading(true);
+      const data = await storeApi.listAllStores();
+      if (isMounted) {
+        setStores(data.data || []);
+      }
+    } catch (err: any) {
+      if (isMounted) {
+        setError(err?.message || 'Failed to load orders');
+      }
+    } finally {
+      if (isMounted) {
+        setLoading(false);
+      }
+    }
+  };
+
+  loadStores();
+
+  return () => {
+    isMounted = false;
+  };
+}, []);
+
+
   // Update URL when tab changes
   useEffect(() => {
     if (activeTab) {
@@ -331,7 +365,7 @@ const Admin = () => {
     },
     {
       label: 'Active Stores',
-      value: activeStores.toString(),
+      value: `${stores.length}`,
       change: '+15%',
       trend: 'up',
       icon: Store
@@ -1316,8 +1350,10 @@ const Admin = () => {
                                 </Select>
                               </TableCell>
                               <TableCell className="text-right">
-                                <Button variant="ghost" size="sm">
-                                  <ChevronRight className="h-4 w-4" />
+                                <Button variant="ghost" size="sm" asChild>
+                                  <Link to={`/admin/orders/${orderId}`}>
+                                    <ChevronRight className="h-4 w-4" />
+                                  </Link>
                                 </Button>
                               </TableCell>
                             </TableRow>

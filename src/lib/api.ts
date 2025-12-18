@@ -94,7 +94,7 @@ export const storeProductsApi = {
   },
 
   // Update a store product
-  update: async (id: string, updates: Partial<{ status: 'draft' | 'published'; isActive: boolean; title: string; description: string; sellingPrice: number; compareAtPrice: number; tags: string[] }>) => {
+  update: async (id: string, updates: Partial<{ status: 'draft' | 'published'; isActive: boolean; title: string; description: string; sellingPrice: number; compareAtPrice: number; tags: string[]; designData: any }>) => {
     const token = getToken();
     const response = await fetch(`${API_BASE_URL}/store-products/${id}`, {
       method: 'PATCH',
@@ -113,6 +113,33 @@ export const storeProductsApi = {
 
     const json = await response.json();
     return json as { success: boolean; data: any };
+  },
+
+  // Update design preview image for a specific view
+  updateDesignPreview: async (id: string, payload: {
+    viewKey: string;
+    previewUrl: string;
+    elements?: any[];
+    designUrlsByPlaceholder?: Record<string, string>;
+  }) => {
+    const token = getToken();
+    const response = await fetch(`${API_BASE_URL}/store-products/${id}/design-preview`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      credentials: 'include',
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new ApiError(errorData.message || 'Failed to update design preview', response.status, errorData.errors);
+    }
+
+    const json = await response.json();
+    return json as { success: boolean; message: string; data: any };
   },
 
   // Delete a store product
@@ -180,6 +207,10 @@ export const storeOrdersApi = {
   // - superadmin: orders for all active stores
   listForMerchant: async () => {
     return apiRequest<any[]>('/store-orders');
+  },
+  // Get single order by id
+  getById: async (id: string) => {
+    return apiRequest<any>(`/store-orders/${encodeURIComponent(id)}`);
   },
   // Update order status (superadmin only)
   updateStatus: async (
@@ -936,6 +967,32 @@ export const storeApi = {
     return json as { success: boolean; message: string; data: any };
   },
 
+  // Get all stores admin
+  listAllStores: async () => {
+    const token = getToken();
+
+    const response = await fetch(`${API_BASE_URL}/admin/stores`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      credentials: 'include',
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new ApiError(
+        errorData.message || 'Failed to fetch stores',
+        response.status,
+        errorData.errors
+      );
+    }
+
+    const json = await response.json();
+    return json as { success: boolean; message: string; data: any };
+  },
+  
   // Get all stores for the current user
   listMyStores: async () => {
     const token = getToken();
@@ -1008,6 +1065,169 @@ export const storeApi = {
 
     const json = await response.json();
     return json as { success: boolean; data: any | null };
+  },
+
+  // Get store by ID (for builder access)
+  getById: async (storeId: string, includeBuilder = false) => {
+    const token = getToken();
+
+    const url = `${API_BASE_URL}/stores/${storeId}${includeBuilder ? '?includeBuilder=true' : ''}`;
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      credentials: 'include',
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new ApiError(
+        errorData.message || 'Failed to fetch store',
+        response.status,
+        errorData.errors
+      );
+    }
+
+    const json = await response.json();
+    return json as { success: boolean; data: any | null };
+  },
+};
+
+// Store Builder API
+export const builderApi = {
+  // Get builder data for a store
+  get: async (storeId: string) => {
+    const token = getToken();
+
+    const response = await fetch(`${API_BASE_URL}/stores/${storeId}/builder`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      credentials: 'include',
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new ApiError(
+        errorData.message || 'Failed to fetch builder data',
+        response.status,
+        errorData.errors
+      );
+    }
+
+    const json = await response.json();
+    return json as { success: boolean; data: any };
+  },
+
+  // Save builder draft
+  saveDraft: async (storeId: string, builder: any) => {
+    const token = getToken();
+
+    const response = await fetch(`${API_BASE_URL}/stores/${storeId}/builder`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      credentials: 'include',
+      body: JSON.stringify(builder),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new ApiError(
+        errorData.message || 'Failed to save builder draft',
+        response.status,
+        errorData.errors
+      );
+    }
+
+    const json = await response.json();
+    return json as { success: boolean; message: string; data: any };
+  },
+
+  // Publish builder (make it live)
+  publish: async (storeId: string, builder: any) => {
+    const token = getToken();
+
+    const response = await fetch(`${API_BASE_URL}/stores/${storeId}/builder/publish`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      credentials: 'include',
+      body: JSON.stringify(builder),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new ApiError(
+        errorData.message || 'Failed to publish builder',
+        response.status,
+        errorData.errors
+      );
+    }
+
+    const json = await response.json();
+    return json as { success: boolean; message: string; data: any };
+  },
+
+  // Reset builder to default template
+  reset: async (storeId: string) => {
+    const token = getToken();
+
+    const response = await fetch(`${API_BASE_URL}/stores/${storeId}/builder`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      credentials: 'include',
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new ApiError(
+        errorData.message || 'Failed to reset builder',
+        response.status,
+        errorData.errors
+      );
+    }
+
+    const json = await response.json();
+    return json as { success: boolean; message: string; data: any };
+  },
+
+  // Toggle builder on/off
+  toggle: async (storeId: string, useBuilder: boolean) => {
+    const token = getToken();
+
+    const response = await fetch(`${API_BASE_URL}/stores/${storeId}/builder/toggle`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      credentials: 'include',
+      body: JSON.stringify({ useBuilder }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new ApiError(
+        errorData.message || 'Failed to toggle builder',
+        response.status,
+        errorData.errors
+      );
+    }
+
+    const json = await response.json();
+    return json as { success: boolean; message: string; data: any };
   },
 };
 

@@ -20,7 +20,8 @@ import Orders from "./pages/Orders";
 import Stores from "./pages/Stores";
 import Analytics from "./pages/Analytics";
 import Settings from "./pages/Settings";
-import Admin from "./pages/Admin";
+import Admin from '@/pages/Admin';
+import AdminOrderDetail from '@/pages/AdminOrderDetail';
 import AdminProductCreation from "./pages/AdminProductCreation";
 import AdminProductDetail from "./pages/AdminProductDetail";
 import ManageVariantOptions from "./pages/ManageVariantOptions";
@@ -36,6 +37,7 @@ import NotFound from "./pages/NotFound";
 import ProductCreation from "./pages/ProductCreation";
 import ListingEditor from "./pages/ListingEditor";
 import StoreAuthPage from "./pages/StoreAuthPage";
+import MockupsLibrary from "./pages/MockupsLibrary";
 
 const queryClient = new QueryClient();
 
@@ -96,6 +98,14 @@ const App = () => (
                 }
               />
               <Route
+                path="/mockups-library"
+                element={
+                  <ProtectedRoute>
+                    <MockupsLibrary />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
                 path="/orders"
                 element={
                   <ProtectedRoute>
@@ -141,6 +151,14 @@ const App = () => (
                   <ProtectedRoute requireAdmin>
                     <Admin />
                   </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin/orders/:id"
+                element={
+                  // <ProtectedRoute requireAdmin>
+                  <AdminOrderDetail />
+                  // </ProtectedRoute>
                 }
               />
               <Route

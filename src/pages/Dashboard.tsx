@@ -16,9 +16,11 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 import { Product } from '@/types';
 import { storeProductsApi } from '@/lib/api';
+import { storeOrdersApi } from '@/lib/api';
 import { getProducts } from '@/lib/localStorage';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ExternalLink, Pencil, Trash2 } from 'lucide-react';
+import { Order } from '@/types';
 
 const Dashboard = () => {
   const { user, logout, isAdmin } = useAuth();
@@ -27,6 +29,8 @@ const Dashboard = () => {
   const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
   const [storageUsage, setStorageUsage] = useState<{ used: number; limit: number } | null>(null);
   const [storeProducts, setStoreProducts] = useState<any[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [error, setError] = useState<string | null>(null);
   const [spLoading, setSpLoading] = useState(false);
   const [spFilter, setSpFilter] = useState<{ status?: 'draft' | 'published'; isActive?: boolean }>({});
 
@@ -93,6 +97,35 @@ const Dashboard = () => {
     loadSP();
   }, [user?.id, spFilter]);
 
+  // Load Orders from backend
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadOrders = async () => {
+      try {
+        setSpLoading(true);
+        const data = await storeOrdersApi.listForMerchant();
+        if (isMounted) {
+          setOrders(data);
+        }
+      } catch (err: any) {
+        if (isMounted) {
+          setError(err?.message || 'Failed to load orders');
+        }
+      } finally {
+        if (isMounted) {
+          setSpLoading(false);
+        }
+      }
+    };
+
+    loadOrders();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const updateStoreProduct = async (id: string, updates: any) => {
     try {
       const resp = await storeProductsApi.update(id, updates);
@@ -147,7 +180,7 @@ const Dashboard = () => {
   };
 
   const stats = [
-    { label: 'Total Orders', value: '0', icon: ShoppingBag, color: 'text-primary' },
+    { label: 'Total Orders', value: `${orders.length}` , icon: ShoppingBag, color: 'text-primary' },
     { label: 'Products', value: `${storeProducts.length}`, icon: Package, color: 'text-blue-500' },
     { label: 'Revenue', value: '$0', icon: DollarSign, color: 'text-green-500' },
     { label: 'Profit', value: '$0', icon: TrendingUp, color: 'text-purple-500' },
@@ -236,19 +269,6 @@ const Dashboard = () => {
               </Button>
             </Link>
           </div>
-
-          {/* Storage warning */}
-          {storageUsage && storageUsage.used > storageUsage.limit * 0.9 && (
-            <Card className="mb-6 border-amber-300 bg-amber-50 text-amber-900">
-              <div className="p-4 flex flex-col gap-2">
-                <p className="font-semibold">Storage Nearly Full</p>
-                <p className="text-sm">
-                  Your saved products are using {formatBytes(storageUsage.used)} of the available{' '}
-                  {formatBytes(storageUsage.limit)} local storage. Consider removing unused drafts to avoid sync issues.
-                </p>
-              </div>
-            </Card>
-          )}
 
           {/* Stats Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">

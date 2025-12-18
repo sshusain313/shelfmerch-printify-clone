@@ -94,29 +94,52 @@ export const CanvasMockup = ({
       return;
     }
 
+    console.log('CanvasMockup loading image:', mockupImageUrl);
     const img = new window.Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => {
+      console.log('CanvasMockup image loaded:', img.width, img.height);
       setImage(img);
       // Calculate size to fit canvas while maintaining aspect ratio with padding
       const aspectRatio = img.width / img.height;
       const maxWidth = effectiveCanvasWidth;
       const maxHeight = effectiveCanvasHeight;
-      
+
       let width = maxWidth;
       let height = maxWidth / aspectRatio;
-      
+
       // If height exceeds, fit to height instead
       if (height > maxHeight) {
         height = maxHeight;
         width = maxHeight * aspectRatio;
       }
-      
+
       // Center the image
       const x = canvasPadding + (maxWidth - width) / 2;
       const y = canvasPadding + (maxHeight - height) / 2;
-      
+
       setImageSize({ width, height, x, y });
+    };
+    img.onerror = (e) => {
+      console.error('CanvasMockup image failed to load:', e, mockupImageUrl);
+      // Fallback: try without crossOrigin
+      console.log('Retrying without crossOrigin...');
+      const retryImg = new window.Image();
+      retryImg.onload = () => {
+        console.log('CanvasMockup image loaded without crossOrigin (Lasso may fail)');
+        setImage(retryImg);
+        // ... same sizing logic ...
+        const aspectRatio = retryImg.width / retryImg.height;
+        const maxWidth = effectiveCanvasWidth;
+        const maxHeight = effectiveCanvasHeight;
+        let width = maxWidth;
+        let height = maxWidth / aspectRatio;
+        if (height > maxHeight) { height = maxHeight; width = maxHeight * aspectRatio; }
+        const x = canvasPadding + (maxWidth - width) / 2;
+        const y = canvasPadding + (maxHeight - height) / 2;
+        setImageSize({ width, height, x, y });
+      };
+      retryImg.src = mockupImageUrl;
     };
     img.src = mockupImageUrl;
   }, [mockupImageUrl, canvasWidth, canvasHeight, effectiveCanvasWidth, effectiveCanvasHeight, canvasPadding]);
@@ -142,7 +165,7 @@ export const CanvasMockup = ({
     // Convert pixel position back to inches
     const xIn = pixelsToUnits(node.x() - canvasPadding); // Account for padding
     const yIn = pixelsToUnits(node.y() - canvasPadding); // Account for padding
-    
+
     onPlaceholderChange(id, {
       xIn,
       yIn,
@@ -253,7 +276,7 @@ export const CanvasMockup = ({
           {(() => {
             const gridSpacing = 20;
             const gridLines = [];
-            
+
             // Vertical grid lines
             for (let x = canvasPadding; x < canvasWidth - canvasPadding; x += gridSpacing) {
               gridLines.push(
@@ -267,7 +290,7 @@ export const CanvasMockup = ({
                 />
               );
             }
-            
+
             // Horizontal grid lines
             for (let y = canvasPadding; y < canvasHeight - canvasPadding; y += gridSpacing) {
               gridLines.push(
@@ -281,7 +304,7 @@ export const CanvasMockup = ({
                 />
               );
             }
-            
+
             return gridLines;
           })()}
 
@@ -302,28 +325,28 @@ export const CanvasMockup = ({
             const isActive = activePlaceholderId === placeholder.id;
             const scale = placeholder.scale ?? 1.0;
             const isPolygon = placeholder.shapeType === 'polygon' && placeholder.polygonPoints && placeholder.polygonPoints.length >= 3;
-            
+
             // Convert inches to pixels for display, then apply scale
             const xPx = canvasPadding + inchesToPixels(placeholder.xIn);
             const yPx = canvasPadding + inchesToPixels(placeholder.yIn);
             const widthPx = inchesToPixels(placeholder.widthIn) * scale;
             const heightPx = inchesToPixels(placeholder.heightIn) * scale;
-            
+
             // For polygons, use renderPolygonPoints if available, otherwise fall back to polygonPoints
             const pointsToUse = isPolygon
               ? (placeholder.renderPolygonPoints && placeholder.renderPolygonPoints.length >= 3
-                  ? placeholder.renderPolygonPoints
-                  : placeholder.polygonPoints!)
+                ? placeholder.renderPolygonPoints
+                : placeholder.polygonPoints!)
               : [];
-            
+
             // Convert polygon points from inches to pixels
             const polygonPointsPx = isPolygon
               ? pointsToUse.map((pt) => [
-                  canvasPadding + inchesToPixels(pt.xIn) * scale,
-                  canvasPadding + inchesToPixels(pt.yIn) * scale,
-                ]).flat()
+                canvasPadding + inchesToPixels(pt.xIn) * scale,
+                canvasPadding + inchesToPixels(pt.yIn) * scale,
+              ]).flat()
               : [];
-            
+
             return (
               <React.Fragment key={placeholder.id}>
                 {isPolygon ? (
@@ -377,7 +400,7 @@ export const CanvasMockup = ({
                     onTransformEnd={(e) => handlePlaceholderTransformEnd(placeholder.id, e)}
                   />
                 )}
-                
+
                 {/* Bounding Box for Active Placeholder - matches placeholder exactly */}
                 {isActive && !isPolygon && (
                   <>
@@ -393,7 +416,7 @@ export const CanvasMockup = ({
                       dash={[4, 4]}
                       listening={false}
                     />
-                    
+
                     {/* Corner indicators on placeholder corners */}
                     {(() => {
                       const centerX = xPx + widthPx / 2;
@@ -405,13 +428,13 @@ export const CanvasMockup = ({
                         { x: xPx + widthPx, y: yPx + heightPx },
                         { x: xPx, y: yPx + heightPx },
                       ];
-                      
+
                       return corners.map((corner, idx) => {
                         const dx = corner.x - centerX;
                         const dy = corner.y - centerY;
                         const rotatedX = centerX + dx * Math.cos(angle) - dy * Math.sin(angle);
                         const rotatedY = centerY + dx * Math.sin(angle) + dy * Math.cos(angle);
-                        
+
                         return (
                           <Rect
                             key={`corner-${idx}`}
@@ -429,7 +452,7 @@ export const CanvasMockup = ({
                     })()}
                   </>
                 )}
-                
+
                 {/* Active indicator for polygon placeholders */}
                 {isActive && isPolygon && (
                   <Line
@@ -563,7 +586,7 @@ export const CanvasMockup = ({
                   dash={[5, 5]}
                   listening={false}
                 />
-                
+
                 {/* Horizontal Guide Line from left edge */}
                 <Line
                   points={[0, topY, canvasWidth, topY]}
@@ -596,7 +619,7 @@ export const CanvasMockup = ({
                   dash={[3, 3]}
                   listening={false}
                 />
-                
+
                 {/* Blue square markers at guide line ends */}
                 {/* Left marker on horizontal center line */}
                 <Rect
@@ -642,7 +665,7 @@ export const CanvasMockup = ({
                   strokeWidth={1}
                   listening={false}
                 />
-                
+
                 {/* Labels along guide lines - Show TRUE print dimensions in inches, not scaled */}
                 {/* X coordinate label on horizontal line (left side) */}
                 <Text

@@ -313,7 +313,23 @@ const SectionSettingsPanel: React.FC<SectionSettingsPanelProps> = ({
                 onChange={(e) => handleSettingChange('heading', e.target.value)}
               />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Layout</Label>
+              <Select
+                value={section.settings.layout || 'grid'}
+                onValueChange={(value) => handleSettingChange('layout', value)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select layout" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="grid">Grid</SelectItem>
+                  <SelectItem value="carousel">Carousel</SelectItem>
+                  <SelectItem value="list">List</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {(section.settings.layout || 'grid') === 'grid' && (
               <div className="space-y-2">
                 <Label htmlFor="product-grid-columns">Columns</Label>
                 <Input
@@ -325,25 +341,53 @@ const SectionSettingsPanel: React.FC<SectionSettingsPanelProps> = ({
                   onChange={(e) => handleSettingChange('columns', Number(e.target.value))}
                 />
               </div>
-              <div className="space-y-2">
-                <Label>Show Add to Cart</Label>
-                <Switch
-                  checked={section.settings.showAddToCart ?? true}
-                  onCheckedChange={(checked) => handleSettingChange('showAddToCart', checked)}
-                />
-              </div>
-            </div>
+            )}
             <div className="space-y-2">
-              <Label>Show Pricing</Label>
+              <Label htmlFor="product-grid-max">Max Products</Label>
+              <Input
+                id="product-grid-max"
+                type="number"
+                min={1}
+                max={12}
+                value={section.settings.maxProducts || 8}
+                onChange={(e) => handleSettingChange('maxProducts', Number(e.target.value))}
+              />
+            </div>
+            <div className="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2">
+              <span className="text-sm font-medium">Show Pricing</span>
               <Switch
                 checked={section.settings.showPrice ?? true}
                 onCheckedChange={(checked) => handleSettingChange('showPrice', checked)}
               />
             </div>
+            <div className="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2">
+              <span className="text-sm font-medium">Show Add to Cart</span>
+              <Switch
+                checked={section.settings.showAddToCart ?? true}
+                onCheckedChange={(checked) => handleSettingChange('showAddToCart', checked)}
+              />
+            </div>
           </div>
         );
 
-      case 'product-collection':
+      case 'product-collection': {
+        const collections: Array<{ name: string; subcategoryId?: string; categoryId?: string; imageUrl?: string }> = 
+          Array.isArray(section.settings.collections) ? section.settings.collections : [];
+
+        const addCollection = () => {
+          handleSettingChange('collections', [...collections, { name: '', subcategoryId: '', categoryId: '' }]);
+        };
+
+        const updateCollection = (index: number, field: string, value: string) => {
+          const updated = [...collections];
+          updated[index] = { ...updated[index], [field]: value };
+          handleSettingChange('collections', updated);
+        };
+
+        const removeCollection = (index: number) => {
+          handleSettingChange('collections', collections.filter((_, i) => i !== index));
+        };
+
         return (
           <div className="space-y-4">
             <div className="space-y-2">
@@ -379,28 +423,156 @@ const SectionSettingsPanel: React.FC<SectionSettingsPanelProps> = ({
                 </SelectContent>
               </Select>
             </div>
+            <div className="space-y-2">
+              <Label>Filter Products By</Label>
+              <Select
+                value={section.settings.filterBy || 'subcategory'}
+                onValueChange={(value) => handleSettingChange('filterBy', value)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select filter" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="subcategory">Subcategory</SelectItem>
+                  <SelectItem value="category">Category</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Max Products Per Collection</Label>
+              <Input
+                type="number"
+                min={1}
+                max={12}
+                value={section.settings.maxProductsPerCollection || 4}
+                onChange={(e) => handleSettingChange('maxProductsPerCollection', Number(e.target.value))}
+              />
+            </div>
+            <div className="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2">
+              <span className="text-sm font-medium">Show Pricing</span>
+              <Switch
+                checked={section.settings.showPrice ?? true}
+                onCheckedChange={(checked) => handleSettingChange('showPrice', checked)}
+              />
+            </div>
+
+            <Separator />
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label>Collections ({collections.length})</Label>
+                <Button size="sm" variant="outline" onClick={addCollection}>
+                  Add Collection
+                </Button>
+              </div>
+
+              {collections.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4 border border-dashed rounded">
+                  No collections yet. Add a collection to group products.
+                </p>
+              ) : (
+                <div className="space-y-3 max-h-96 overflow-y-auto">
+                  {collections.map((collection, index) => (
+                    <div key={index} className="rounded-lg border p-3 space-y-2 bg-muted/20">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-medium text-muted-foreground">
+                          Collection {index + 1}
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 w-6 p-0 text-destructive"
+                          onClick={() => removeCollection(index)}
+                        >
+                          ×
+                        </Button>
+                      </div>
+                      <Input
+                        value={collection.name}
+                        onChange={(e) => updateCollection(index, 'name', e.target.value)}
+                        placeholder="Collection name"
+                        className="text-sm"
+                      />
+                      {section.settings.filterBy === 'subcategory' ? (
+                        <Input
+                          value={collection.subcategoryId || ''}
+                          onChange={(e) => updateCollection(index, 'subcategoryId', e.target.value)}
+                          placeholder="Subcategory ID"
+                          className="text-sm"
+                        />
+                      ) : (
+                        <Input
+                          value={collection.categoryId || ''}
+                          onChange={(e) => updateCollection(index, 'categoryId', e.target.value)}
+                          placeholder="Category ID"
+                          className="text-sm"
+                        />
+                      )}
+                      <Input
+                        value={collection.imageUrl || ''}
+                        onChange={(e) => updateCollection(index, 'imageUrl', e.target.value)}
+                        placeholder="Collection image URL (optional)"
+                        className="text-sm"
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         );
+      }
 
-      case 'image':
+      case 'image': {
+        const layout = section.settings.layout || 'single';
+        // Normalize images to new structure
+        const images: Array<{ url: string; caption?: string }> = Array.isArray(section.settings.images)
+          ? section.settings.images.map((img: any) =>
+              typeof img === 'string' ? { url: img, caption: '' } : img
+            )
+          : [];
+
+        const handleLayoutChange = (newLayout: string) => {
+          // When switching layouts, preserve/convert images appropriately
+          if (newLayout === 'single' && images.length > 1) {
+            // Keep only first image when switching to single
+            handleSettingChange('images', images.slice(0, 1));
+          }
+          handleSettingChange('layout', newLayout);
+        };
+
+        const handleImageChange = (index: number, field: 'url' | 'caption', value: string) => {
+          const updated = [...images];
+          if (!updated[index]) {
+            updated[index] = { url: '', caption: '' };
+          }
+          updated[index] = { ...updated[index], [field]: value };
+          handleSettingChange('images', updated);
+        };
+
+        const addImage = () => {
+          handleSettingChange('images', [...images, { url: '', caption: '' }]);
+        };
+
+        const removeImage = (index: number) => {
+          handleSettingChange('images', images.filter((_, i) => i !== index));
+        };
+
+        const moveImage = (index: number, direction: 'up' | 'down') => {
+          const newIndex = direction === 'up' ? index - 1 : index + 1;
+          if (newIndex < 0 || newIndex >= images.length) return;
+          const updated = [...images];
+          [updated[index], updated[newIndex]] = [updated[newIndex], updated[index]];
+          handleSettingChange('images', updated);
+        };
+
         return (
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="image-url">Image URL</Label>
-              <Input
-                id="image-url"
-                value={(section.settings.images && section.settings.images[0]) || ''}
-                onChange={(e) =>
-                  handleSettingChange('images', e.target.value ? [e.target.value] : [])
-                }
-                placeholder="https://example.com/featured.jpg"
-              />
-            </div>
-            <div className="space-y-2">
               <Label>Layout</Label>
               <Select
-                value={section.settings.layout || 'single'}
-                onValueChange={(value) => handleSettingChange('layout', value)}
+                value={layout}
+                onValueChange={handleLayoutChange}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select layout" />
@@ -412,16 +584,113 @@ const SectionSettingsPanel: React.FC<SectionSettingsPanelProps> = ({
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
-              <Label>Caption</Label>
-              <Input
-                value={section.settings.caption || ''}
-                onChange={(e) => handleSettingChange('caption', e.target.value)}
-                placeholder="Optional caption"
-              />
-            </div>
+
+            {layout === 'grid' && (
+              <div className="space-y-2">
+                <Label>Grid Columns</Label>
+                <Input
+                  type="number"
+                  min={2}
+                  max={4}
+                  value={section.settings.gridColumns || 3}
+                  onChange={(e) => handleSettingChange('gridColumns', Number(e.target.value))}
+                />
+              </div>
+            )}
+
+            {layout === 'single' ? (
+              // Single image mode
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="image-url">Image URL</Label>
+                  <Input
+                    id="image-url"
+                    value={images[0]?.url || ''}
+                    onChange={(e) => handleImageChange(0, 'url', e.target.value)}
+                    placeholder="https://example.com/featured.jpg"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Caption</Label>
+                  <Input
+                    value={images[0]?.caption || ''}
+                    onChange={(e) => handleImageChange(0, 'caption', e.target.value)}
+                    placeholder="Optional caption"
+                  />
+                </div>
+              </div>
+            ) : (
+              // Multiple images mode (grid/carousel)
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <Label>Images ({images.length})</Label>
+                  <Button size="sm" variant="outline" onClick={addImage}>
+                    Add image
+                  </Button>
+                </div>
+                
+                {images.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-4 border border-dashed rounded">
+                    No images yet. Click "Add image" to get started.
+                  </p>
+                ) : (
+                  <div className="space-y-3 max-h-80 overflow-y-auto">
+                    {images.map((img, index) => (
+                      <div key={index} className="rounded-lg border p-3 space-y-2 bg-muted/20">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-medium text-muted-foreground">
+                            Image {index + 1}
+                          </span>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 w-6 p-0"
+                              onClick={() => moveImage(index, 'up')}
+                              disabled={index === 0}
+                            >
+                              ↑
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 w-6 p-0"
+                              onClick={() => moveImage(index, 'down')}
+                              disabled={index === images.length - 1}
+                            >
+                              ↓
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 w-6 p-0 text-destructive"
+                              onClick={() => removeImage(index)}
+                            >
+                              ×
+                            </Button>
+                          </div>
+                        </div>
+                        <Input
+                          value={img.url}
+                          onChange={(e) => handleImageChange(index, 'url', e.target.value)}
+                          placeholder="Image URL"
+                          className="text-sm"
+                        />
+                        <Input
+                          value={img.caption || ''}
+                          onChange={(e) => handleImageChange(index, 'caption', e.target.value)}
+                          placeholder="Caption (optional)"
+                          className="text-sm"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         );
+      }
 
     case 'video':
       return (

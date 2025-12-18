@@ -112,12 +112,19 @@ const ImageMagnifier: React.FC<ImageMagnifierProps> = ({ src, zoom = 2, alt }) =
                 ? sp.designData.selectedSizes
                 : ['One Size'];
 
+            // Extract catalog product data (populated from backend)
+            const catalogProduct = sp.catalogProductId && typeof sp.catalogProductId === 'object' 
+              ? sp.catalogProductId 
+              : null;
+            const catalogProductId = catalogProduct?._id?.toString() || 
+                                   (typeof sp.catalogProductId === 'string' ? sp.catalogProductId : '');
+
             return {
               id,
               userId: store.userId,
-              name: sp.title || sp.name || 'Untitled product',
-              description: sp.description,
-              baseProduct: sp.catalogProductId || '',
+              name: sp.title || sp.name || catalogProduct?.name || 'Untitled product',
+              description: sp.description || catalogProduct?.description,
+              baseProduct: catalogProductId,
               price: basePrice,
               compareAtPrice:
                 typeof sp.compareAtPrice === 'number' ? sp.compareAtPrice : undefined,
@@ -131,6 +138,15 @@ const ImageMagnifier: React.FC<ImageMagnifierProps> = ({ src, zoom = 2, alt }) =
                 colors,
                 sizes,
               },
+              // Include category/subcategory from catalog product for collection filtering
+              categoryId: catalogProduct?.categoryId?.toString() || catalogProduct?.categoryId,
+              subcategoryId: catalogProduct?.subcategoryIds?.[0]?.toString() || 
+                            (Array.isArray(catalogProduct?.subcategoryIds) && catalogProduct.subcategoryIds[0]) ||
+                            catalogProduct?.subcategoryIds?.[0],
+              subcategoryIds: Array.isArray(catalogProduct?.subcategoryIds)
+                ? catalogProduct.subcategoryIds.map((id: any) => id?.toString() || id)
+                : [],
+              catalogProduct: catalogProduct,
               createdAt: sp.createdAt || new Date().toISOString(),
               updatedAt: sp.updatedAt || new Date().toISOString(),
             };

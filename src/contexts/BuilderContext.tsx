@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useReducer, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useReducer, useCallback, useEffect, useState } from 'react';
 import { StoreBuilder, BuilderHistory, BuilderAction, BuilderSection, StorePage, GlobalStyles, PreviewMode } from '@/types/builder';
 import { createDefaultBuilder } from '@/lib/builderComponents';
+import { builderApi } from '@/lib/api';
 import { toast } from 'sonner';
 
 interface BuilderContextType {
@@ -10,6 +11,9 @@ interface BuilderContextType {
   selectedSectionId: string | null;
   canUndo: boolean;
   canRedo: boolean;
+  isSaving: boolean;
+  isPublishing: boolean;
+  isLoading: boolean;
   dispatch: (action: BuilderAction) => void;
   addSection: (section: BuilderSection, pageId?: string) => void;
   removeSection: (sectionId: string, pageId?: string) => void;
@@ -24,10 +28,11 @@ interface BuilderContextType {
   setPreviewMode: (mode: PreviewMode) => void;
   undo: () => void;
   redo: () => void;
-  saveDraft: (storeId: string) => void;
-  publishBuilder: (storeId: string) => void;
+  saveDraft: (storeId: string) => Promise<void>;
+  publishBuilder: (storeId: string) => Promise<void>;
   loadBuilder: (builder: StoreBuilder) => void;
-  resetBuilder: () => void;
+  loadFromBackend: (storeId: string) => Promise<void>;
+  resetBuilder: (storeId?: string) => Promise<void>;
   getActivePage: () => StorePage | undefined;
 }
 
@@ -257,8 +262,11 @@ export const BuilderProvider: React.FC<{ children: React.ReactNode }> = ({ child
     future: [],
   });
 
-  const [previewMode, setPreviewMode] = React.useState<PreviewMode>('desktop');
-  const [selectedSectionId, setSelectedSection] = React.useState<string | null>(null);
+  const [previewMode, setPreviewMode] = useState<PreviewMode>('desktop');
+  const [selectedSectionId, setSelectedSection] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   const builder = history.present;
   const canUndo = history.past.length > 0;
@@ -338,61 +346,157 @@ export const BuilderProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, []);
 
   const saveDraft = useCallback(
-    (storeId: string) => {
-      const draftKey = `store_builder_draft_${storeId}`;
-      localStorage.setItem(draftKey, JSON.stringify({ ...builder, draft: true, lastSaved: new Date().toISOString() }));
-      toast.success('Draft saved!');
+    async (storeId: string) => {
+      if (isSaving) return;
+      
+      try {
+        setIsSaving(true);
+        
+        // Save to backend
+        const response = await builderApi.saveDraft(storeId, builder);
+        
+        if (response.success) {
+          // Also save to localStorage as backup for offline resilience
+          const draftKey = `store_builder_draft_${storeId}`;
+          localStorage.setItem(draftKey, JSON.stringify({ ...builder, draft: true, lastSaved: new Date().toISOString() }));
+          
+          toast.success('Draft saved!');
+        } else {
+          throw new Error('Failed to save draft');
+        }
+      } catch (error: any) {
+        console.error('Error saving draft:', error);
+        
+        // Fallback: save to localStorage only
+        const draftKey = `store_builder_draft_${storeId}`;
+        localStorage.setItem(draftKey, JSON.stringify({ ...builder, draft: true, lastSaved: new Date().toISOString() }));
+        
+        toast.warning('Saved locally (offline mode)');
+      } finally {
+        setIsSaving(false);
+      }
     },
-    [builder]
+    [builder, isSaving]
   );
 
   const publishBuilder = useCallback(
-    (storeId: string) => {
-      // Find the store by searching all store keys
-      // (Stores are saved with store_${userId} key, but we have store.id)
-      const allKeys = Object.keys(localStorage).filter((key) => key.startsWith('store_'));
+    async (storeId: string) => {
+      if (isPublishing) return;
       
-      for (const key of allKeys) {
-        const storeData = localStorage.getItem(key);
-        if (storeData) {
-          const store = JSON.parse(storeData);
-          // Match by store.id
-          if (store.id === storeId) {
-            // Update store with builder data
-            store.builder = { ...builder, draft: false, lastSaved: new Date().toISOString() };
-            store.useBuilder = true;
-            store.updatedAt = new Date().toISOString();
-            
-            // Save using the correct key (store_${userId})
-            const correctKey = `store_${store.userId}`;
-            localStorage.setItem(correctKey, JSON.stringify(store));
+      try {
+        setIsPublishing(true);
+        
+        // Publish to backend
+        const response = await builderApi.publish(storeId, builder);
+        
+        if (response.success) {
+          // Clear local draft
+          localStorage.removeItem(`store_builder_draft_${storeId}`);
+          
+          // Dispatch update event for any listeners
+          window.dispatchEvent(
+            new CustomEvent('shelfmerch-data-update', {
+              detail: { 
+                type: 'store-builder-published', 
+                storeId,
+                data: response.data 
+              },
+            })
+          );
+          
+          toast.success('Store published!');
+        } else {
+          throw new Error('Failed to publish');
+        }
+      } catch (error: any) {
+        console.error('Error publishing builder:', error);
+        toast.error(error?.message || 'Failed to publish store');
+      } finally {
+        setIsPublishing(false);
+      }
+    },
+    [builder, isPublishing]
+  );
 
-            // Clear draft
-            localStorage.removeItem(`store_builder_draft_${storeId}`);
-
-            // Dispatch update event
-            window.dispatchEvent(
-              new CustomEvent('shelfmerch-data-update', {
-                detail: { type: 'store', data: store },
-              })
-            );
-
-            toast.success('Store published!');
+  const loadFromBackend = useCallback(
+    async (storeId: string) => {
+      try {
+        setIsLoading(true);
+        
+        // Try to load from backend first
+        const response = await builderApi.get(storeId);
+        
+        if (response.success && response.data) {
+          dispatch({ type: 'LOAD_BUILDER', builder: ensureSystemPages(response.data) });
+          return;
+        }
+        
+        // Fallback: check localStorage for draft
+        const draftKey = `store_builder_draft_${storeId}`;
+        const localDraft = localStorage.getItem(draftKey);
+        
+        if (localDraft) {
+          try {
+            const parsed = JSON.parse(localDraft);
+            dispatch({ type: 'LOAD_BUILDER', builder: ensureSystemPages(parsed) });
+            toast.info('Loaded local draft');
             return;
+          } catch (e) {
+            console.error('Failed to parse local draft:', e);
           }
         }
+        
+        // If nothing found, use default builder
+        dispatch({ type: 'LOAD_BUILDER', builder: createDefaultBuilder() });
+      } catch (error: any) {
+        console.error('Error loading builder from backend:', error);
+        
+        // Fallback: check localStorage for draft
+        const draftKey = `store_builder_draft_${storeId}`;
+        const localDraft = localStorage.getItem(draftKey);
+        
+        if (localDraft) {
+          try {
+            const parsed = JSON.parse(localDraft);
+            dispatch({ type: 'LOAD_BUILDER', builder: ensureSystemPages(parsed) });
+            toast.warning('Loaded from local cache (offline mode)');
+            return;
+          } catch (e) {
+            console.error('Failed to parse local draft:', e);
+          }
+        }
+        
+        toast.error('Failed to load builder');
+      } finally {
+        setIsLoading(false);
       }
-      
-      toast.error('Store not found');
     },
-    [builder]
+    []
   );
 
   const loadBuilder = useCallback((builderData: StoreBuilder) => {
     dispatch({ type: 'LOAD_BUILDER', builder: ensureSystemPages(builderData) });
   }, []);
 
-  const resetBuilder = useCallback(() => {
+  const resetBuilder = useCallback(async (storeId?: string) => {
+    if (storeId) {
+      try {
+        // Reset on backend
+        const response = await builderApi.reset(storeId);
+        
+        if (response.success) {
+          dispatch({ type: 'LOAD_BUILDER', builder: ensureSystemPages(response.data || createDefaultBuilder()) });
+          localStorage.removeItem(`store_builder_draft_${storeId}`);
+          toast.success('Builder reset to default');
+          return;
+        }
+      } catch (error: any) {
+        console.error('Error resetting builder:', error);
+        toast.error('Failed to reset builder');
+      }
+    }
+    
+    // Local reset only
     dispatch({ type: 'LOAD_BUILDER', builder: createDefaultBuilder() });
   }, []);
 
@@ -425,6 +529,9 @@ export const BuilderProvider: React.FC<{ children: React.ReactNode }> = ({ child
         selectedSectionId,
         canUndo,
         canRedo,
+        isSaving,
+        isPublishing,
+        isLoading,
         dispatch,
         addSection,
         removeSection,
@@ -442,6 +549,7 @@ export const BuilderProvider: React.FC<{ children: React.ReactNode }> = ({ child
         saveDraft,
         publishBuilder,
         loadBuilder,
+        loadFromBackend,
         resetBuilder,
         getActivePage,
       }}

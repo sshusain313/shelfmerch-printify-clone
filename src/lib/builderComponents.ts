@@ -75,6 +75,8 @@ export const componentLibrary: ComponentDefinition[] = [
       productIds: [],
       showPrice: true,
       showAddToCart: true,
+      layout: 'grid', // 'grid' | 'carousel' | 'list'
+      maxProducts: 8,
     },
     defaultStyles: {
       backgroundColor: '#ffffff',
@@ -90,8 +92,11 @@ export const componentLibrary: ComponentDefinition[] = [
     defaultSettings: {
       heading: 'Shop by Collection',
       description: 'Explore our curated collections',
-      collections: [],
-      layout: 'grid',
+      collections: [] as Array<{ name: string; subcategoryId?: string; categoryId?: string; imageUrl?: string }>,
+      layout: 'grid', // 'grid' | 'carousel' | 'list'
+      showPrice: true,
+      maxProductsPerCollection: 4,
+      filterBy: 'subcategory', // 'subcategory' | 'category'
     },
     defaultStyles: {
       backgroundColor: '#ffffff',
@@ -121,10 +126,11 @@ export const componentLibrary: ComponentDefinition[] = [
     icon: 'ImageIcon',
     category: 'content',
     defaultSettings: {
-      images: [],
-      layout: 'single',
+      // Updated structure: array of image objects with url and caption
+      images: [] as Array<{ url: string; caption?: string }>,
+      layout: 'single', // 'single' | 'grid' | 'carousel'
       aspectRatio: '16:9',
-      caption: '',
+      gridColumns: 3, // For grid layout
     },
     defaultStyles: {
       backgroundColor: '#ffffff',

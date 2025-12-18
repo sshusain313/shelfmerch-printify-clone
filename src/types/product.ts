@@ -58,9 +58,23 @@ export interface ProductCatalogueData {
   attributes: Record<string, any>; // Dynamic attributes based on category/subcategory
 }
 
+// Sample Mockup Image (for multiple mockups per view)
+export interface SampleMockupImage {
+  id: string;
+  viewKey: ViewKey;
+  imageUrl: string; // Uploaded to S3
+  placeholders: Placeholder[]; // Same Placeholder type as Design Section
+  metadata?: {
+    imageType?: 'lifestyle' | 'flat-front' | 'flat-back' | 'folded' | 'person' | 'detail' | 'other';
+    caption?: string;
+    order?: number;
+  };
+}
+
 // SECTION B: Mockup + Print Area Editor (Design Data)
 export interface ProductDesignData {
   views: ViewConfig[];
+  sampleMockups?: SampleMockupImage[]; // Multiple sample mockups per view
   dpi?: number; // DPI for print-ready file generation (default: 300)
   // Optional physical dimensions of the product's printable area (in inches)
   physicalDimensions?: {

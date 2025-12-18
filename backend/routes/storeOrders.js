@@ -30,6 +30,39 @@ router.get('/', protect, authorize('merchant', 'superadmin'), async (req, res) =
   }
 });
 
+// @route   GET /api/store-orders/:id
+// @desc    Get single order details with storeProduct designData populated
+// @access  Private (merchant, superadmin)
+router.get('/:id', protect, authorize('merchant', 'superadmin'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = req.user;
+
+    const order = await StoreOrder.findById(id)
+      .populate('storeId', 'name')
+      .populate({
+        path: 'items.storeProductId',
+        select: 'title description designData galleryImages sellingPrice'
+      });
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found' });
+    }
+
+    // Merchants can only see orders for their own stores
+    if (user.role !== 'superadmin') {
+      const store = await Store.findById(order.storeId);
+      if (!store || String(store.merchant) !== String(user._id)) {
+        return res.status(403).json({ success: false, message: 'Not authorized to view this order' });
+      }
+    }
+
+    return res.json({ success: true, data: order });
+  } catch (error) {
+    console.error('Error fetching store order details:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch order details' });
+  }
+});
+
 // @route   PATCH /api/store-orders/:id/status
 // @desc    Update order status (superadmin only)
 // @access  Private (superadmin)
@@ -38,7 +71,8 @@ router.patch('/:id/status', protect, authorize('superadmin'), async (req, res) =
     const { id } = req.params;
     const { status } = req.body || {};
 
-    const allowedStatuses = ['on-hold', 'in-production', 'shipped', 'delivered', 'refunded', 'cancelled'];
+    // Keep in sync with StoreOrder schema enum
+    const allowedStatuses = ['on-hold', 'paid', 'in-production', 'shipped', 'delivered', 'fulfilled', 'cancelled', 'refunded'];
     if (!status || !allowedStatuses.includes(status)) {
       return res.status(400).json({ success: false, message: 'Invalid order status' });
     }

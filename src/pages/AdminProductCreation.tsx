@@ -15,6 +15,7 @@ import { ProductStocksSection } from '@/components/admin/ProductStocksSection';
 import { ProductOptionsSection } from '@/components/admin/ProductOptionsSection';
 import { ProductDetailsSection } from '@/components/admin/ProductDetailsSection';
 import { ProductFAQSection } from '@/components/admin/ProductFAQSection';
+import { UploadMockupsSection } from '@/components/admin/UploadMockupsSection';
 import {
   ProductFormData,
   ProductCatalogueData,
@@ -83,6 +84,7 @@ const AdminProductCreation = () => {
       { key: 'left', mockupImageUrl: '', placeholders: [] },
       { key: 'right', mockupImageUrl: '', placeholders: [] },
     ],
+    sampleMockups: [], // Initialize with empty array
     dpi: 300,
     physicalDimensions: {
       width: DEFAULT_PHYSICAL_WIDTH,
@@ -145,7 +147,7 @@ const AdminProductCreation = () => {
         const response = await productApi.getById(id);
         if (response && response.success === true && response.data) {
           const product = response.data;
-          
+
           // Populate form with existing product data
           if (product.catalogue) {
             setCatalogueData({
@@ -159,7 +161,7 @@ const AdminProductCreation = () => {
               attributes: product.catalogue.attributes || {},
             });
           }
-          
+
           if (product.details) {
             setDetailsData({
               mpn: product.details.mpn || '',
@@ -168,7 +170,7 @@ const AdminProductCreation = () => {
               isbn: product.details.isbn || '',
             });
           }
-          
+
           if (product.design) {
             // Migrate old placeholders (wIn/hIn) to new format (widthIn/heightIn)
             // Preserve any new polygon/magnetic lasso fields if present
@@ -194,11 +196,12 @@ const AdminProductCreation = () => {
                 migratedViews.length > 0
                   ? migratedViews
                   : [
-                { key: 'front', mockupImageUrl: '', placeholders: [] },
-                { key: 'back', mockupImageUrl: '', placeholders: [] },
-                { key: 'left', mockupImageUrl: '', placeholders: [] },
-                { key: 'right', mockupImageUrl: '', placeholders: [] },
-              ],
+                    { key: 'front', mockupImageUrl: '', placeholders: [] },
+                    { key: 'back', mockupImageUrl: '', placeholders: [] },
+                    { key: 'left', mockupImageUrl: '', placeholders: [] },
+                    { key: 'right', mockupImageUrl: '', placeholders: [] },
+                  ],
+              sampleMockups: product.design.sampleMockups || [],
               dpi: product.design.dpi || 300,
               physicalDimensions: product.design.physicalDimensions || {
                 width: DEFAULT_PHYSICAL_WIDTH,
@@ -210,7 +213,7 @@ const AdminProductCreation = () => {
                 product.design.displacementSettings || defaultDisplacementSettings,
             });
           }
-          
+
           if (product.shipping) {
             setShippingData({
               packageLengthCm: product.shipping.packageLengthCm || 0,
@@ -225,19 +228,19 @@ const AdminProductCreation = () => {
               selectedCarriers: product.shipping.selectedCarriers || [],
             });
           }
-          
+
           if (product.variants) {
             setVariants(product.variants);
           }
-          
+
           if (product.availableSizes) {
             setAvailableSizes(product.availableSizes);
           }
-          
+
           if (product.availableColors) {
             setAvailableColors(product.availableColors);
           }
-          
+
           if (product.galleryImages) {
             setGalleryImages(product.galleryImages);
           }
@@ -389,7 +392,7 @@ const AdminProductCreation = () => {
         // Create new product
         response = await productApi.create(payload) as any;
       }
-      
+
       if (response && response.success === true) {
         toast.success(response.message || (isEditMode ? 'Product updated successfully!' : 'Product created successfully!'));
         // Navigate to admin products tab to see the product
@@ -456,7 +459,7 @@ const AdminProductCreation = () => {
               {isEditMode ? 'Edit Product' : 'Add New Product'}
             </h1>
             <p className="text-muted-foreground mt-2">
-              {isEditMode 
+              {isEditMode
                 ? 'Update the catalogue product details'
                 : 'Create a catalogue product that merchants can use in their stores'
               }
@@ -480,23 +483,26 @@ const AdminProductCreation = () => {
                 <TabsTrigger value="design" className="flex items-center gap-2">
                   <span className="hidden sm:inline">4.</span> Design
                 </TabsTrigger>
+                <TabsTrigger value="sample-mockups" className="flex items-center gap-2">
+                  <span className="hidden sm:inline">5.</span> Samples
+                </TabsTrigger>
                 <TabsTrigger value="gallery" className="flex items-center gap-2">
-                  <span className="hidden sm:inline">5.</span> Gallery
+                  <span className="hidden sm:inline">6.</span> Gallery
                 </TabsTrigger>
                 <TabsTrigger value="pricing" className="flex items-center gap-2">
-                  <span className="hidden sm:inline">6.</span> Pricing
+                  <span className="hidden sm:inline">7.</span> Pricing
                 </TabsTrigger>
                 <TabsTrigger value="stocks" className="flex items-center gap-2">
-                  <span className="hidden sm:inline">7.</span> Stocks
+                  <span className="hidden sm:inline">8.</span> Stocks
                 </TabsTrigger>
                 <TabsTrigger value="options" className="flex items-center gap-2">
-                  <span className="hidden sm:inline">8.</span> Options
+                  <span className="hidden sm:inline">9.</span> Options
                 </TabsTrigger>
                 <TabsTrigger value="shipping" className="flex items-center gap-2">
-                  <span className="hidden sm:inline">9.</span> Shipping
+                  <span className="hidden sm:inline">10.</span> Shipping
                 </TabsTrigger>
                 <TabsTrigger value="faq" className="flex items-center gap-2">
-                  <span className="hidden sm:inline">10.</span> FAQ
+                  <span className="hidden sm:inline">11.</span> FAQ
                 </TabsTrigger>
               </TabsList>
 
@@ -633,6 +639,46 @@ const AdminProductCreation = () => {
                     Back
                   </Button>
                   <Button
+                    onClick={() => setActiveStep('sample-mockups')}
+                    className="gap-2"
+                  >
+                    Next: Samples
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </TabsContent>
+
+              {/* Step 5: Sample Mockups */}
+              <TabsContent value="sample-mockups" className="space-y-4">
+                <div>
+                  <h2 className="text-xl font-semibold mb-1">Step 5: Sample Mockups</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Upload multiple sample mockups (lifestyle, flat lays) per view. These will be used to generate mockups for the user.
+                  </p>
+                </div>
+                <UploadMockupsSection
+                  sampleMockups={designData.sampleMockups || []}
+                  onSampleMockupsChange={(sampleMockups) =>
+                    setDesignData((prev) => ({
+                      ...prev,
+                      sampleMockups,
+                    }))
+                  }
+                  physicalWidth={designData.physicalDimensions?.width ?? DEFAULT_PHYSICAL_WIDTH}
+                  physicalHeight={designData.physicalDimensions?.height ?? DEFAULT_PHYSICAL_HEIGHT}
+                  physicalLength={designData.physicalDimensions?.length ?? DEFAULT_PHYSICAL_LENGTH}
+                  unit="in"
+                />
+                <div className="flex justify-between pt-4">
+                  <Button
+                    variant="outline"
+                    onClick={() => setActiveStep('design')}
+                    className="gap-2"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    Back
+                  </Button>
+                  <Button
                     onClick={() => setActiveStep('gallery')}
                     className="gap-2"
                   >
@@ -642,10 +688,10 @@ const AdminProductCreation = () => {
                 </div>
               </TabsContent>
 
-              {/* Step 5: Product Gallery Images */}
+              {/* Step 6: Product Gallery Images */}
               <TabsContent value="gallery" className="space-y-4">
                 <div>
-                  <h2 className="text-xl font-semibold mb-1">Step 5: Product Gallery Images</h2>
+                  <h2 className="text-xl font-semibold mb-1">Step 6: Product Gallery Images</h2>
                   <p className="text-sm text-muted-foreground">
                     Upload customer-facing product images (size charts, flat shots, lifestyle photos, etc.)
                   </p>
@@ -657,7 +703,7 @@ const AdminProductCreation = () => {
                 <div className="flex justify-between pt-4">
                   <Button
                     variant="outline"
-                    onClick={() => setActiveStep('design')}
+                    onClick={() => setActiveStep('sample-mockups')}
                     className="gap-2"
                   >
                     <ChevronLeft className="h-4 w-4" />
@@ -673,10 +719,10 @@ const AdminProductCreation = () => {
                 </div>
               </TabsContent>
 
-              {/* Step 6: Pricing */}
+              {/* Step 7: Pricing */}
               <TabsContent value="pricing" className="space-y-4">
                 <div>
-                  <h2 className="text-xl font-semibold mb-1">Step 6: Pricing</h2>
+                  <h2 className="text-xl font-semibold mb-1">Step 7: Pricing</h2>
                   <p className="text-sm text-muted-foreground">
                     Set retail prices, tax rules, cost price, and optional price per unit
                   </p>
@@ -704,10 +750,10 @@ const AdminProductCreation = () => {
                 </div>
               </TabsContent>
 
-              {/* Step 7: Stocks/Inventory */}
+              {/* Step 8: Stocks/Inventory */}
               <TabsContent value="stocks" className="space-y-4">
                 <div>
-                  <h2 className="text-xl font-semibold mb-1">Step 7: Stocks & Inventory</h2>
+                  <h2 className="text-xl font-semibold mb-1">Step 8: Stocks & Inventory</h2>
                   <p className="text-sm text-muted-foreground">
                     Configure stock management, minimum quantities, and low stock alerts
                   </p>
@@ -735,10 +781,10 @@ const AdminProductCreation = () => {
                 </div>
               </TabsContent>
 
-              {/* Step 8: Product Options */}
+              {/* Step 9: Product Options */}
               <TabsContent value="options" className="space-y-4">
                 <div>
-                  <h2 className="text-xl font-semibold mb-1">Step 8: Product Options</h2>
+                  <h2 className="text-xl font-semibold mb-1">Step 9: Product Options</h2>
                   <p className="text-sm text-muted-foreground">
                     Configure product visibility, availability, price display, and supplier associations
                   </p>
@@ -766,10 +812,10 @@ const AdminProductCreation = () => {
                 </div>
               </TabsContent>
 
-              {/* Step 9: Shipping & Packaging */}
+              {/* Step 10: Shipping & Packaging */}
               <TabsContent value="shipping" className="space-y-4">
                 <div>
-                  <h2 className="text-xl font-semibold mb-1">Step 9: Shipping & Packaging</h2>
+                  <h2 className="text-xl font-semibold mb-1">Step 10: Shipping & Packaging</h2>
                   <p className="text-sm text-muted-foreground">
                     Package dimensions and weight for courier APIs and Shopify shipping
                   </p>
@@ -832,7 +878,7 @@ const AdminProductCreation = () => {
           </CardContent>
         </Card>
       </div>
-    </div>
+    </div >
   );
 };
 

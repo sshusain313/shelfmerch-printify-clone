@@ -79,6 +79,18 @@ const storeSchema = new mongoose.Schema({
   },
   lastSyncAt: {
     type: Date // Last sync with external platform
+  },
+  // Store Builder fields
+  builder: {
+    type: mongoose.Schema.Types.Mixed, // Full StoreBuilder object
+    default: null
+  },
+  useBuilder: {
+    type: Boolean,
+    default: false
+  },
+  builderLastPublishedAt: {
+    type: Date
   }
 }, {
   timestamps: true

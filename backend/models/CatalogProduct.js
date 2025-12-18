@@ -22,23 +22,49 @@ const PlaceholderSchema = new mongoose.Schema({
 }, { _id: false });
 
 const ViewConfigSchema = new mongoose.Schema({
-  key: { 
-    type: String, 
-    required: true, 
-    enum: ['front', 'back', 'left', 'right'] 
+  key: {
+    type: String,
+    required: true,
+    enum: ['front', 'back', 'left', 'right']
   },
   // Store URL, not base64!
   mockupImageUrl: { type: String, required: true },
   placeholders: { type: [PlaceholderSchema], default: [] }
 }, { _id: false });
 
+const SampleMockupImageSchema = new mongoose.Schema({
+  id: { type: String, required: true },
+  viewKey: {
+    type: String,
+    required: true,
+    enum: ['front', 'back', 'left', 'right']
+  },
+  imageUrl: { type: String, required: true }, // Store URL, not base64!
+  placeholders: { type: [PlaceholderSchema], default: [] },
+  metadata: {
+    imageType: {
+      type: String,
+      enum: ['lifestyle', 'flat-front', 'flat-back', 'folded', 'person', 'detail', 'other'],
+      default: 'other'
+    },
+    caption: { type: String, default: '' },
+    order: { type: Number, default: 0 }
+  }
+}, { _id: false });
+
 const CatalogProductDesignSchema = new mongoose.Schema({
   views: [ViewConfigSchema],
+  sampleMockups: { type: [SampleMockupImageSchema], default: [] },
   dpi: { type: Number, default: 300 },
   physicalDimensions: {
     width: { type: Number },
     height: { type: Number },
     length: { type: Number }
+  },
+  displacementSettings: {
+    scaleX: { type: Number, default: 20 },
+    scaleY: { type: Number, default: 20 },
+    contrastBoost: { type: Number, default: 1.5 }
   }
 }, { _id: false });
 
@@ -47,16 +73,16 @@ const CatalogProductShippingSchema = new mongoose.Schema({
   packageWidthCm: { type: Number, required: true },
   packageHeightCm: { type: Number, required: true },
   packageWeightGrams: { type: Number, required: true },
-  deliveryTimeOption: { 
-    type: String, 
+  deliveryTimeOption: {
+    type: String,
     enum: ['none', 'default', 'specific'],
     default: 'specific'
   },
   inStockDeliveryTime: { type: String, default: '' },
   outOfStockDeliveryTime: { type: String, default: '' },
   additionalShippingCost: { type: Number, default: 0 },
-  carrierSelection: { 
-    type: String, 
+  carrierSelection: {
+    type: String,
     enum: ['all', 'selected'],
     default: 'all'
   },
@@ -68,8 +94,8 @@ const CatalogProductGalleryImageSchema = new mongoose.Schema({
   url: { type: String, required: true }, // URL, not base64
   position: { type: Number, required: true },
   isPrimary: { type: Boolean, default: false },
-  imageType: { 
-    type: String, 
+  imageType: {
+    type: String,
     enum: ['lifestyle', 'flat-front', 'flat-back', 'size-chart', 'detail', 'other'],
     default: 'other'
   },
@@ -94,55 +120,55 @@ const CatalogProductSchema = new mongoose.Schema({
     type: String,
     required: true
   },
-  categoryId: { 
-    type: String, 
+  categoryId: {
+    type: String,
     required: true,
     validate: {
-      validator: function(v) {
+      validator: function (v) {
         return isValidCategory(v);
       },
       message: props => `${props.value} is not a valid category ID`
     }
   },
   subcategoryIds: [String],
-  productTypeCode: { 
-    type: String, 
-    required: true 
+  productTypeCode: {
+    type: String,
+    required: true
   },
   tags: [String],
-  
+
   // Attributes (dynamic fields from CatalogueFieldTemplate)
   attributes: {
     type: Map,
     of: mongoose.Schema.Types.Mixed,
     default: {}
   },
-  
+
   // Base price (what manufacturer charges)
   basePrice: {
     type: Number,
     required: true,
     min: 0
   },
-  
+
   // Design (mockups, placeholders)
   design: {
     type: CatalogProductDesignSchema,
     required: true
   },
-  
+
   // Shipping specs
   shipping: {
     type: CatalogProductShippingSchema,
     required: true
   },
-  
+
   // Gallery images
   galleryImages: [CatalogProductGalleryImageSchema],
-  
+
   // FAQs
   faqs: [CatalogProductFAQSchema],
-  
+
   // Product details (barcodes, etc.)
   details: {
     mpn: { type: String, default: '' },
@@ -150,7 +176,7 @@ const CatalogProductSchema = new mongoose.Schema({
     ean13: { type: String, default: '' },
     isbn: { type: String, default: '' }
   },
-  
+
   // Metadata
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,

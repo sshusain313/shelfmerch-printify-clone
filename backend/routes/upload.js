@@ -22,8 +22,8 @@ const upload = multer({
 
 // @route   POST /api/upload/image
 // @desc    Upload an image file to S3
-// @access  Private/Admin
-router.post('/image', protect, authorize('superadmin'), upload.single('image'), async (req, res) => {
+// @access  Private (merchant, superadmin)
+router.post('/image', protect, authorize('merchant', 'superadmin'), upload.single('image'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({

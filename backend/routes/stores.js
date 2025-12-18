@@ -13,11 +13,11 @@ const generateSlug = (name) => {
 };
 
 // Map backend Store document to frontend Store shape
-const mapStoreToFrontend = (storeDoc) => {
+const mapStoreToFrontend = (storeDoc, includeBuilder = false) => {
   if (!storeDoc) return null;
   const store = storeDoc.toObject();
 
-  return {
+  const frontendStore = {
     id: store._id.toString(),
     userId: store.merchant?.toString(),
     storeName: store.name,
@@ -32,9 +32,16 @@ const mapStoreToFrontend = (storeDoc) => {
       primaryColor: store.settings?.primaryColor || undefined,
       accentColor: undefined,
     },
-    useBuilder: false,
-    builder: undefined,
+    useBuilder: store.useBuilder || false,
+    builderLastPublishedAt: store.builderLastPublishedAt || null,
   };
+
+  // Include builder data when requested (e.g., for storefront rendering)
+  if (includeBuilder && store.builder) {
+    frontendStore.builder = store.builder;
+  }
+
+  return frontendStore;
 };
 
 // @route   POST /api/stores
@@ -119,9 +126,11 @@ router.post('/', protect, async (req, res) => {
 // @route   GET /api/stores/me
 // @desc    Get the current merchant's primary store (first active native store)
 // @access  Private
+// @query   includeBuilder=true to include full builder data
 router.get('/me', protect, async (req, res) => {
   try {
     const user = req.user;
+    const includeBuilder = req.query.includeBuilder === 'true';
 
     if (!user) {
       return res.status(401).json({
@@ -143,7 +152,7 @@ router.get('/me', protect, async (req, res) => {
       });
     }
 
-    const frontendStore = mapStoreToFrontend(store);
+    const frontendStore = mapStoreToFrontend(store, includeBuilder);
 
     return res.json({
       success: true,
@@ -195,8 +204,58 @@ router.get('/', protect, async (req, res) => {
   }
 });
 
+// @route   GET /api/stores/:id
+// @desc    Get store by ID (for builder access)
+// @access  Private (owner or superadmin)
+router.get('/:id', protect, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = req.user;
+    const includeBuilder = req.query.includeBuilder === 'true';
+
+    // Check if id is a valid ObjectId
+    if (!id.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid store ID format',
+      });
+    }
+
+    const store = await Store.findById(id);
+
+    if (!store) {
+      return res.status(404).json({
+        success: false,
+        message: 'Store not found',
+      });
+    }
+
+    // Authorization: only owner or superadmin
+    if (user.role !== 'superadmin' && String(store.merchant) !== String(user._id)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to access this store',
+      });
+    }
+
+    const frontendStore = mapStoreToFrontend(store, includeBuilder);
+
+    return res.json({
+      success: true,
+      data: frontendStore,
+    });
+  } catch (error) {
+    console.error('Error fetching store by ID:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch store',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+    });
+  }
+});
+
 // @route   GET /api/stores/by-subdomain/:slug
-// @desc    Get public store data by subdomain (slug)
+// @desc    Get public store data by subdomain (slug) - includes builder for rendering
 // @access  Public
 router.get('/by-subdomain/:slug', async (req, res) => {
   try {
@@ -214,7 +273,8 @@ router.get('/by-subdomain/:slug', async (req, res) => {
       });
     }
 
-    const frontendStore = mapStoreToFrontend(store);
+    // Include builder data for storefront rendering
+    const frontendStore = mapStoreToFrontend(store, true);
 
     return res.json({
       success: true,
