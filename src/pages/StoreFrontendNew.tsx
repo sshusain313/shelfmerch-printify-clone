@@ -1,10 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { useMemo } from 'react';
-import { ShoppingCart, Search, Menu, X, Package } from 'lucide-react';
 import { Product, Store, CartItem } from '@/types';
 import { storeApi, storeProductsApi } from '@/lib/api';
 import { getTheme } from '@/lib/themes';
@@ -13,6 +9,12 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useStoreAuth } from '@/contexts/StoreAuthContext';
 import CartDrawer from '@/components/storefront/CartDrawer';
 import SectionRenderer from '@/components/builder/SectionRenderer';
+import EnhancedStoreHeader from '@/components/storefront/EnhancedStoreHeader';
+import EnhancedHeroSection from '@/components/storefront/EnhancedHeroSection';
+import EnhancedProductsSection from '@/components/storefront/EnhancedProductsSection';
+import AboutSection from '@/components/storefront/AboutSection';
+import NewsletterSection from '@/components/storefront/NewsletterSection';
+import EnhancedFooter from '@/components/storefront/EnhancedFooter';
 
 const StoreFrontendNew = () => {
   const { user, isMerchant, isAdmin } = useAuth();
@@ -300,66 +302,19 @@ const StoreFrontendNew = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Simulated Custom Domain Bar */}
-      <div className="bg-primary/10 border-b border-primary/20 py-2 px-4 text-center text-sm">
-        <span className="font-mono font-semibold">{store.subdomain}.shelfmerch.com</span>
-        <span className="text-muted-foreground ml-2">• Powered by ShelfMerch</span>
-      </div>
-
       {/* Store Header - only show if builder doesn't have a header section */}
       {!hasBuilderHeader && (
-        <header className="border-b bg-card sticky top-0 z-50">
-          <div className="container mx-auto px-4">
-            <div className="flex items-center justify-between h-16">
-              <div className="flex items-center space-x-8">
-                <h1 
-                  className="text-2xl font-bold" 
-                  style={{ color: builderStyles?.primaryColor || theme.colors.primary }}
-                >
-                  {store.storeName}
-                </h1>
-                <nav className="hidden md:flex space-x-6">
-                  <a
-                    href="#products"
-                    className="text-sm hover:text-primary transition-colors"
-                  >
-                    Products
-                  </a>
-                  <a href="#about" className="text-sm hover:text-primary transition-colors">
-                    About
-                  </a>
-                  <a
-                    href="#contact"
-                    className="text-sm hover:text-primary transition-colors"
-                  >
-                    Contact
-                  </a>
-                </nav>
-              </div>
-              <div className="flex items-center space-x-4">
-                <Button variant="ghost" size="icon">
-                  <Search className="h-5 w-5" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="relative"
-                  onClick={() => setCartOpen(true)}
-                >
-                  <ShoppingCart className="h-5 w-5" />
-                  {cartItemCount > 0 && (
-                    <span className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center">
-                      {cartItemCount}
-                    </span>
-                  )}
-                </Button>
-                <Button variant="ghost" size="icon" className="md:hidden">
-                  <Menu className="h-5 w-5" />
-                </Button>
-              </div>
-            </div>
-          </div>
-        </header>
+        <EnhancedStoreHeader
+          storeName={store.storeName}
+          navLinks={[
+            { name: 'Products', href: `/store/${store.subdomain}/products` },
+            { name: 'About', href: '#about' },
+            { name: 'Contact', href: '#contact' },
+          ]}
+          cartItemCount={cartItemCount}
+          onCartClick={() => setCartOpen(true)}
+          primaryColor={theme.colors.primary}
+        />
       )}
 
       {/* Render Builder Layout or Default Layout */}
@@ -381,150 +336,45 @@ const StoreFrontendNew = () => {
             ))}
         </div>
       ) : (
-        // Default theme-based layout
+        // Default theme-based layout with enhanced components
         <>
           {/* Hero Section */}
-          <section
-            className="py-20"
-            style={{
-              background: `linear-gradient(to bottom right, ${theme.colors.primary}15, ${theme.colors.background})`,
+          <EnhancedHeroSection
+            storeName={store.storeName}
+            description={store.description}
+          />
+
+          {/* Featured Products Section - Show only first 6-8 products */}
+          <EnhancedProductsSection
+            products={products.slice(0, 8)}
+            onProductClick={handleProductClick}
+            onAddToCart={(product) => {
+              // Navigate to product page for variant selection
+              handleProductClick(product);
             }}
-          >
-            <div className="container mx-auto px-4 text-center">
-              <h2 className="text-5xl font-bold mb-4" style={{ fontFamily: theme.fonts.heading }}>
-                Welcome to {store.storeName}
-              </h2>
-              <p
-                className="text-xl text-muted-foreground mb-8 max-w-2xl mx-auto"
-                style={{ fontFamily: theme.fonts.body }}
-              >
-                {store.description || 'Discover our collection of custom designed merchandise'}
-              </p>
-              <Button
-                size="lg"
-                style={{ backgroundColor: theme.colors.primary }}
-                asChild
-              >
-                <a href="#products">Shop Now</a>
-              </Button>
-            </div>
-          </section>
-
-          {/* Products Section */}
-          <section id="products" className="py-16">
-            <div className="container mx-auto px-4">
-              <div className="flex items-center justify-between mb-8">
-                <div>
-                  <h2 className="text-3xl font-bold mb-2">Our Products</h2>
-                  <p className="text-muted-foreground">
-                    {products.length} {products.length === 1 ? 'product' : 'products'} available
-                  </p>
-                </div>
-              </div>
-
-              {products.length > 0 ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                  {products.map((product) => {
-                    const mockup = product.mockupUrls?.[0] || product.mockupUrl;
-                    const sellingPrice = product.price;
-                    const compareAtPrice = product.compareAtPrice;
-
-                    return (
-                      <Card
-                        key={product.id}
-                        className="overflow-hidden group cursor-pointer hover:shadow-lg transition-all"
-                        onClick={() => handleProductClick(product)}
-                      >
-                        <div className="aspect-square bg-muted relative overflow-hidden">
-                          {mockup ? (
-                            <img
-                              src={mockup}
-                              alt={product.name}
-                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                            />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center text-muted-foreground">
-                              <Package className="h-16 w-16" />
-                            </div>
-                          )}
-                          {typeof compareAtPrice === 'number' && compareAtPrice > sellingPrice && (
-                            <Badge className="absolute top-2 right-2 bg-red-500">
-                              Save ${(compareAtPrice - sellingPrice).toFixed(2)}
-                            </Badge>
-                          )}
-                        </div>
-                        <div className="p-4">
-                          <h3 className="font-semibold mb-2 group-hover:text-primary transition-colors line-clamp-2">
-                            {product.name}
-                          </h3>
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-baseline gap-2">
-                              <p
-                                className="text-lg font-bold"
-                                style={{ color: theme.colors.primary }}
-                              >
-                                ${sellingPrice.toFixed(2)}
-                              </p>
-                              {typeof compareAtPrice === 'number' && compareAtPrice > sellingPrice && (
-                                <p className="text-sm text-muted-foreground line-through">
-                                  ${compareAtPrice.toFixed(2)}
-                                </p>
-                              )}
-                            </div>
-                            <Button
-                              size="sm"
-                              style={{ backgroundColor: theme.colors.primary }}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleProductClick(product);
-                              }}
-                            >
-                              View
-                            </Button>
-                          </div>
-                        </div>
-                      </Card>
-                    );
-                  })}
-                </div>
-              ) : (
-                <Card className="p-12 text-center">
-                  <Package className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
-                  <h3 className="text-xl font-bold mb-2">No Products Yet</h3>
-                  <p className="text-muted-foreground">
-                    The store owner is currently adding products. Check back soon!
-                  </p>
-                </Card>
-              )}
-            </div>
-          </section>
+            showViewAllButton={products.length > 8}
+            viewAllLink={`/store/${store.subdomain}/products`}
+            title="Featured Products"
+            subtitle="Featured Collection"
+          />
 
           {/* About Section */}
-          <section id="about" className="py-16 bg-muted/30">
-            <div className="container mx-auto px-4 max-w-3xl text-center">
-              <h2 className="text-3xl font-bold mb-4">About Us</h2>
-              <p className="text-muted-foreground leading-relaxed">
-                {store.storeName} brings you high-quality custom merchandise designed with passion.
-                Every product is printed on demand, ensuring freshness and reducing waste. We're
-                committed to delivering exceptional quality and customer satisfaction.
-              </p>
-            </div>
-          </section>
+          <AboutSection 
+            storeName={store.storeName}
+            description={store.description}
+          />
+
+          {/* Newsletter Section */}
+          <NewsletterSection />
         </>
       )}
 
       {/* Footer - only show if builder doesn't have a footer section */}
       {!hasBuilderFooter && (
-        <footer className="border-t py-8">
-          <div className="container mx-auto px-4 text-center">
-            <p className="text-sm text-muted-foreground">
-              © 2025 {store.storeName}. Powered by{' '}
-              <Link to="/" className="text-primary hover:underline">
-                ShelfMerch
-              </Link>
-            </p>
-          </div>
-        </footer>
+        <EnhancedFooter
+          storeName={store.storeName}
+          description={store.description}
+        />
       )}
 
       {/* Cart Drawer */}

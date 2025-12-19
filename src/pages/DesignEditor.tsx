@@ -1617,6 +1617,10 @@ const DesignEditor: React.FC = () => {
           views: product.design?.views || [],
           savedPreviewImages,
           displacementSettings,
+          selectedColors, // Save selected colors
+          selectedSizes, // Save selected sizes
+          selectedSizesByColor, // Save size selections per color
+          primaryColorHex, // Save primary color for garment tinting
         },
         // Optional: include basic product info if available
         title: product?.catalogue?.name,

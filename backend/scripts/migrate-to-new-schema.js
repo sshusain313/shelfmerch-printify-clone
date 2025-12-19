@@ -153,7 +153,6 @@ async function migrate() {
             packageWeightGrams: 100
           },
           galleryImages: galleryImages,
-          faqs: oldProduct.faqs || [],
           details: oldProduct.details || {},
           createdBy: oldProduct.createdBy,
           isActive: oldProduct.isActive !== false,
@@ -217,6 +216,17 @@ async function migrate() {
 
     console.log(`\n   ✅ Migrated ${catalogProductCount} catalog products`);
     console.log(`   ✅ Migrated ${variantCount} catalog product variants`);
+    console.log('\n🧹 Step 3: Removing legacy FAQ data from products...');
+    // Purge any existing FAQ fields from old and new product collections
+    const faqUnsetResult1 = await Product.updateMany(
+      { faqs: { $exists: true } },
+      { $unset: { faqs: 1 } }
+    );
+    const faqUnsetResult2 = await CatalogProduct.updateMany(
+      { faqs: { $exists: true } },
+      { $unset: { faqs: 1 } }
+    );
+    console.log(`   Removed faqs from ${faqUnsetResult1.modifiedCount || 0} Product docs and ${faqUnsetResult2.modifiedCount || 0} CatalogProduct docs`);
     if (base64ImageWarnings > 0) {
       console.log(`   ⚠️  ${base64ImageWarnings} base64 images need manual S3 upload`);  
     }

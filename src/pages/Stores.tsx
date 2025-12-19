@@ -23,8 +23,12 @@ import {
   Info,
   Paintbrush,
   CheckCircle2,
+  Loader2,
 } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 const ChannelButton = ({ name, icon, isNew }: { name: string; icon?: React.ReactNode; isNew?: boolean }) => (
   <Button variant="outline" className="h-14 justify-start px-4 gap-3 relative hover:border-primary/50 hover:bg-muted/50 transition-all group">
@@ -48,6 +52,10 @@ const Stores = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [manageDialogOpen, setManageDialogOpen] = useState(false);
   const [isCreatingInternal, setIsCreatingInternal] = useState(false);
+  const [createStoreDialogOpen, setCreateStoreDialogOpen] = useState(false);
+  const [newStoreName, setNewStoreName] = useState('');
+  const [newStoreDescription, setNewStoreDescription] = useState('');
+  const [isCreatingStore, setIsCreatingStore] = useState(false);
 
   useEffect(() => {
     const fetchStores = async () => {
@@ -144,6 +152,44 @@ const Stores = () => {
     toast.info(`Integration with ${channel} is coming soon!`);
   };
 
+  const handleCreateStore = async () => {
+    if (!newStoreName.trim()) {
+      toast.error('Please enter a store name');
+      return;
+    }
+
+    setIsCreatingStore(true);
+    try {
+      const createResp = await storeApi.create({
+        name: newStoreName.trim(),
+        description: newStoreDescription.trim() || 'My ShelfMerch Store',
+      });
+
+      if (!createResp.success || !createResp.data) {
+        throw new Error(createResp.message || 'Failed to create store');
+      }
+
+      const newStore = createResp.data;
+      toast.success('Store created successfully!');
+      
+      // Refresh stores list
+      const response = await storeApi.listMyStores();
+      if (response.success) {
+        setStores(response.data || []);
+      }
+
+      // Reset form and close dialog
+      setNewStoreName('');
+      setNewStoreDescription('');
+      setCreateStoreDialogOpen(false);
+    } catch (error: any) {
+      console.error('Error creating store:', error);
+      toast.error(error.message || 'Failed to create store');
+    } finally {
+      setIsCreatingStore(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background flex">
       {/* Sidebar */}
@@ -212,13 +258,31 @@ const Stores = () => {
         <div className="max-w-6xl mx-auto space-y-12">
 
           {/* My Stores List (if any) */}
-          {!loading && stores.length > 0 && (
+          {!loading && (
             <div className="space-y-6">
               <div className="flex items-center justify-between">
                 <h2 className="text-2xl font-bold">My Stores</h2>
+                <Button onClick={() => setCreateStoreDialogOpen(true)} className="gap-2">
+                  <Plus className="h-4 w-4" />
+                  Create New Store
+                </Button>
               </div>
-              <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-                {stores.map((store) => (
+              
+              {stores.length === 0 ? (
+                <Card className="p-12 text-center">
+                  <Store className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                  <h3 className="text-lg font-semibold mb-2">No stores yet</h3>
+                  <p className="text-sm text-muted-foreground mb-6">
+                    Create your first store to start selling your products
+                  </p>
+                  <Button onClick={() => setCreateStoreDialogOpen(true)} className="gap-2">
+                    <Plus className="h-4 w-4" />
+                    Create Your First Store
+                  </Button>
+                </Card>
+              ) : (
+                <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+                  {stores.map((store) => (
                   <Card key={store.id} className="p-6 flex flex-col justify-between gap-4 border-l-4 border-l-primary">
                     <div className="flex items-start justify-between">
                       <div>
@@ -265,11 +329,12 @@ const Stores = () => {
                       </Button>
                     </div>
                   </Card>
-                ))}
-              </div>
-              <Separator className="my-8" />
+                  ))}
+                </div>
+              )}
             </div>
           )}
+          <Separator className="my-8" />
 
           <div className="text-center space-y-4">
             <h1 className="text-4xl font-bold tracking-tight">Let's connect your store!</h1>
@@ -398,6 +463,74 @@ const Stores = () => {
 
         </div>
       </main>
+
+      {/* Create Store Dialog */}
+      <Dialog open={createStoreDialogOpen} onOpenChange={setCreateStoreDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Create New Store</DialogTitle>
+            <DialogDescription>
+              Create a new store to start selling your products. You can create as many stores as you need.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="storeName">Store Name *</Label>
+              <Input
+                id="storeName"
+                value={newStoreName}
+                onChange={(e) => setNewStoreName(e.target.value)}
+                placeholder="My Awesome Store"
+                disabled={isCreatingStore}
+              />
+              <p className="text-xs text-muted-foreground">
+                This will be the display name of your store
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="storeDescription">Description</Label>
+              <Input
+                id="storeDescription"
+                value={newStoreDescription}
+                onChange={(e) => setNewStoreDescription(e.target.value)}
+                placeholder="A brief description of your store (optional)"
+                disabled={isCreatingStore}
+              />
+            </div>
+          </div>
+          <div className="flex gap-3 pt-4 border-t">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => {
+                setCreateStoreDialogOpen(false);
+                setNewStoreName('');
+                setNewStoreDescription('');
+              }}
+              disabled={isCreatingStore}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="flex-1 gap-2"
+              onClick={handleCreateStore}
+              disabled={isCreatingStore || !newStoreName.trim()}
+            >
+              {isCreatingStore ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                <>
+                  <Plus className="h-4 w-4" />
+                  Create Store
+                </>
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

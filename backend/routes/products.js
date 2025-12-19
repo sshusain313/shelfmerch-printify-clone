@@ -28,7 +28,6 @@ router.post('/', protect, authorize('superadmin'), async (req, res) => {
       availableSizes,
       availableColors,
       galleryImages,
-      faqs
     } = req.body;
 
     console.log('Catalogue:', catalogue ? 'present' : 'missing');
@@ -156,7 +155,6 @@ router.post('/', protect, authorize('superadmin'), async (req, res) => {
       },
       shipping,
       galleryImages: Array.isArray(galleryImages) ? galleryImages : [],
-      faqs: Array.isArray(faqs) ? faqs : [],
       details: details || {},
       createdBy: req.user.id,
       isActive: true,
@@ -627,7 +625,6 @@ router.put('/:id', protect, authorize('superadmin'), async (req, res) => {
       shipping,
       variants,
       galleryImages,
-      faqs,
       isActive,
       isPublished
     } = req.body;
@@ -647,7 +644,6 @@ router.put('/:id', protect, authorize('superadmin'), async (req, res) => {
     if (design) product.design = design;
     if (shipping) product.shipping = shipping;
     if (galleryImages) product.galleryImages = galleryImages;
-    if (faqs !== undefined) product.faqs = Array.isArray(faqs) ? faqs : [];
     if (isActive !== undefined) product.isActive = isActive;
     if (isPublished !== undefined) product.isPublished = isPublished;
 

@@ -37,6 +37,14 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import {
   Users,
@@ -109,9 +117,14 @@ const Admin = () => {
   const [statusFilter, setStatusFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [sortBy, setSortBy] = useState('newest');
-  const [stores, setStores] = useState<StoreType[]>([]);
+  const [stores, setStores] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [storesPage, setStoresPage] = useState(1);
+  const [storesLimit, setStoresLimit] = useState(10);
+  const [storesTotal, setStoresTotal] = useState(0);
+  const [storesSortBy, setStoresSortBy] = useState('createdAt');
+  const [storesSortOrder, setStoresSortOrder] = useState<'asc' | 'desc'>('desc');
 
   // Admin sees ALL data across platform (stores/products from localStorage snapshot)
   const allStores = JSON.parse(localStorage.getItem('shelfmerch_all_stores') || '[]') as StoreType[];
@@ -122,9 +135,12 @@ const Admin = () => {
   const [isLoadingOrders, setIsLoadingOrders] = useState(false);
   const [ordersError, setOrdersError] = useState<string | null>(null);
 
+  // Derive effective stores list: prefer backend data when available, otherwise fall back to local snapshot
+  const effectiveStores: StoreType[] = !error && stores.length > 0 ? stores : allStores;
+
   // Calculate real stats from data
   const totalRevenue = platformOrders.reduce((sum, order) => sum + (order.total || 0), 0);
-  const activeStores = allStores.length;
+  const activeStores = effectiveStores.length;
   const totalProducts = allProducts.length;
   const pendingOrders = platformOrders.filter(o => o.status === 'on-hold').length;
 
@@ -302,34 +318,50 @@ const Admin = () => {
     }
   }, [activeTab, user?.role, productsPage, productsSearchQuery]);
 
-// Fetch All Stores
-useEffect(() => {
-  let isMounted = true;
+  // Fetch All Stores
+  useEffect(() => {
+    let isMounted = true;
 
-  const loadStores = async () => {
-    try {
-      setLoading(true);
-      const data = await storeApi.listAllStores();
-      if (isMounted) {
-        setStores(data.data || []);
-      }
-    } catch (err: any) {
-      if (isMounted) {
-        setError(err?.message || 'Failed to load orders');
-      }
-    } finally {
-      if (isMounted) {
-        setLoading(false);
-      }
-    }
-  };
+    const loadStores = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const response = await storeApi.listAllStores({
+          page: storesPage,
+          limit: storesLimit,
+          search: searchQuery,
+          sortBy: storesSortBy,
+          sortOrder: storesSortOrder
+        });
 
-  loadStores();
+        if (isMounted) {
+          if (response.success) {
+            setStores(response.data || []);
+            if (response.pagination) {
+              setStoresTotal(response.pagination.total);
+            }
+          }
+        }
+      } catch (err: any) {
+        if (isMounted) {
+          setError(err?.message || 'Failed to load stores');
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    };
 
-  return () => {
-    isMounted = false;
-  };
-}, []);
+    const timeoutId = setTimeout(() => {
+      loadStores();
+    }, 500);
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timeoutId);
+    };
+  }, [storesPage, storesLimit, searchQuery, storesSortBy, storesSortOrder]);
 
 
   // Update URL when tab changes
@@ -365,7 +397,7 @@ useEffect(() => {
     },
     {
       label: 'Active Stores',
-      value: `${stores.length}`,
+      value: `${effectiveStores.length}`,
       change: '+15%',
       trend: 'up',
       icon: Store
@@ -887,7 +919,7 @@ useEffect(() => {
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <div>
-                      <CardTitle>All Stores ({allStores.length})</CardTitle>
+                      <CardTitle>All Stores ({storesTotal})</CardTitle>
                       <CardDescription>Monitor and manage merchant storefronts</CardDescription>
                     </div>
                     <div className="relative">
@@ -902,61 +934,144 @@ useEffect(() => {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Store Name</TableHead>
-                        <TableHead>Subdomain</TableHead>
-                        <TableHead>Owner</TableHead>
-                        <TableHead>Products</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {allStores.map((store) => (
-                        <TableRow key={store.id}>
-                          <TableCell className="font-medium">{store.storeName}</TableCell>
-                          <TableCell>
-                            <code className="text-xs bg-muted px-2 py-1 rounded">{store.subdomain}.shelfmerch.com</code>
-                          </TableCell>
-                          <TableCell>{store.userId}</TableCell>
-                          <TableCell>{store.productIds.length}</TableCell>
-                          <TableCell>
-                            <Badge variant="secondary" className="bg-green-500/10 text-green-500">
-                              Active
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex gap-2 justify-end">
-                              <Button variant="ghost" size="sm" asChild>
-                                <Link to={`/store/${store.subdomain}`}>View</Link>
-                              </Button>
-                              <AlertDialog>
-                                <AlertDialogTrigger asChild>
-                                  <Button variant="ghost" size="sm">
-                                    <Ban className="h-4 w-4" />
-                                  </Button>
-                                </AlertDialogTrigger>
-                                <AlertDialogContent>
-                                  <AlertDialogHeader>
-                                    <AlertDialogTitle>Suspend Store?</AlertDialogTitle>
-                                    <AlertDialogDescription>
-                                      This will temporarily disable the store and prevent new orders.
-                                    </AlertDialogDescription>
-                                  </AlertDialogHeader>
-                                  <AlertDialogFooter>
-                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                    <AlertDialogAction>Suspend</AlertDialogAction>
-                                  </AlertDialogFooter>
-                                </AlertDialogContent>
-                              </AlertDialog>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                  {loading && stores.length === 0 ? (
+                    <div className="flex justify-center py-8">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                    </div>
+                  ) : error ? (
+                    <div className="text-center py-8 text-red-500">{error}</div>
+                  ) : (
+                    <>
+                      <div className="rounded-md border">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Store ID</TableHead>
+                              <TableHead>Store Name</TableHead>
+                              <TableHead>Owner</TableHead>
+                              <TableHead>Created At</TableHead>
+                              <TableHead>Products</TableHead>
+                              <TableHead>Status</TableHead>
+                              <TableHead>Last Updated</TableHead>
+                              <TableHead className="text-right">Actions</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {stores.length === 0 ? (
+                              <TableRow>
+                                <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                                  No stores found
+                                </TableCell>
+                              </TableRow>
+                            ) : (
+                              stores.map((store) => (
+                                <TableRow key={store.id}>
+                                  <TableCell className="font-mono text-xs text-muted-foreground">
+                                    {store.id.substring(0, 8)}...
+                                  </TableCell>
+                                  <TableCell>
+                                    <div className="font-medium">{store.storeName}</div>
+                                    <div className="text-xs text-muted-foreground">
+                                      {store.subdomain}.shelfmerch.com
+                                    </div>
+                                  </TableCell>
+                                  <TableCell>
+                                    <div className="text-sm">{store.owner?.name || 'Unknown'}</div>
+                                    <div className="text-xs text-muted-foreground">{store.owner?.email}</div>
+                                  </TableCell>
+                                  <TableCell>
+                                    {store.createdAt ? new Date(store.createdAt).toLocaleDateString() : '-'}
+                                  </TableCell>
+                                  <TableCell>{store.productsCount || 0}</TableCell>
+                                  <TableCell>
+                                    <Badge
+                                      variant={store.isActive ? "secondary" : "destructive"}
+                                      className={store.isActive ? "bg-green-500/10 text-green-500 hover:bg-green-500/20" : ""}
+                                    >
+                                      {store.isActive ? 'Active' : 'Inactive'}
+                                    </Badge>
+                                  </TableCell>
+                                  <TableCell>
+                                    {store.updatedAt ? new Date(store.updatedAt).toLocaleDateString() : '-'}
+                                  </TableCell>
+                                  <TableCell className="text-right">
+                                    <div className="flex gap-2 justify-end">
+                                      <Button variant="ghost" size="sm" asChild>
+                                        <Link to={`/store/${store.subdomain}`}>View</Link>
+                                      </Button>
+                                      <AlertDialog>
+                                        <AlertDialogTrigger asChild>
+                                          <Button variant="ghost" size="sm">
+                                            <Ban className="h-4 w-4" />
+                                          </Button>
+                                        </AlertDialogTrigger>
+                                        <AlertDialogContent>
+                                          <AlertDialogHeader>
+                                            <AlertDialogTitle>Suspend Store?</AlertDialogTitle>
+                                            <AlertDialogDescription>
+                                              This will temporarily disable the store and prevent new orders.
+                                            </AlertDialogDescription>
+                                          </AlertDialogHeader>
+                                          <AlertDialogFooter>
+                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                            <AlertDialogAction>Suspend</AlertDialogAction>
+                                          </AlertDialogFooter>
+                                        </AlertDialogContent>
+                                      </AlertDialog>
+                                    </div>
+                                  </TableCell>
+                                </TableRow>
+                              ))
+                            )}
+                          </TableBody>
+                        </Table>
+                      </div>
+
+                      {storesTotal > storesLimit && (
+                        <div className="mt-4">
+                          <Pagination>
+                            <PaginationContent>
+                              <PaginationItem>
+                                <PaginationPrevious
+                                  onClick={() => setStoresPage(p => Math.max(1, p - 1))}
+                                  className={storesPage === 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                                />
+                              </PaginationItem>
+
+                              {Array.from({ length: Math.min(5, Math.ceil(storesTotal / storesLimit)) }, (_, i) => {
+                                const totalPages = Math.ceil(storesTotal / storesLimit);
+                                let startPage = Math.max(1, storesPage - 2);
+                                if (startPage + 4 > totalPages) {
+                                  startPage = Math.max(1, totalPages - 4);
+                                }
+                                const p = startPage + i;
+                                if (p > totalPages) return null;
+
+                                return (
+                                  <PaginationItem key={p}>
+                                    <PaginationLink
+                                      isActive={storesPage === p}
+                                      onClick={() => setStoresPage(p)}
+                                      className="cursor-pointer"
+                                    >
+                                      {p}
+                                    </PaginationLink>
+                                  </PaginationItem>
+                                );
+                              })}
+
+                              <PaginationItem>
+                                <PaginationNext
+                                  onClick={() => setStoresPage(p => Math.min(Math.ceil(storesTotal / storesLimit), p + 1))}
+                                  className={storesPage >= Math.ceil(storesTotal / storesLimit) ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                                />
+                              </PaginationItem>
+                            </PaginationContent>
+                          </Pagination>
+                        </div>
+                      )}
+                    </>
+                  )}
                 </CardContent>
               </Card>
             </>
@@ -993,7 +1108,7 @@ useEffect(() => {
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-sm text-muted-foreground">Active Merchants</p>
-                        <p className="text-2xl font-bold mt-1">{allStores.length}</p>
+                        <p className="text-2xl font-bold mt-1">{effectiveStores.length}</p>
                       </div>
                       <Store className="h-8 w-8 text-primary" />
                     </div>
@@ -1029,7 +1144,7 @@ useEffect(() => {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {allStores.map((store) => (
+                      {effectiveStores.map((store) => (
                         <TableRow key={store.userId}>
                           <TableCell>
                             <div>

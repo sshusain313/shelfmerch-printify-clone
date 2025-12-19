@@ -29,8 +29,10 @@ import ManageCatalogueFields from "./pages/ManageCatalogueFields";
 import AdminAssets from "./pages/AdminAssets";
 import CreateStore from "./pages/CreateStore";
 import StoreFrontendNew from "./pages/StoreFrontendNew";
+import StoreProductsPage from "./pages/StoreProductsPage";
 import StoreProductPage from "./pages/StoreProductPage";
 import StoreCheckoutPage from "./pages/StoreCheckoutPage";
+import StoreCustomerAccountPage from "./pages/StoreCustomerAccountPage";
 import OrderConfirmation from "./pages/OrderConfirmation";
 import BuilderDemo from "./pages/BuilderDemo";
 import NotFound from "./pages/NotFound";
@@ -38,6 +40,7 @@ import ProductCreation from "./pages/ProductCreation";
 import ListingEditor from "./pages/ListingEditor";
 import StoreAuthPage from "./pages/StoreAuthPage";
 import MockupsLibrary from "./pages/MockupsLibrary";
+import PopupStores from "./pages/PopupStores";
 
 const queryClient = new QueryClient();
 
@@ -118,6 +121,14 @@ const App = () => (
                 element={
                   <ProtectedRoute>
                     <Stores />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/popup-stores"
+                element={
+                  <ProtectedRoute>
+                    <PopupStores />
                   </ProtectedRoute>
                 }
               />
@@ -218,7 +229,9 @@ const App = () => (
                 }
               />
               <Route path="/store/:subdomain" element={<StoreAuthProvider><StoreFrontendNew /></StoreAuthProvider>} />
+              <Route path="/store/:subdomain/products" element={<StoreAuthProvider><StoreProductsPage /></StoreAuthProvider>} />
               <Route path="/store/:subdomain/auth" element={<StoreAuthProvider><StoreAuthPage /></StoreAuthProvider>} />
+              <Route path="/store/:subdomain/account" element={<StoreAuthProvider><StoreCustomerAccountPage /></StoreAuthProvider>} />
               <Route path="/store/:subdomain/product/:productId" element={<StoreAuthProvider><StoreProductPage /></StoreAuthProvider>} />
               <Route path="/store/:subdomain/checkout" element={<StoreAuthProvider><StoreCheckoutPage /></StoreAuthProvider>} />
               <Route path="/order-confirmation" element={<OrderConfirmation />} />

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ArrowLeft, Edit, Package, Layers, Eye, Images, DollarSign, Calendar, CheckCircle, XCircle, HelpCircle } from 'lucide-react';
+import { ArrowLeft, Edit, Package, Layers, Eye, Images, DollarSign, Calendar, CheckCircle, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -166,13 +166,12 @@ const AdminProductDetail = () => {
         </div>
 
         <Tabs defaultValue="overview" className="w-full">
-          <TabsList className="grid w-full grid-cols-6">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="variants">Variants</TabsTrigger>
             <TabsTrigger value="design">Design</TabsTrigger>
             <TabsTrigger value="gallery">Gallery</TabsTrigger>
             <TabsTrigger value="shipping">Shipping</TabsTrigger>
-            <TabsTrigger value="faq">FAQ</TabsTrigger>
           </TabsList>
 
           {/* Overview Tab */}
@@ -480,53 +479,6 @@ const AdminProductDetail = () => {
                   </div>
                 ) : (
                   <p className="text-muted-foreground text-center py-8">No shipping information configured</p>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* FAQ Tab */}
-          <TabsContent value="faq" className="space-y-6 mt-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <HelpCircle className="h-5 w-5" />
-                  Frequently Asked Questions
-                </CardTitle>
-                <CardDescription>
-                  {product.faqs?.length || 0} question{product.faqs?.length !== 1 ? 's' : ''} configured
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {product.faqs && product.faqs.length > 0 ? (
-                  <div className="space-y-4">
-                    {product.faqs
-                      .sort((a: any, b: any) => (a.order || 0) - (b.order || 0))
-                      .map((faq: any, index: number) => (
-                        <Card key={faq.id || index} className="border-l-4 border-l-primary">
-                          <CardHeader className="pb-3">
-                            <CardTitle className="text-base flex items-start gap-3">
-                              <span className="text-primary font-bold">Q{index + 1}:</span>
-                              <span className="flex-1">{faq.question || 'No question provided'}</span>
-                            </CardTitle>
-                          </CardHeader>
-                          <CardContent className="pt-0">
-                            <div className="pl-8">
-                              <p className="text-sm font-medium text-muted-foreground mb-2">Answer:</p>
-                              <p className="text-base whitespace-pre-wrap">{faq.answer || 'No answer provided'}</p>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-12">
-                    <HelpCircle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                    <p className="text-muted-foreground">No FAQs configured for this product</p>
-                    <p className="text-sm text-muted-foreground mt-2">
-                      Add FAQs in the product creation/editing form to help customers
-                    </p>
-                  </div>
                 )}
               </CardContent>
             </Card>

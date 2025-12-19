@@ -2,10 +2,10 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { 
-  Package, 
-  Store, 
-  TrendingUp, 
+import {
+  Package,
+  Store,
+  TrendingUp,
   DollarSign,
   ShoppingBag,
   Users,
@@ -15,12 +15,20 @@ import {
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Product } from '@/types';
-import { storeProductsApi } from '@/lib/api';
+import { storeProductsApi, storeApi } from '@/lib/api';
 import { storeOrdersApi } from '@/lib/api';
 import { getProducts } from '@/lib/localStorage';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ExternalLink, Pencil, Trash2 } from 'lucide-react';
 import { Order } from '@/types';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 
 const Dashboard = () => {
   const { user, logout, isAdmin } = useAuth();
@@ -33,6 +41,12 @@ const Dashboard = () => {
   const [error, setError] = useState<string | null>(null);
   const [spLoading, setSpLoading] = useState(false);
   const [spFilter, setSpFilter] = useState<{ status?: 'draft' | 'published'; isActive?: boolean }>({});
+
+  // Store selection state
+  const [stores, setStores] = useState<any[]>([]);
+  const [publishDialogOpen, setPublishDialogOpen] = useState(false);
+  const [productToPublish, setProductToPublish] = useState<any>(null);
+  const [targetStoreIds, setTargetStoreIds] = useState<string[]>([]);
 
   const storageKey = useMemo(() => (user?.id ? `products_${user.id}` : null), [user?.id]);
 
@@ -126,6 +140,15 @@ const Dashboard = () => {
     };
   }, []);
 
+  // Load Stores
+  useEffect(() => {
+    if (user?.id) {
+      storeApi.listMyStores().then(resp => {
+        if (resp.success) setStores(resp.data);
+      }).catch(console.error);
+    }
+  }, [user?.id]);
+
   const updateStoreProduct = async (id: string, updates: any) => {
     try {
       const resp = await storeProductsApi.update(id, updates);
@@ -134,6 +157,69 @@ const Dashboard = () => {
       }
     } catch (e) {
       console.error('Update failed', e);
+    }
+  };
+
+  const handlePublishClick = (sp: any) => {
+    // If multiple stores, allow choice
+    if (stores.length > 1) {
+      setProductToPublish(sp);
+      // Default to current store if available, or first store
+      const currentStoreId = sp.storeId || stores[0]?._id;
+      setTargetStoreIds([currentStoreId]);
+      setPublishDialogOpen(true);
+    } else {
+      // Just one store, proceed as before
+      updateStoreProduct(sp._id, { status: 'published' });
+    }
+  };
+
+  const confirmPublish = async () => {
+    if (!productToPublish || targetStoreIds.length === 0) return;
+
+    try {
+      const promises = targetStoreIds.map(async (storeId) => {
+        // If same store, just update status
+        if (productToPublish.storeId === storeId) {
+          return updateStoreProduct(productToPublish._id, { status: 'published' });
+        } else {
+          // Different store: create copy and publish
+          const payload = {
+            storeId: storeId,
+            catalogProductId: productToPublish.catalogProductId,
+            sellingPrice: productToPublish.sellingPrice,
+            compareAtPrice: productToPublish.compareAtPrice,
+            title: productToPublish.title,
+            description: productToPublish.description,
+            tags: productToPublish.tags,
+            status: 'published' as const,
+            galleryImages: productToPublish.galleryImages,
+            designData: productToPublish.designData,
+            // Map variants if they exist
+            variants: productToPublish.variants?.map((v: any) => ({
+              catalogProductVariantId: v.catalogProductVariantId || v.id,
+              sku: v.sku,
+              sellingPrice: v.sellingPrice,
+              isActive: v.isActive !== false
+            }))
+          };
+
+          const resp = await storeProductsApi.create(payload);
+          if (resp.success) {
+            setStoreProducts(prev => [resp.data, ...prev]);
+          }
+          return resp;
+        }
+      });
+
+      await Promise.all(promises);
+
+    } catch (err) {
+      console.error("Publish failed", err);
+    } finally {
+      setPublishDialogOpen(false);
+      setProductToPublish(null);
+      setTargetStoreIds([]);
     }
   };
 
@@ -180,7 +266,7 @@ const Dashboard = () => {
   };
 
   const stats = [
-    { label: 'Total Orders', value: `${orders.length}` , icon: ShoppingBag, color: 'text-primary' },
+    { label: 'Total Orders', value: `${orders.length}`, icon: ShoppingBag, color: 'text-primary' },
     { label: 'Products', value: `${storeProducts.length}`, icon: Package, color: 'text-blue-500' },
     { label: 'Revenue', value: '$0', icon: DollarSign, color: 'text-green-500' },
     { label: 'Profit', value: '$0', icon: TrendingUp, color: 'text-purple-500' },
@@ -300,7 +386,7 @@ const Dashboard = () => {
                     <tr className="text-left">
                       <th className="px-6 py-3"><Checkbox
                         checked={selectedProducts.length === storeProducts.length && storeProducts.length > 0}
-                        onCheckedChange={(checked) => setSelectedProducts(Boolean(checked) ? storeProducts.map((sp:any) => sp._id) : [])}
+                        onCheckedChange={(checked) => setSelectedProducts(Boolean(checked) ? storeProducts.map((sp: any) => sp._id) : [])}
                         aria-label="Select all products"
                       /></th>
                       <th className="px-2 py-3 font-medium">Product</th>
@@ -314,7 +400,7 @@ const Dashboard = () => {
                     {storeProducts.map((sp: any) => {
                       // Extract previewImagesByView - it's an object with mockup IDs as keys and image URLs as values
                       const previewImagesByView = sp.designData?.previewImagesByView || sp.previewImagesByView || {};
-                      const previewImageUrls = Object.values(previewImagesByView).filter((url): url is string => 
+                      const previewImageUrls = Object.values(previewImagesByView).filter((url): url is string =>
                         typeof url === 'string' && url.length > 0
                       );
                       const mockup = previewImageUrls[0] || undefined;
@@ -367,7 +453,7 @@ const Dashboard = () => {
                             <div className="flex justify-end gap-2">
                               {/* Publish/Draft toggle */}
                               {sp.status === 'draft' ? (
-                                <Button size="sm" variant="outline" onClick={() => updateStoreProduct(sp._id, { status: 'published' })}>Publish</Button>
+                                <Button size="sm" variant="outline" onClick={() => handlePublishClick(sp)}>Publish</Button>
                               ) : (
                                 <Button size="sm" variant="secondary" onClick={() => updateStoreProduct(sp._id, { status: 'draft' })}>Mark Draft</Button>
                               )}
@@ -410,6 +496,46 @@ const Dashboard = () => {
               </Link>
             </Card>
           )}
+
+          {/* Publish Dialog */}
+          <Dialog open={publishDialogOpen} onOpenChange={setPublishDialogOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Publish Product</DialogTitle>
+                <DialogDescription>
+                  Choose which stores to publish "{productToPublish?.title}" to.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="py-4 space-y-3">
+                {stores.map(store => (
+                  <div key={store._id} className="flex items-center space-x-2">
+                    <Checkbox
+                      id={`store-${store._id}`}
+                      checked={targetStoreIds.includes(store._id)}
+                      onCheckedChange={(checked) => {
+                        setTargetStoreIds(prev => {
+                          if (checked) return [...prev, store._id];
+                          return prev.filter(id => id !== store._id);
+                        });
+                      }}
+                    />
+                    <label
+                      htmlFor={`store-${store._id}`}
+                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                    >
+                      {store.storeName}
+                    </label>
+                  </div>
+                ))}
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setPublishDialogOpen(false)}>Cancel</Button>
+                <Button onClick={confirmPublish} disabled={targetStoreIds.length === 0}>
+                  Publish to {targetStoreIds.length} Store{targetStoreIds.length !== 1 ? 's' : ''}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
       </main>
     </div>

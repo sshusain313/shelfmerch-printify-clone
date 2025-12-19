@@ -87,3 +87,93 @@ All colors MUST be HSL.
     @apply bg-background text-foreground;
   }
 }
+
+@layer components {
+  /* Storefront Button Styles */
+  .btn-primary-store {
+    @apply px-8 py-4 rounded-full bg-primary text-primary-foreground font-medium flex items-center justify-center gap-2 hover:bg-primary/90 transition-colors shadow-lg hover:shadow-xl;
+  }
+
+  .btn-outline-store {
+    @apply px-8 py-4 rounded-full border-2 border-foreground text-foreground font-medium flex items-center justify-center gap-2 hover:bg-foreground hover:text-background transition-colors;
+  }
+
+  /* Section Heading */
+  .section-heading {
+    @apply text-3xl md:text-4xl lg:text-5xl font-semibold tracking-tight;
+  }
+
+  /* Hero Gradient */
+  .hero-gradient {
+    @apply bg-gradient-to-br from-muted/30 via-background to-accent/20;
+  }
+
+  /* Font Display */
+  .font-display {
+    font-family: var(--font-display, ui-serif, Georgia, Cambria, "Times New Roman", Times, serif);
+  }
+
+  /* Animations */
+  @keyframes float {
+    0%, 100% {
+      transform: translateY(0px);
+    }
+    50% {
+      transform: translateY(-20px);
+    }
+  }
+
+  .animate-float {
+    animation: float 6s ease-in-out infinite;
+  }
+
+  .animate-fade-up {
+    animation: fade-up 0.6s ease-out forwards;
+    opacity: 0;
+  }
+
+  .animate-delay-100 {
+    animation-delay: 0.1s;
+  }
+
+  .animate-delay-200 {
+    animation-delay: 0.2s;
+  }
+
+  .animate-delay-300 {
+    animation-delay: 0.3s;
+  }
+
+  @keyframes fade-up {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .animate-fade-in {
+    animation: fade-in 0.3s ease-out;
+  }
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  /* Product Card Styles */
+  .product-card {
+    @apply transition-all duration-300;
+  }
+
+  .product-image-wrapper {
+    @apply relative overflow-hidden;
+  }
+}

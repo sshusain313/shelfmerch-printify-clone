@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Store = require('../models/Store');
+const StoreProduct = require('../models/StoreProduct');
 const { protect } = require('../middleware/auth');
 
 // Helper to generate slug from name
@@ -15,17 +16,18 @@ const generateSlug = (name) => {
 // Map backend Store document to frontend Store shape
 const mapStoreToFrontend = (storeDoc, includeBuilder = false) => {
   if (!storeDoc) return null;
-  const store = storeDoc.toObject();
+  const store = storeDoc.toObject ? storeDoc.toObject() : storeDoc;
 
   const frontendStore = {
     id: store._id.toString(),
-    userId: store.merchant?.toString(),
+    userId: (store.merchant && store.merchant._id) ? store.merchant._id.toString() : store.merchant?.toString(),
     storeName: store.name,
     subdomain: store.slug,
     theme: store.theme || 'modern',
     description: store.description || '',
     logo: store.settings?.logoUrl || undefined,
     productIds: [], // Can be populated from StoreProducts later
+    isActive: store.isActive !== undefined ? store.isActive : true,
     createdAt: store.createdAt,
     updatedAt: store.updatedAt,
     settings: {
@@ -43,6 +45,79 @@ const mapStoreToFrontend = (storeDoc, includeBuilder = false) => {
 
   return frontendStore;
 };
+
+// @route   GET /api/stores/admin/all
+// @desc    Get all stores for admin with stats
+// @access  Private (superadmin only)
+router.get('/admin/all', protect, async (req, res) => {
+  try {
+    const user = req.user;
+
+    if (!user || user.role !== 'superadmin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized',
+      });
+    }
+
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const search = req.query.search || '';
+    const sortBy = req.query.sortBy || 'createdAt';
+    const sortOrder = req.query.sortOrder === 'asc' ? 1 : -1;
+    const skip = (page - 1) * limit;
+
+    const query = {};
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { slug: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    const sort = {};
+    sort[sortBy] = sortOrder;
+
+    const total = await Store.countDocuments(query);
+    const stores = await Store.find(query)
+      .sort(sort)
+      .skip(skip)
+      .limit(limit)
+      .populate('merchant', 'name email');
+
+    const enhancedStores = await Promise.all(stores.map(async (store) => {
+      const productCount = await StoreProduct.countDocuments({ storeId: store._id, isActive: true });
+      
+      const frontendStore = mapStoreToFrontend(store);
+      // Add extra admin-only fields
+      frontendStore.productsCount = productCount;
+      frontendStore.owner = {
+        name: store.merchant?.name || 'Unknown',
+        email: store.merchant?.email || 'No email'
+      };
+      
+      return frontendStore;
+    }));
+
+    return res.json({
+      success: true,
+      data: enhancedStores,
+      pagination: {
+        total,
+        page,
+        limit,
+        pages: Math.ceil(total / limit)
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching admin stores:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch stores',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+    });
+  }
+});
 
 // @route   POST /api/stores
 // @desc    Create a new native store for the current merchant
@@ -286,6 +361,124 @@ router.get('/by-subdomain/:slug', async (req, res) => {
       success: false,
       message: 'Failed to fetch store',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+    });
+  }
+});
+
+// @route   GET /api/stores/admin/all
+// @desc    Get all stores for admin with pagination, sorting, and search
+// @access  Private (superadmin only)
+router.get('/admin/all', protect, async (req, res) => {
+  try {
+    const user = req.user;
+
+    // Check superadmin role
+    if (user.role !== 'superadmin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized. Superadmin access required.'
+      });
+    }
+
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const search = req.query.search || '';
+    const sortBy = req.query.sortBy || 'createdAt';
+    const sortOrder = req.query.sortOrder === 'asc' ? 1 : -1;
+    const skip = (page - 1) * limit;
+
+    // Build query for initial match
+    const query = {};
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { slug: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    // Get total count (approximation before lookup)
+    const total = await Store.countDocuments(query);
+
+    // Aggregation pipeline
+    const pipeline = [
+      { $match: query },
+      // Lookup merchant (owner)
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'merchant',
+          foreignField: '_id',
+          as: 'merchantInfo'
+        }
+      },
+      { $unwind: { path: '$merchantInfo', preserveNullAndEmptyArrays: true } },
+      // Lookup products to get count
+      // Optimization: Instead of getting all fields, we could try to just get ID, but $lookup brings everything.
+      // For performance on large datasets, a separate count query per store page might be better, 
+      // but for "All Stores" table usually $lookup is acceptable if paginated.
+      {
+        $lookup: {
+          from: 'storeproducts',
+          localField: '_id',
+          foreignField: 'storeId',
+          as: 'storeProducts'
+        }
+      },
+      {
+        $addFields: {
+          productsCount: { $size: '$storeProducts' },
+          ownerName: '$merchantInfo.name',
+          ownerEmail: '$merchantInfo.email'
+        }
+      },
+      {
+        $project: {
+          storeProducts: 0,
+          merchantInfo: 0,
+          settings: 0, // Exclude heavy fields if not needed
+          apiCredentials: 0
+        }
+      },
+      { $sort: { [sortBy]: sortOrder } },
+      { $skip: skip },
+      { $limit: limit }
+    ];
+
+    const stores = await Store.aggregate(pipeline);
+
+    const mappedStores = stores.map(store => ({
+      id: store._id,
+      storeName: store.name,
+      subdomain: store.slug,
+      owner: {
+        id: store.merchant,
+        name: store.ownerName || 'Unknown',
+        email: store.ownerEmail || 'Unknown'
+      },
+      productsCount: store.productsCount || 0,
+      createdAt: store.createdAt,
+      updatedAt: store.updatedAt,
+      isActive: store.isActive,
+      status: store.isActive ? 'Active' : 'Inactive'
+    }));
+
+    return res.json({
+      success: true,
+      data: mappedStores,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit)
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching admin stores:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch stores',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });

@@ -33,6 +33,7 @@ const storeBuilderRoutes = require('./routes/storeBuilder');
 const storeProductsRoutes = require('./routes/storeProducts');
 const storeCheckoutRoutes = require('./routes/storeCheckout');
 const storeOrdersRoutes = require('./routes/storeOrders');
+const storeCustomerOrdersRoutes = require('./routes/storeCustomerOrders');
 
 // Initialize Express app
 const app = express();
@@ -159,6 +160,7 @@ app.use('/api/store-products', storeProductsRoutes);
 app.use('/api/store-checkout', storeCheckoutRoutes);
 app.use('/api/store-orders', storeOrdersRoutes);
 app.use('/api/store-auth', require('./routes/storeAuth'));
+app.use('/api/store-customer/orders', storeCustomerOrdersRoutes);
 app.use('/api', storeCheckoutRoutes);
 
 // 404 handler

@@ -17,191 +17,22 @@ import {
   Star,
   Package,
   ShieldCheck,
+  Shield,
   Truck,
   RefreshCcw,
+  RefreshCw,
+  Minus,
+  Plus,
+  Heart,
+  Share2,
+  ChevronLeft,
+  ChevronRight,
+  Check,
 } from 'lucide-react';
 import { BuilderSection } from '@/types/builder';
 
-interface ImageMagnifierProps {
-  src: string;
-  zoom?: number;
-  alt?: string;
-}
-
-const ImageMagnifier: React.FC<ImageMagnifierProps> = ({ src, zoom = 2, alt }) => {
-  const [isHovering, setIsHovering] = useState(false);
-  const [backgroundPosition, setBackgroundPosition] = useState('center');
-  const [storeProducts, setStoreProducts] = useState<any[]>([]);
-  const [spLoading, setSpLoading] = useState(false);
-  const [spFilter, setSpFilter] = useState<{ status?: 'draft' | 'published'; isActive?: boolean }>({});
-  const [products, setProducts] = useState<Product[]>([]);
-  const { subdomain } = useParams<{ subdomain: string }>();
-  const [store, setStore] = useState<Store | null>(null);
-
-  const loadStoreData = useCallback(async () => {
-    if (!subdomain) return;
-    try {
-      const response = await storeApi.getBySubdomain(subdomain);
-      if (response && response.success && response.data) {
-        setStore(response.data as Store);
-      }
-    } catch (err) {
-      console.error('Failed to fetch store from backend:', err);
-      setStore(null);
-    }
-  }, [subdomain]);
-
-  useEffect(() => {
-    if (!subdomain) return;
-
-    // Simulate URL rewriting - show custom domain in address bar
-    if (window.location.pathname.startsWith('/store/')) {
-      const customDomain = `${subdomain}.shelfmerch.com`;
-      // Update document title and meta tags
-      document.title = `${subdomain.charAt(0).toUpperCase() + subdomain.slice(1)} - ShelfMerch Store`;
-
-      // You can also update the displayed URL using history API (cosmetic only)
-      // Note: This won't actually change the domain, but shows the concept
-      window.history.replaceState(null, '', `/store/${subdomain}`);
-    }
-
-    // Load store data
-    loadStoreData();
-  }, [subdomain, loadStoreData]);
-
-
-  // Load store-specific products from backend (StoreProduct collection)
-  useEffect(() => {
-    const loadSP = async () => {
-      if (!store) {
-        setStoreProducts([]);
-        setProducts([]);
-        return;
-      }
-      try {
-        setSpLoading(true);
-        // Use public API
-        const resp = await storeProductsApi.listPublic(store.id);
-        if (resp.success) {
-          const forStore = resp.data || [];
-          // No need to filter by storeId manually as the public endpoint does it
-          setStoreProducts(forStore);
-
-          // Map StoreProduct documents into frontend Product shape for rendering / cart
-          const mapped: Product[] = forStore.map((sp: any) => {
-            const id = sp._id?.toString?.() || sp.id;
-            const basePrice: number =
-              typeof sp.sellingPrice === 'number'
-                ? sp.sellingPrice
-                : typeof sp.price === 'number'
-                  ? sp.price
-                  : 0;
-
-              const previewImagesByView = sp.designData?.previewImagesByView || sp.previewImagesByView || {};
-              const previewImageUrls = Object.values(previewImagesByView).filter((url): url is string => 
-                typeof url === 'string' && url.length > 0
-              );
-
-             // Use first preview image as primary, fallback to galleryImages if no previews
-             const primaryImage = previewImageUrls[0] || 
-               sp.galleryImages?.find((img: any) => img.isPrimary)?.url ||
-               (Array.isArray(sp.galleryImages) && sp.galleryImages[0]?.url) ||
-               undefined;
-            
-
-            // Extract selectedColors and selectedSizes from designData
-            const colors =
-              sp.designData?.selectedColors && sp.designData.selectedColors.length > 0
-                ? sp.designData.selectedColors
-                : ['Default'];
-            const sizes =
-              sp.designData?.selectedSizes && sp.designData.selectedSizes.length > 0
-                ? sp.designData.selectedSizes
-                : ['One Size'];
-
-            // Extract catalog product data (populated from backend)
-            const catalogProduct = sp.catalogProductId && typeof sp.catalogProductId === 'object' 
-              ? sp.catalogProductId 
-              : null;
-            const catalogProductId = catalogProduct?._id?.toString() || 
-                                   (typeof sp.catalogProductId === 'string' ? sp.catalogProductId : '');
-
-            return {
-              id,
-              userId: store.userId,
-              name: sp.title || sp.name || catalogProduct?.name || 'Untitled product',
-              description: sp.description || catalogProduct?.description,
-              baseProduct: catalogProductId,
-              price: basePrice,
-              compareAtPrice:
-                typeof sp.compareAtPrice === 'number' ? sp.compareAtPrice : undefined,
-              mockupUrl: primaryImage,
-              mockupUrls: Array.isArray(sp.previewImagesUrl)
-                ? sp.previewImagesUrl.map((img: any) => img.url).filter(Boolean)
-                : [],
-              designs: sp.designData?.designs || {},
-              designBoundaries: sp.designData?.designBoundaries,
-              variants: {
-                colors,
-                sizes,
-              },
-              // Include category/subcategory from catalog product for collection filtering
-              categoryId: catalogProduct?.categoryId?.toString() || catalogProduct?.categoryId,
-              subcategoryId: catalogProduct?.subcategoryIds?.[0]?.toString() || 
-                            (Array.isArray(catalogProduct?.subcategoryIds) && catalogProduct.subcategoryIds[0]) ||
-                            catalogProduct?.subcategoryIds?.[0],
-              subcategoryIds: Array.isArray(catalogProduct?.subcategoryIds)
-                ? catalogProduct.subcategoryIds.map((id: any) => id?.toString() || id)
-                : [],
-              catalogProduct: catalogProduct,
-              createdAt: sp.createdAt || new Date().toISOString(),
-              updatedAt: sp.updatedAt || new Date().toISOString(),
-            };
-          });
-
-          setProducts(mapped);
-        }
-      } catch (e) {
-        console.error('Failed to load store products', e);
-        setStoreProducts([]);
-        setProducts([]);
-      } finally {
-        setSpLoading(false);
-      }
-    };
-
-    loadSP();
-  }, [store, spFilter]);
-
-
-  const handleMouseMove = (event: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
-    const { left, top, width, height } = event.currentTarget.getBoundingClientRect();
-    const x = ((event.clientX - left) / width) * 100;
-    const y = ((event.clientY - top) / height) * 100;
-    setBackgroundPosition(`${x}% ${y}%`);
-  };
-
-  return (
-    <div
-      className="relative aspect-square w-full overflow-hidden rounded-xl border bg-muted"
-      style={{
-        backgroundImage: `url(${src})`,
-        backgroundSize: isHovering ? `${zoom * 100}%` : 'cover',
-        backgroundPosition: isHovering ? backgroundPosition : 'center',
-      }}
-      onMouseEnter={() => setIsHovering(true)}
-      onMouseLeave={() => setIsHovering(false)}
-      onMouseMove={handleMouseMove}
-    >
-      <img
-        src={src}
-        alt={alt}
-        className={`h-full w-full object-cover transition-opacity duration-200 ${isHovering ? 'opacity-0' : 'opacity-100'
-          }`}
-      />
-    </div>
-  );
-};
+// Import ImageMagnifier from separate component file
+import ImageMagnifier from '@/components/storefront/ImageMagnifier';
 
 const mockReviews = [
   {
@@ -245,13 +76,17 @@ const StoreProductPage: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [product, setProduct] = useState<Product | null>(null);
   const [activeImage, setActiveImage] = useState<string | null>(null);
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [selectedColor, setSelectedColor] = useState('');
   const [selectedSize, setSelectedSize] = useState('');
   const [quantity, setQuantity] = useState(1);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
+  const [isWishlisted, setIsWishlisted] = useState(false);
   // Map of color -> size -> variant-specific selling price
   const [variantPriceMap, setVariantPriceMap] = useState<Record<string, Record<string, number>>>({});
+  // Map of color names to hex codes (for color swatches)
+  const [colorHexMap, setColorHexMap] = useState<Record<string, string>>({});
 
   const theme = store ? getTheme(store.theme) : getTheme('modern');
 
@@ -382,11 +217,18 @@ const StoreProductPage: React.FC = () => {
           const sizeSet = new Set<string>();
           const priceMap: Record<string, Record<string, number>> = {};
 
+          const hexMap: Record<string, string> = {};
+
           variantDocs.forEach((v) => {
             const cv = v.catalogProductVariantId || {};
             const color = typeof cv.color === 'string' ? cv.color : undefined;
             const size = typeof cv.size === 'string' ? cv.size : undefined;
             if (!color || !size) return;
+
+            // Extract color hex if available
+            if (cv.colorHex && typeof cv.colorHex === 'string') {
+              hexMap[color] = cv.colorHex;
+            }
 
             // Prefer variant-specific sellingPrice; fallback to store product basePrice
             const variantPrice: number =
@@ -400,6 +242,8 @@ const StoreProductPage: React.FC = () => {
             if (!priceMap[color]) priceMap[color] = {};
             priceMap[color][size] = variantPrice;
           });
+          
+          setColorHexMap(hexMap);
 
           const colors = Array.from(colorSet.values());
           const sizes = Array.from(sizeSet.values());
@@ -415,9 +259,28 @@ const StoreProductPage: React.FC = () => {
             compareAtPrice:
               typeof sp.compareAtPrice === 'number' ? sp.compareAtPrice : undefined,
             mockupUrl: primaryImage,
-            mockupUrls: Array.isArray(sp.previewImagesUrl)
-              ? sp.previewImagesurl.map((img: any) => img.url).filter(Boolean)
-              : [],
+            mockupUrls: (() => {
+              // Prioritize previewImagesByView from designData
+              const previewImagesByView = sp.designData?.previewImagesByView || sp.previewImagesByView || {};
+              const previewImageUrls = Object.values(previewImagesByView).filter((url): url is string => 
+                typeof url === 'string' && url.length > 0
+              );
+              
+              if (previewImageUrls.length > 0) {
+                return previewImageUrls;
+              }
+              
+              // Fallback to previewImagesUrl or galleryImages
+              if (Array.isArray(sp.previewImagesUrl)) {
+                return sp.previewImagesUrl.map((img: any) => img.url || img).filter(Boolean);
+              }
+              
+              if (Array.isArray(sp.galleryImages)) {
+                return sp.galleryImages.map((img: any) => img.url || img).filter(Boolean);
+              }
+              
+              return [];
+            })(),
             designs: sp.designData?.designs || {},
             designBoundaries: sp.designData?.designBoundaries,
             variants: {
@@ -436,6 +299,7 @@ const StoreProductPage: React.FC = () => {
             currentProduct.mockupUrl ||
             null;
           setActiveImage(primaryMockup);
+          setActiveImageIndex(0);
           setSelectedColor(currentProduct.variants.colors[0] || 'Default');
           setSelectedSize(currentProduct.variants.sizes[0] || 'One Size');
         } catch (err) {
@@ -576,6 +440,39 @@ const StoreProductPage: React.FC = () => {
 
   const { isAuthenticated } = useStoreAuth();
 
+  // Memoize gallery images to prevent unnecessary recalculations (MUST be before early returns)
+  const galleryImages = useMemo(() => {
+    if (!product) return [];
+    return product.mockupUrls && product.mockupUrls.length > 0
+      ? product.mockupUrls
+      : product.mockupUrl
+        ? [product.mockupUrl]
+        : [];
+  }, [product?.mockupUrls, product?.mockupUrl]);
+
+  // Sync activeImage with activeImageIndex (MUST be before early returns)
+  useEffect(() => {
+    if (galleryImages.length > 0 && activeImageIndex >= 0 && activeImageIndex < galleryImages.length) {
+      setActiveImage(galleryImages[activeImageIndex]);
+    }
+  }, [activeImageIndex, galleryImages]);
+
+  // Image navigation callbacks (MUST be before early returns)
+  const nextImage = useCallback(() => {
+    if (!galleryImages.length) return;
+    setActiveImageIndex((prev) => (prev + 1) % galleryImages.length);
+  }, [galleryImages.length]);
+
+  const prevImage = useCallback(() => {
+    if (!galleryImages.length) return;
+    setActiveImageIndex((prev) => (prev - 1 + galleryImages.length) % galleryImages.length);
+  }, [galleryImages.length]);
+
+  // Helper to get color hex from color name (MUST be before early returns)
+  const getColorHex = useCallback((colorName: string): string => {
+    return colorHexMap[colorName] || '#E8DDD4'; // Default to a neutral beige
+  }, [colorHexMap]);
+
   const handleCheckout = () => {
     if (!store) return;
 
@@ -618,22 +515,32 @@ const StoreProductPage: React.FC = () => {
     );
   }
 
-  const galleryImages =
-    product.mockupUrls && product.mockupUrls.length > 0
-      ? product.mockupUrls
-      : product.mockupUrl
-        ? [product.mockupUrl]
-        : [];
-
   const renderTrustBadgeIcon = (icon?: string) => {
     switch (icon) {
       case 'ShieldCheck':
-        return <ShieldCheck className="h-4 w-4" />;
+      case 'Shield':
+        return <Shield className="h-5 w-5" />;
       case 'Truck':
+        return <Truck className="h-5 w-5" />;
+      case 'RefreshCw':
+      case 'RefreshCcw':
+        return <RefreshCw className="h-5 w-5" />;
+      case 'Package':
+        return <Package className="h-5 w-5" />;
       default:
-        return <Truck className="h-4 w-4" />;
+        return <Truck className="h-5 w-5" />;
     }
   };
+
+  const renderStars = (rating: number) => {
+    return Array.from({ length: 5 }, (_, i) => (
+      <Star
+        key={i}
+        className={`w-4 h-4 transition-colors ${i < Math.floor(rating) ? "fill-amber-400 text-amber-400" : "fill-muted text-muted"}`}
+      />
+    ));
+  };
+
 
   const renderReviewsSection = () => (
     <section id="reviews" className="space-y-6">
@@ -742,17 +649,78 @@ const StoreProductPage: React.FC = () => {
         <div className="space-y-6">
           {galleryImages.length > 0 ? (
             <>
-              <ImageMagnifier src={activeImage || galleryImages[0]} alt={product.name} />
+              <div className="relative aspect-square bg-gradient-to-br from-muted to-muted/50 rounded-3xl border border-border overflow-hidden group">
+                {galleryImages.length > 0 ? (
+                  <>
+                    <ImageMagnifier src={galleryImages[activeImageIndex] || galleryImages[0]} alt={product.name} />
+                    {/* Image Navigation */}
+                    {galleryImages.length > 1 && (
+                      <>
+                        <button
+                          onClick={prevImage}
+                          className="absolute left-4 top-1/2 -translate-y-1/2 p-2 bg-background/80 backdrop-blur-sm rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-all hover:bg-background hover:scale-110"
+                        >
+                          <ChevronLeft className="w-5 h-5" />
+                        </button>
+                        <button
+                          onClick={nextImage}
+                          className="absolute right-4 top-1/2 -translate-y-1/2 p-2 bg-background/80 backdrop-blur-sm rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-all hover:bg-background hover:scale-110"
+                        >
+                          <ChevronRight className="w-5 h-5" />
+                        </button>
+                      </>
+                    )}
+                    {/* Badges */}
+                    <div className="absolute top-4 left-4 flex flex-col gap-2">
+                      <span className="bg-primary text-primary-foreground px-3 py-1.5 rounded-full text-xs font-semibold shadow-lg animate-fade-in">
+                        ✨ Bestseller
+                      </span>
+                      {product.compareAtPrice && product.compareAtPrice > effectivePrice && (
+                        <span className="bg-accent text-accent-foreground px-3 py-1.5 rounded-full text-xs font-semibold shadow-lg">
+                          -{Math.round((1 - effectivePrice / product.compareAtPrice) * 100)}% OFF
+                        </span>
+                      )}
+                    </div>
+                    {/* Wishlist & Share */}
+                    <div className="absolute top-4 right-4 flex flex-col gap-2">
+                      <button
+                        onClick={() => setIsWishlisted(!isWishlisted)}
+                        className={`p-2.5 rounded-full shadow-lg transition-all hover:scale-110 ${isWishlisted ? 'bg-red-500 text-white' : 'bg-background/80 backdrop-blur-sm hover:bg-background'}`}
+                      >
+                        <Heart className={`w-5 h-5 ${isWishlisted ? 'fill-current' : ''}`} />
+                      </button>
+                      <button className="p-2.5 bg-background/80 backdrop-blur-sm rounded-full shadow-lg hover:bg-background transition-all hover:scale-110">
+                        <Share2 className="w-5 h-5" />
+                      </button>
+                    </div>
+                    {/* Image Counter */}
+                    {galleryImages.length > 0 && (
+                      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-background/80 backdrop-blur-sm px-3 py-1.5 rounded-full text-xs font-medium">
+                        {activeImageIndex + 1} / {galleryImages.length}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <Package className="w-32 h-32 text-muted-foreground/30" />
+                  </div>
+                )}
+              </div>
               {galleryImages.length > 1 && (
                 <div className="grid grid-cols-4 gap-3">
                   {galleryImages.map((image, index) => (
                     <button
-                      key={index}
-                      onClick={() => setActiveImage(image)}
-                      className={`rounded-lg border transition-all ${activeImage === image ? 'border-primary ring-2 ring-primary/30' : 'border-muted'
+                      key={`thumb-${index}-${image.slice(-20)}`}
+                      onClick={() => setActiveImageIndex(index)}
+                      className={`rounded-lg border transition-all ${activeImageIndex === index ? 'border-primary ring-2 ring-primary/30' : 'border-muted'
                         }`}
                     >
-                      <img src={image} alt={`${product.name} mockup ${index + 1}`} className="aspect-square w-full object-cover" />
+                      <img 
+                        src={image} 
+                        alt={`${product.name} mockup ${index + 1}`} 
+                        className="aspect-square w-full object-cover" 
+                        loading="lazy"
+                      />
                     </button>
                   ))}
                 </div>
@@ -948,6 +916,8 @@ const StoreProductPage: React.FC = () => {
                         src={preview}
                         alt={item.name}
                         className="h-full w-full object-cover transition-transform duration-300 hover:scale-105"
+                        loading="lazy"
+                        decoding="async"
                       />
                     ) : (
                       <div className="flex h-full w-full items-center justify-center text-muted-foreground">

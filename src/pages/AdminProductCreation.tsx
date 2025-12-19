@@ -14,7 +14,6 @@ import { ProductPricingSection } from '@/components/admin/ProductPricingSection'
 import { ProductStocksSection } from '@/components/admin/ProductStocksSection';
 import { ProductOptionsSection } from '@/components/admin/ProductOptionsSection';
 import { ProductDetailsSection } from '@/components/admin/ProductDetailsSection';
-import { ProductFAQSection } from '@/components/admin/ProductFAQSection';
 import { UploadMockupsSection } from '@/components/admin/UploadMockupsSection';
 import {
   ProductFormData,
@@ -27,7 +26,6 @@ import {
   ProductDetailsData,
   ProductVariant,
   ProductGalleryImage,
-  ProductFAQ,
   ViewConfig,
   DisplacementSettings,
 } from '@/types/product';
@@ -96,10 +94,6 @@ const AdminProductCreation = () => {
 
   // SECTION E: Product Gallery Images (Customer-facing display images)
   const [galleryImages, setGalleryImages] = useState<ProductGalleryImage[]>([]);
-
-  // SECTION F: Product FAQs (Frequently Asked Questions)
-  const [faqs, setFaqs] = useState<ProductFAQ[]>([]);
-
   // SECTION F: Shipping & Packaging Data
   const [shippingData, setShippingData] = useState<ProductShippingData>({
     packageLengthCm: 0,
@@ -245,10 +239,6 @@ const AdminProductCreation = () => {
             setGalleryImages(product.galleryImages);
           }
 
-          if (product.faqs) {
-            setFaqs(product.faqs);
-          }
-
           if (product.pricing) {
             setPricingData(product.pricing);
           }
@@ -380,7 +370,6 @@ const AdminProductCreation = () => {
       availableSizes,
       availableColors,
       galleryImages,
-      faqs: faqs.length > 0 ? faqs : undefined,
     };
 
     try {
@@ -500,9 +489,6 @@ const AdminProductCreation = () => {
                 </TabsTrigger>
                 <TabsTrigger value="shipping" className="flex items-center gap-2">
                   <span className="hidden sm:inline">10.</span> Shipping
-                </TabsTrigger>
-                <TabsTrigger value="faq" className="flex items-center gap-2">
-                  <span className="hidden sm:inline">11.</span> FAQ
                 </TabsTrigger>
               </TabsList>
 
@@ -828,37 +814,6 @@ const AdminProductCreation = () => {
                   <Button
                     variant="outline"
                     onClick={() => setActiveStep('options')}
-                    className="gap-2"
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                    Back
-                  </Button>
-                  <Button
-                    onClick={() => setActiveStep('faq')}
-                    className="gap-2"
-                  >
-                    Next: FAQ
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
-              </TabsContent>
-
-              {/* Step 10: Product FAQs */}
-              <TabsContent value="faq" className="space-y-4">
-                <div>
-                  <h2 className="text-xl font-semibold mb-1">Step 10: Frequently Asked Questions</h2>
-                  <p className="text-sm text-muted-foreground">
-                    Add common questions and answers to help customers understand the product better
-                  </p>
-                </div>
-                <ProductFAQSection
-                  faqs={faqs}
-                  onChange={setFaqs}
-                />
-                <div className="flex justify-between pt-4">
-                  <Button
-                    variant="outline"
-                    onClick={() => setActiveStep('shipping')}
                     className="gap-2"
                   >
                     <ChevronLeft className="h-4 w-4" />

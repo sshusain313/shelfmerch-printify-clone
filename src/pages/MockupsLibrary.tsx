@@ -14,6 +14,9 @@ interface LocationState {
     storeProductId?: string;
     productId?: string;
     title?: string;
+    selectedColors?: string[];
+    selectedSizes?: string[];
+    primaryColorHex?: string | null;
 }
 
 const MockupsLibrary = () => {
@@ -50,6 +53,18 @@ const MockupsLibrary = () => {
     
     // Track which mockups have WebGL ready
     const [webglReadyMap, setWebglReadyMap] = useState<Record<string, boolean>>({});
+    
+    // Selected colors and sizes from DesignEditor
+    const [selectedColors, setSelectedColors] = useState<string[]>([]);
+    const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
+    const [selectedSizesByColor, setSelectedSizesByColor] = useState<Record<string, string[]>>({});
+    const [primaryColorHex, setPrimaryColorHex] = useState<string | null>(null);
+    
+    // Available colors from catalog product
+    const [availableColors, setAvailableColors] = useState<string[]>([]);
+    
+    // Currently selected color for preview (defaults to first selected color)
+    const [currentPreviewColor, setCurrentPreviewColor] = useState<string | null>(null);
 
     // Convert placeholder inches to pixels based on mockup image dimensions
     // This exactly replicates the coordinate system used in CanvasMockup.tsx:
@@ -290,12 +305,19 @@ const MockupsLibrary = () => {
                 return;
             }
 
-            try {
+                try {
                 setIsLoadingMockups(true);
                 const resp = await productApi.getById(storeProduct.catalogProductId);
                 if (resp && resp.success !== false && resp.data) {
+                    const catalogProduct = resp.data;
+                    
+                    // Extract available colors from catalog product
+                    if (Array.isArray(catalogProduct.availableColors) && catalogProduct.availableColors.length > 0) {
+                        setAvailableColors(catalogProduct.availableColors);
+                    }
+                    
                     // Extract sampleMockups from product design
-                    const productDesign = resp.data.design || {};
+                    const productDesign = catalogProduct.design || {};
                     const mockups = productDesign.sampleMockups || [];
                     setSampleMockups(mockups);
                     
@@ -343,6 +365,112 @@ const MockupsLibrary = () => {
     }, [storeProduct?.catalogProductId]);
 
     const designData = storeProduct?.designData || {};
+
+    // Extract selected colors, sizes, and primary color from designData
+    useEffect(() => {
+        if (storeProduct?.designData) {
+            const designData = storeProduct.designData;
+            
+            // Extract selected colors
+            if (Array.isArray(designData.selectedColors)) {
+                setSelectedColors(designData.selectedColors);
+            } else if (state.selectedColors && Array.isArray(state.selectedColors)) {
+                // Fallback to navigation state if available
+                setSelectedColors(state.selectedColors);
+            }
+            
+            // Extract selected sizes
+            if (Array.isArray(designData.selectedSizes)) {
+                setSelectedSizes(designData.selectedSizes);
+            } else if (state.selectedSizes && Array.isArray(state.selectedSizes)) {
+                // Fallback to navigation state if available
+                setSelectedSizes(state.selectedSizes);
+            }
+            
+            // Extract selected sizes by color
+            if (designData.selectedSizesByColor && typeof designData.selectedSizesByColor === 'object') {
+                setSelectedSizesByColor(designData.selectedSizesByColor);
+            }
+            
+            // Extract primary color hex for garment tinting
+            if (typeof designData.primaryColorHex === 'string') {
+                setPrimaryColorHex(designData.primaryColorHex);
+            } else if (state.primaryColorHex && typeof state.primaryColorHex === 'string') {
+                // Fallback to navigation state if available
+                setPrimaryColorHex(state.primaryColorHex);
+            }
+            
+            console.log('✅ Extracted color/size selections from designData:', {
+                selectedColors: designData.selectedColors || state.selectedColors,
+                selectedSizes: designData.selectedSizes || state.selectedSizes,
+                selectedSizesByColor: designData.selectedSizesByColor,
+                primaryColorHex: designData.primaryColorHex || state.primaryColorHex,
+            });
+        }
+    }, [storeProduct?.designData, state.selectedColors, state.selectedSizes, state.primaryColorHex]);
+
+    // Set current preview color when colors are loaded
+    useEffect(() => {
+        const colorsToUse = selectedColors.length > 0 ? selectedColors : availableColors;
+        if (colorsToUse.length > 0 && !currentPreviewColor) {
+            setCurrentPreviewColor(colorsToUse[0]);
+        }
+    }, [selectedColors, availableColors, currentPreviewColor]);
+
+    // Helper function to convert color name to hex code
+    const getColorHex = (colorName: string): string => {
+        const colorMap: { [key: string]: string } = {
+            'black': '#000000',
+            'white': '#FFFFFF',
+            'red': '#FF0000',
+            'blue': '#0000FF',
+            'green': '#008000',
+            'yellow': '#FFFF00',
+            'orange': '#FFA500',
+            'purple': '#800080',
+            'pink': '#FFC0CB',
+            'brown': '#A52A2A',
+            'grey': '#808080',
+            'gray': '#808080',
+            'navy': '#000080',
+            'maroon': '#800000',
+            'olive': '#808000',
+            'lime': '#00FF00',
+            'aqua': '#00FFFF',
+            'teal': '#008080',
+            'silver': '#C0C0C0',
+            'gold': '#FFD700',
+            'beige': '#F5F5DC',
+            'tan': '#D2B48C',
+            'khaki': '#F0E68C',
+            'coral': '#FF7F50',
+            'salmon': '#FA8072',
+            'turquoise': '#40E0D0',
+            'lavender': '#E6E6FA',
+            'ivory': '#FFFFF0',
+            'cream': '#FFFDD0',
+            'mint': '#98FF98',
+            'peach': '#FFE5B4',
+            'cerulean frost': '#6D9BC3',
+            'cerulean': '#6D9BC3',
+            'cobalt blue': '#0047AB',
+            'amber': '#FFBF00',
+            'frosted': '#E8E8E8',
+            'natural': '#FAF0E6',
+            'beige-gray': '#9F9F9F',
+            'clear': '#FFFFFF',
+            'kraft': '#D4A574',
+        };
+        
+        const normalized = colorName.toLowerCase().trim();
+        return colorMap[normalized] || '#CCCCCC';
+    };
+
+    // Get the hex color for the current preview color
+    const currentPreviewColorHex = currentPreviewColor ? getColorHex(currentPreviewColor) : null;
+    
+    // Colors to display in selector (use selectedColors if available, otherwise availableColors)
+    const colorsToDisplay = selectedColors.length > 0 ? selectedColors : availableColors;
 
     // Extract design images per view from elements array
     // The design is stored in designData.elements, each element has a `view` property and `imageUrl`
@@ -688,7 +816,7 @@ const MockupsLibrary = () => {
 
     return (
         <div className="min-h-screen bg-background">
-            <main className="max-w-6xl mx-auto px-6 py-8">
+            <main className="max-w-9xl px-3 py-8">
                 <div className="mb-6 flex items-center gap-3">
                     <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
                         <ArrowLeft className="h-4 w-4" />
@@ -743,102 +871,70 @@ const MockupsLibrary = () => {
                         </Card>
 
                         <Card className="lg:col-span-2">
-                            <CardHeader>
-                                <CardTitle>Design previews</CardTitle>
-                                <CardDescription>
-                                    Preview images per view (front, back, etc.) from stored preview URLs or image elements in <code>designData.elements</code>.
-                                </CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                {Object.keys(previewImagesByView).length > 0 ? (
-                                    <Tabs defaultValue={Object.keys(previewImagesByView)[0]} className="w-full">
-                                        <TabsList className="mb-4">
-                                            {Object.keys(previewImagesByView).map((viewKey) => (
-                                                <TabsTrigger key={viewKey} value={viewKey} className="capitalize">
-                                                    {viewKey}
-                                                </TabsTrigger>
-                                            ))}
-                                        </TabsList>
-                                        {Object.entries(previewImagesByView).map(([viewKey, url]) => (
-                                            <TabsContent key={viewKey} value={viewKey} className="space-y-3">
-                                                <div className="border rounded-lg overflow-hidden bg-muted">
-                                                    <img
-                                                        src={url}
-                                                        alt={`${viewKey} preview`}
-                                                        className="w-full h-auto max-h-[420px] object-contain"
-                                                    />
-                                                </div>
-                                                <div className="flex gap-2">
-                                                    <Button variant="outline" size="sm" asChild>
-                                                        <a href={url} target="_blank" rel="noreferrer">
-                                                            Open original
-                                                        </a>
-                                                    </Button>
-                                                    <Button variant="outline" size="sm" asChild>
-                                                        <a href={url} download target="_blank" rel="noreferrer">
-                                                            Download
-                                                        </a>
-                                                    </Button>
-                                                </div>
-                                            </TabsContent>
-                                        ))}
-                                    </Tabs>
-                                ) : imageElements.length > 0 ? (
-                                    <Tabs defaultValue={Object.keys(imagesByView)[0]} className="w-full">
-                                        <TabsList className="mb-4">
-                                            {Object.keys(imagesByView).map((viewKey) => (
-                                                <TabsTrigger key={viewKey} value={viewKey} className="capitalize">
-                                                    {viewKey}
-                                                </TabsTrigger>
-                                            ))}
-                                        </TabsList>
-                                        {Object.entries(imagesByView).map(([viewKey, els]) => (
-                                            <TabsContent key={viewKey} value={viewKey} className="space-y-4">
-                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                                    {els.map((el: any, idx: number) => (
-                                                        <div key={`${viewKey}-${idx}`} className="border rounded-lg bg-muted overflow-hidden">
-                                                            <img
-                                                                src={el.imageUrl}
-                                                                alt={`${viewKey} design element ${idx + 1}`}
-                                                                className="w-full h-auto max-h-[260px] object-contain bg-background"
-                                                            />
-                                                            <div className="px-3 py-2 border-t text-xs text-muted-foreground space-y-1">
-                                                                <div className="flex justify-between">
-                                                                    <span className="font-medium">placeholderId</span>
-                                                                    <span className="font-mono truncate max-w-[140px]">{el.placeholderId || '-'}</span>
-                                                                </div>
-                                                                <div className="flex justify-between">
-                                                                    <span>pos</span>
-                                                                    <span className="font-mono">
-                                                                        ({Math.round(el.x ?? 0)}, {Math.round(el.y ?? 0)})
-                                                                    </span>
-                                                                </div>
-                                                                <div className="flex justify-between">
-                                                                    <span>size</span>
-                                                                    <span className="font-mono">
-                                                                        {Math.round(el.width ?? 0)}×{Math.round(el.height ?? 0)}
-                                                                    </span>
-                                                                </div>
-                                                                <div className="flex justify-between">
-                                                                    <span>rotation</span>
-                                                                    <span className="font-mono">{Math.round(el.rotation ?? 0)}°</span>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </TabsContent>
-                                        ))}
-                                    </Tabs>
-                                ) : (
-                                    <div className="border rounded-lg bg-muted/40 p-8 text-center text-muted-foreground">
-                                        <ImageIcon className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                                        <p className="text-sm mb-1">No preview images or image elements found for this design.</p>
-                                        <p className="text-xs">Create image elements in the design editor, then save/publish the design.</p>
-                                    </div>
-                                )}
-                            </CardContent>
-                        </Card>
+  <CardHeader>
+    <CardTitle>Design previews</CardTitle>
+    <CardDescription>
+      Preview images per view (front, back, etc.) from stored preview URLs or image elements in <code>designData.elements</code>.
+    </CardDescription>
+  </CardHeader>
+  <CardContent>
+    {/* Check for preview images and render them in a grid layout */}
+    {Object.keys(previewImagesByView).length > 0 ? (
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 w-full">
+        {Object.entries(previewImagesByView).map(([viewKey, url]) => (
+          <div key={viewKey} className="space-y-3">
+            <div className="border rounded-lg overflow-hidden bg-muted">
+              <img
+                src={url}
+                alt={`${viewKey} preview`}
+                className="w-full h-auto max-h-[420px] object-contain"
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" asChild>
+                <a href={url} target="_blank" rel="noreferrer">
+                  Open original
+                </a>
+              </Button>
+              <Button variant="outline" size="sm" asChild>
+                <a href={url} download target="_blank" rel="noreferrer">
+                  Download
+                </a>
+              </Button>
+            </div>
+          </div>
+        ))}
+      </div>
+    ) : imageElements.length > 0 ? (
+      // Displaying design elements in a grid layout
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 w-full">
+        {Object.entries(imagesByView).map(([viewKey, els]) => (
+          <div key={viewKey} className="space-y-4">
+            <div className="grid grid-cols-1 gap-4">
+              {els.map((el: any, idx: number) => (
+                <div key={`${viewKey}-${idx}`} className="border rounded-lg bg-muted overflow-hidden">
+                  <img
+                    src={el.imageUrl}
+                    alt={`${viewKey} design element ${idx + 1}`}
+                    className="w-full h-auto max-h-[260px] object-contain bg-background"
+                  />
+                  
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    ) : (
+      <div className="border rounded-lg bg-muted/40 p-8 text-center text-muted-foreground">
+        <ImageIcon className="h-8 w-8 mx-auto mb-2 opacity-50" />
+        <p className="text-sm mb-1">No preview images or image elements found for this design.</p>
+        <p className="text-xs">Create image elements in the design editor, then save/publish the design.</p>
+      </div>
+    )}
+  </CardContent>
+</Card>
+
                     </div>
                 )}
 
@@ -849,6 +945,52 @@ const MockupsLibrary = () => {
                 {/* Realistic WebGL Sample Mockups */}
                 {storeProduct && (
                     <div className="mt-8 space-y-6">
+                        {/* Color Selector */}
+                        {colorsToDisplay.length > 0 && (
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle>Select Color</CardTitle>
+                                    <CardDescription>
+                                        Choose a color to preview on the mockups
+                                    </CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="flex flex-wrap gap-3">
+                                        {colorsToDisplay.map((color) => {
+                                            const colorHex = getColorHex(color);
+                                            const isSelected = currentPreviewColor === color;
+                                            return (
+                                                <button
+                                                    key={color}
+                                                    onClick={() => setCurrentPreviewColor(color)}
+                                                    className={`
+                                                        flex items-center gap-2 px-4 py-2 rounded-lg border-2 transition-all
+                                                        ${isSelected 
+                                                            ? 'border-primary bg-primary/10 shadow-md' 
+                                                            : 'border-muted hover:border-primary/50 bg-background'
+                                                        }
+                                                    `}
+                                                    style={{
+                                                        borderColor: isSelected ? colorHex : undefined,
+                                                    }}
+                                                >
+                                                    <div
+                                                        className="w-6 h-6 rounded-full border-2 border-white shadow-sm"
+                                                        style={{ backgroundColor: colorHex }}
+                                                    />
+                                                    <span className={`text-sm font-medium capitalize ${isSelected ? 'text-primary' : 'text-foreground'}`}>
+                                                        {color}
+                                                    </span>
+                                                    {isSelected && (
+                                                        <Check className="h-4 w-4 text-primary" />
+                                                    )}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        )}
 
                         {/* Sample Mockups with Realistic WebGL Preview */}
                         <Card>
@@ -857,6 +999,9 @@ const MockupsLibrary = () => {
                                     <CardTitle>Realistic Mockup Previews</CardTitle>
                                     <CardDescription>
                                         WebGL-rendered realistic previews with displacement mapping
+                                        {currentPreviewColor && (
+                                            <span className="ml-2 capitalize">• {currentPreviewColor} color</span>
+                                        )}
                                     </CardDescription>
                                 </div>
                                 {sampleMockups.length > 0 && Object.keys(designImagesByView).length > 0 && (
@@ -901,7 +1046,7 @@ const MockupsLibrary = () => {
                                             </div>
                                         </div>
                                         
-                                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                                        <div className="grid grid-cols-1 xl:grid-cols-4 lg:grid-cols-3 gap-3">
                                             {sampleMockups.map((mockup: any, index: number) => {
                                                 const viewKey = (mockup.viewKey || 'front').toLowerCase();
                                                 const hasDesignForView = !!designImagesByView[viewKey];
@@ -958,11 +1103,11 @@ const MockupsLibrary = () => {
                                                         {mockup.imageUrl && hasDesignForView && hasPlaceholder && catalogPhysicalDimensions ? (
                                                             <div 
                                                                 ref={(el) => { webglContainerRefs.current[mockup.id] = el; }}
-                                                                className=" relative bg-white flex justify-center items-center"
+                                                                className=" \relative bg-white flex justify-center items-center"
                                                                 style={{ minHeight: 400 }}
                                                             >
                                                                 <RealisticWebGLPreview
-                                                                    key={`webgl-${mockup.id}-${designImagesByView[viewKey]?.slice(-20) || ''}`}
+                                                                    key={`webgl-${mockup.id}-${designImagesByView[viewKey]?.slice(-20) || ''}-${currentPreviewColorHex || 'no-color'}`}
                                                                     mockupImageUrl={mockup.imageUrl}
                                                                     activePlaceholder={null}
                                                                     placeholders={(mockup.placeholders || []).map((p: any) => ({
@@ -984,13 +1129,14 @@ const MockupsLibrary = () => {
                                                                     }}
                                                                     designUrlsByPlaceholder={mockupDesignUrls}
                                                                     previewMode={true}
+                                                                    garmentTintHex={currentPreviewColorHex}
                                                                     currentView={viewKey}
                                                                     canvasPadding={40}
                                                                     PX_PER_INCH={Math.min(720 / catalogPhysicalDimensions.width, 520 / catalogPhysicalDimensions.height)}
                                                                 />
                                                             </div>
                                                         ) : mockup.imageUrl ? (
-                                                            <div className="relative bg-muted flex items-center justify-center" style={{ minHeight: 400 }}>
+                                                            <div className=" relative bg-muted flex items-center justify-center" style={{ minHeight: 400 }}>
                                                                 <img
                                                                     src={mockup.imageUrl}
                                                                     alt={`Sample mockup ${index + 1}`}

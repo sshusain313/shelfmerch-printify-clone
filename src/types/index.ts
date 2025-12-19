@@ -111,6 +111,8 @@ export interface Store {
   description?: string;
   logo?: string;
   productIds: string[];
+  productsCount?: number;
+  isActive?: boolean;
   createdAt: string;
   updatedAt: string;
   settings?: {
@@ -120,6 +122,12 @@ export interface Store {
   useBuilder?: boolean;
   builder?: StoreBuilder;
   builderLastPublishedAt?: string;
+  ownerName?: string;
+  ownerEmail?: string;
+  owner?: {
+    name: string;
+    email: string;
+  };
 }
 
 export interface DashboardStats {

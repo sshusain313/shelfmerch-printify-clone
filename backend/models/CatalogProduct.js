@@ -102,13 +102,6 @@ const CatalogProductGalleryImageSchema = new mongoose.Schema({
   altText: { type: String, default: '' }
 }, { _id: false });
 
-const CatalogProductFAQSchema = new mongoose.Schema({
-  id: { type: String, required: true },
-  question: { type: String, required: true },
-  answer: { type: String, required: true },
-  order: { type: Number, required: true, default: 0 }
-}, { _id: false });
-
 const CatalogProductSchema = new mongoose.Schema({
   // Basic info
   name: {
@@ -165,9 +158,6 @@ const CatalogProductSchema = new mongoose.Schema({
 
   // Gallery images
   galleryImages: [CatalogProductGalleryImageSchema],
-
-  // FAQs
-  faqs: [CatalogProductFAQSchema],
 
   // Product details (barcodes, etc.)
   details: {

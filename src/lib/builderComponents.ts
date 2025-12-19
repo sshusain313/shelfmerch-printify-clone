@@ -216,7 +216,6 @@ export const componentLibrary: ComponentDefinition[] = [
           title: 'Support',
           links: [
             { label: 'Contact Us', url: '/contact' },
-            { label: 'FAQ', url: '/faq' },
           ],
         },
       ],

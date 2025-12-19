@@ -990,10 +990,19 @@ export const storeApi = {
   },
 
   // Get all stores admin
-  listAllStores: async () => {
+  listAllStores: async (params?: { page?: number; limit?: number; search?: string; sortBy?: string; sortOrder?: 'asc' | 'desc' }) => {
     const token = getToken();
+    const queryParams = new URLSearchParams();
+    if (params?.page) queryParams.append('page', params.page.toString());
+    if (params?.limit) queryParams.append('limit', params.limit.toString());
+    if (params?.search) queryParams.append('search', params.search);
+    if (params?.sortBy) queryParams.append('sortBy', params.sortBy);
+    if (params?.sortOrder) queryParams.append('sortOrder', params.sortOrder);
 
-    const response = await fetch(`${API_BASE_URL}/admin/stores`, {
+    const queryString = queryParams.toString();
+    const url = `${API_BASE_URL}/stores/admin/all${queryString ? `?${queryString}` : ''}`;
+
+    const response = await fetch(url, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -1012,9 +1021,14 @@ export const storeApi = {
     }
 
     const json = await response.json();
-    return json as { success: boolean; message: string; data: any };
+    return json as {
+      success: boolean;
+      message: string;
+      data: any[];
+      pagination: { total: number; page: number; limit: number; pages: number }
+    };
   },
-  
+
   // Get all stores for the current user
   listMyStores: async () => {
     const token = getToken();

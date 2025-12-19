@@ -175,4 +175,67 @@ router.get('/me', verifyStoreToken, async (req, res) => {
     }
 });
 
+// PUT /api/store-auth/me
+// Update basic customer profile fields (name, marketingOptIn)
+router.put('/me', verifyStoreToken, async (req, res) => {
+    try {
+        const customerId = req.customer.customer.id;
+        const { name, marketingOptIn } = req.body || {};
+
+        const updates = {};
+        if (typeof name === 'string' && name.trim().length > 0) {
+            updates.name = name.trim();
+        }
+        if (typeof marketingOptIn === 'boolean') {
+            updates.marketingOptIn = marketingOptIn;
+        }
+
+        const customer = await StoreCustomer.findByIdAndUpdate(
+            customerId,
+            { $set: updates },
+            { new: true, runValidators: true, select: '-passwordHash' }
+        );
+
+        if (!customer) {
+            return res.status(404).json({ success: false, message: 'Customer not found' });
+        }
+
+        res.json({ success: true, customer });
+    } catch (err) {
+        console.error('Store Update Me Error:', err);
+        res.status(500).json({ success: false, message: 'Failed to update profile' });
+    }
+});
+
+// POST /api/store-auth/change-password
+router.post('/change-password', verifyStoreToken, async (req, res) => {
+    try {
+        const customerId = req.customer.customer.id;
+        const { currentPassword, newPassword } = req.body || {};
+
+        if (!currentPassword || !newPassword) {
+            return res.status(400).json({ success: false, message: 'Current and new password are required' });
+        }
+
+        const customer = await StoreCustomer.findById(customerId);
+        if (!customer || !customer.passwordHash) {
+            return res.status(400).json({ success: false, message: 'Unable to change password' });
+        }
+
+        const isMatch = await bcrypt.compare(currentPassword, customer.passwordHash);
+        if (!isMatch) {
+            return res.status(400).json({ success: false, message: 'Current password is incorrect' });
+        }
+
+        const salt = await bcrypt.genSalt(10);
+        customer.passwordHash = await bcrypt.hash(newPassword, salt);
+        await customer.save();
+
+        res.json({ success: true, message: 'Password updated successfully' });
+    } catch (err) {
+        console.error('Store Change Password Error:', err);
+        res.status(500).json({ success: false, message: 'Failed to change password' });
+    }
+});
+
 module.exports = router;
