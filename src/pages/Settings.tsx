@@ -1,96 +1,133 @@
-import { Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useStore } from '@/contexts/StoreContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { 
-  Package, 
-  Store, 
-  TrendingUp, 
-  ShoppingBag,
-  Users,
-  Settings as SettingsIcon,
-  LogOut
-} from 'lucide-react';
+import { storeApi } from '@/lib/api';
+import { toast } from 'sonner';
+import DashboardLayout from '@/components/layout/DashboardLayout';
 
 const Settings = () => {
-  const { user, logout, isAdmin } = useAuth();
+  const { selectedStore, refreshStores } = useStore();
+  const { user } = useAuth();
+
+  const [storeDescription, setStoreDescription] = useState('');
+  const [storeTheme, setStoreTheme] = useState('');
+  const [primaryColor, setPrimaryColor] = useState('');
+  const [savingStore, setSavingStore] = useState(false);
+
+  useEffect(() => {
+    if (selectedStore) {
+      setStoreDescription((selectedStore as any).description || '');
+      setStoreTheme((selectedStore as any).theme || '');
+      setPrimaryColor((selectedStore as any).settings?.primaryColor || '');
+    } else {
+      setStoreDescription('');
+      setStoreTheme('');
+      setPrimaryColor('');
+    }
+  }, [selectedStore?.id, (selectedStore as any)?._id, (selectedStore as any)?.description, (selectedStore as any)?.theme, (selectedStore as any)?.settings?.primaryColor]);
+
+  const handleStoreSave = async () => {
+    if (!selectedStore) return;
+
+    const storeId = (selectedStore as any).id || (selectedStore as any)._id;
+    if (!storeId) return;
+
+    try {
+      setSavingStore(true);
+      await storeApi.update(storeId, {
+        description: storeDescription,
+        theme: storeTheme || undefined,
+        settings: {
+          primaryColor: primaryColor || undefined,
+        },
+      });
+      toast.success('Store settings updated');
+      await refreshStores();
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to update store settings');
+    } finally {
+      setSavingStore(false);
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Sidebar */}
-      <aside className="fixed left-0 top-0 h-full w-64 border-r bg-card p-6">
-        <Link to="/" className="flex items-center space-x-2 mb-8">
-          <span className="font-heading text-xl font-bold text-foreground">
-            Shelf<span className="text-primary">Merch</span>
-          </span>
-        </Link>
-
-        <nav className="space-y-2">
-          <Button variant="ghost" className="w-full justify-start" asChild>
-            <Link to="/dashboard">
-              <Package className="mr-2 h-4 w-4" />
-              My Products
-            </Link>
-          </Button>
-          <Button variant="ghost" className="w-full justify-start" asChild>
-            <Link to="/orders">
-              <ShoppingBag className="mr-2 h-4 w-4" />
-              Orders
-            </Link>
-          </Button>
-          <Button variant="ghost" className="w-full justify-start" asChild>
-            <Link to="/stores">
-              <Store className="mr-2 h-4 w-4" />
-              My Stores
-            </Link>
-          </Button>
-          <Button variant="ghost" className="w-full justify-start" asChild>
-            <Link to="/analytics">
-              <TrendingUp className="mr-2 h-4 w-4" />
-              Analytics
-            </Link>
-          </Button>
-          {isAdmin && (
-            <Button variant="ghost" className="w-full justify-start" asChild>
-              <Link to="/admin">
-                <Users className="mr-2 h-4 w-4" />
-                Admin Panel
-              </Link>
-            </Button>
-          )}
-          <Button variant="secondary" className="w-full justify-start">
-            <SettingsIcon className="mr-2 h-4 w-4" />
-            Settings
-          </Button>
-        </nav>
-
-        <div className="absolute bottom-6 left-6 right-6">
-          <div className="border-t pt-4 space-y-2">
-            <p className="text-sm text-muted-foreground">Signed in as</p>
-            <p className="text-sm font-medium">{user?.email}</p>
-            <Button
-              variant="ghost"
-              className="w-full justify-start text-destructive hover:text-destructive"
-              onClick={logout}
-            >
-              <LogOut className="mr-2 h-4 w-4" />
-              Log out
-            </Button>
-          </div>
-        </div>
-      </aside>
-
-      {/* Main Content */}
-      <main className="ml-64 p-8">
-        <div className="max-w-3xl mx-auto">
+    <DashboardLayout>
+      <div className="max-w-3xl mx-auto">
           <div className="mb-8">
             <h1 className="text-3xl font-bold">Settings</h1>
             <p className="text-muted-foreground mt-1">
               Manage your account and preferences
             </p>
           </div>
+
+          {/* Store Settings (store-aware via StoreContext) */}
+          <Card className="p-6 mb-6">
+            <h2 className="text-xl font-semibold mb-4">Store Settings</h2>
+            {!selectedStore ? (
+              <p className="text-sm text-muted-foreground">
+                Select a store on the dashboard to view its settings.
+              </p>
+            ) : (
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="storeName">Store Name</Label>
+                  <Input
+                    id="storeName"
+                    value={selectedStore.storeName || ''}
+                    disabled
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="storeSubdomain">Subdomain</Label>
+                  <Input
+                    id="storeSubdomain"
+                    value={selectedStore.subdomain || ''}
+                    disabled
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="storeTheme">Theme</Label>
+                  <Input
+                    id="storeTheme"
+                    value={storeTheme}
+                    onChange={(e) => setStoreTheme(e.target.value)}
+                    placeholder="e.g. modern"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="primaryColor">Primary Color (hex)</Label>
+                  <Input
+                    id="primaryColor"
+                    value={primaryColor}
+                    onChange={(e) => setPrimaryColor(e.target.value)}
+                    placeholder="#000000"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="storeDescription">Description</Label>
+                  <textarea
+                    id="storeDescription"
+                    className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    rows={3}
+                    value={storeDescription}
+                    onChange={(e) => setStoreDescription(e.target.value)}
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-muted-foreground">
+                    Store name and subdomain are managed in the Stores section. You can edit descriptive details here.
+                  </p>
+                  <Button size="sm" onClick={handleStoreSave} disabled={savingStore}>
+                    {savingStore ? 'Saving...' : 'Save Store Settings'}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </Card>
 
           {/* Profile Settings */}
           <Card className="p-6 mb-6">
@@ -141,9 +178,8 @@ const Settings = () => {
               </div>
             </div>
           </Card>
-        </div>
-      </main>
-    </div>
+      </div>
+    </DashboardLayout>
   );
 };
 

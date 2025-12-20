@@ -243,6 +243,73 @@ router.get('/me', protect, async (req, res) => {
   }
 });
 
+// @route   PUT /api/stores/:id
+// @desc    Update basic store settings (owner or superadmin)
+// @access  Private
+router.put('/:id', protect, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = req.user;
+
+    if (!id.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid store ID format',
+      });
+    }
+
+    const store = await Store.findById(id);
+
+    if (!store) {
+      return res.status(404).json({
+        success: false,
+        message: 'Store not found',
+      });
+    }
+
+    if (user.role !== 'superadmin' && String(store.merchant) !== String(user._id)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to update this store',
+      });
+    }
+
+    const { description, theme, settings } = req.body || {};
+
+    if (typeof description === 'string') {
+      store.description = description;
+    }
+
+    if (typeof theme === 'string') {
+      store.theme = theme;
+    }
+
+    if (settings && typeof settings === 'object') {
+      store.settings = {
+        ...store.settings,
+        ...settings,
+      };
+    }
+
+    await store.save();
+
+    const frontendStore = mapStoreToFrontend(store);
+
+    return res.json({
+      success: true,
+      message: 'Store updated successfully',
+      data: frontendStore,
+    });
+  } catch (error) {
+    console.error('Error updating store:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to update store',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+    });
+  }
+});
+
 // @route   GET /api/stores
 // @desc    Get all active native stores for the current merchant
 // @access  Private

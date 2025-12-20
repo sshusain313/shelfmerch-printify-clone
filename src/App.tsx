@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext";
 import { StoreAuthProvider } from "./contexts/StoreAuthContext";
+import { StoreProvider } from "./contexts/StoreContext";
 import { DataProvider } from "./contexts/DataContext";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import Index from "./pages/Index";
@@ -20,6 +21,7 @@ import Orders from "./pages/Orders";
 import Stores from "./pages/Stores";
 import Analytics from "./pages/Analytics";
 import Settings from "./pages/Settings";
+import Customers from "./pages/Customers";
 import Admin from '@/pages/Admin';
 import AdminOrderDetail from '@/pages/AdminOrderDetail';
 import AdminProductCreation from "./pages/AdminProductCreation";
@@ -41,6 +43,9 @@ import ListingEditor from "./pages/ListingEditor";
 import StoreAuthPage from "./pages/StoreAuthPage";
 import MockupsLibrary from "./pages/MockupsLibrary";
 import PopupStores from "./pages/PopupStores";
+import MerchantInvoices from "./pages/MerchantInvoices";
+import AdminInvoices from "./pages/AdminInvoices";
+import WalletTopUp from "./pages/WalletTopUp";
 
 const queryClient = new QueryClient();
 
@@ -51,193 +56,227 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <AuthProvider>
-          <DataProvider>
-            <Routes>
-              <Route path="/" element={<Index />} />
-              <Route path="/products" element={<Products />} />
-              <Route path="/categories" element={<AllCategories />} />
-              <Route path="/category-subcategories/:categoryId" element={<CategorySubcategories />} />
-              <Route path="/products/category/:slug" element={<CategoryProducts />} />
-              <Route path="/products/:id" element={<ProductDetail />} />
-              <Route path="/auth" element={<Auth />} />
-              <Route
-                path="/designer/:id"
-                element={
-                  <ProtectedRoute>
-                    <DesignerEditor />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/listing-editor/:id"
-                element={
-                  <ProtectedRoute>
-                    <ListingEditor />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/dashboard"
-                element={
-                  <ProtectedRoute>
-                    <Dashboard />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/dashboard/products/:productId"
-                element={
-                  <ProtectedRoute>
-                    <ProductCreation />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/listing-editor"
-                element={
-                  <ProtectedRoute>
-                    <ListingEditor />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/mockups-library"
-                element={
-                  <ProtectedRoute>
-                    <MockupsLibrary />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/orders"
-                element={
-                  <ProtectedRoute>
-                    <Orders />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/stores"
-                element={
-                  <ProtectedRoute>
-                    <Stores />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/popup-stores"
-                element={
-                  <ProtectedRoute>
-                    <PopupStores />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/stores/:storeId/builder"
-                element={
-                  <ProtectedRoute>
-                    <BuilderDemo />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/analytics"
-                element={
-                  <ProtectedRoute>
-                    <Analytics />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/settings"
-                element={
-                  <ProtectedRoute>
-                    <Settings />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/admin"
-                element={
-                  <ProtectedRoute requireAdmin>
-                    <Admin />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/admin/orders/:id"
-                element={
-                  // <ProtectedRoute requireAdmin>
-                  <AdminOrderDetail />
-                  // </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/admin/products/new"
-                element={
-                  // <ProtectedRoute >
-                  <AdminProductCreation />
-                  // </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/admin/products/:id/edit"
-                element={
-                  <ProtectedRoute requireAdmin>
+          <StoreProvider>
+            <DataProvider>
+              <Routes>
+                <Route path="/" element={<Index />} />
+                <Route path="/products" element={<Products />} />
+                <Route path="/categories" element={<AllCategories />} />
+                <Route path="/category-subcategories/:categoryId" element={<CategorySubcategories />} />
+                <Route path="/products/category/:slug" element={<CategoryProducts />} />
+                <Route path="/products/:id" element={<ProductDetail />} />
+                <Route path="/auth" element={<Auth />} />
+                <Route
+                  path="/designer/:id"
+                  element={
+                    <ProtectedRoute>
+                      <DesignerEditor />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/listing-editor/:id"
+                  element={
+                    <ProtectedRoute>
+                      <ListingEditor />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/dashboard"
+                  element={
+                    <ProtectedRoute>
+                      <Dashboard />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/dashboard/products/:productId"
+                  element={
+                    <ProtectedRoute>
+                      <ProductCreation />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/listing-editor"
+                  element={
+                    <ProtectedRoute>
+                      <ListingEditor />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/mockups-library"
+                  element={
+                    <ProtectedRoute>
+                      <MockupsLibrary />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/orders"
+                  element={
+                    <ProtectedRoute>
+                      <Orders />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/stores"
+                  element={
+                    <ProtectedRoute>
+                      <Stores />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/wallet/top-up"
+                  element={
+                    <ProtectedRoute>
+                      <WalletTopUp />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/popup-stores"
+                  element={
+                    <ProtectedRoute>
+                      <PopupStores />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/invoices"
+                  element={
+                    <ProtectedRoute>
+                      <MerchantInvoices />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/stores/:storeId/builder"
+                  element={
+                    <ProtectedRoute>
+                      <BuilderDemo />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/analytics"
+                  element={
+                    <ProtectedRoute>
+                      <Analytics />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/customers"
+                  element={
+                    <ProtectedRoute>
+                      <Customers />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/settings"
+                  element={
+                    <ProtectedRoute>
+                      <Settings />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/admin"
+                  element={
+                    <ProtectedRoute requireAdmin>
+                      <Admin />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/admin/orders/:id"
+                  element={
+                    // <ProtectedRoute requireAdmin>
+                    <AdminOrderDetail />
+                    // </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/admin/products/new"
+                  element={
+                    // <ProtectedRoute >
                     <AdminProductCreation />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/admin/products/:id"
-                element={
-                  <ProtectedRoute requireAdmin>
-                    <AdminProductDetail />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/admin/variant-options"
-                element={
-                  <ProtectedRoute requireAdmin>
-                    <ManageVariantOptions />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/admin/catalogue-fields"
-                element={
-                  <ProtectedRoute requireAdmin>
-                    <ManageCatalogueFields />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/admin/assets"
-                element={
-                  <ProtectedRoute requireAdmin>
-                    <AdminAssets />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/create-store"
-                element={
-                  <ProtectedRoute>
-                    <CreateStore />
-                  </ProtectedRoute>
-                }
-              />
-              <Route path="/store/:subdomain" element={<StoreAuthProvider><StoreFrontendNew /></StoreAuthProvider>} />
-              <Route path="/store/:subdomain/products" element={<StoreAuthProvider><StoreProductsPage /></StoreAuthProvider>} />
-              <Route path="/store/:subdomain/auth" element={<StoreAuthProvider><StoreAuthPage /></StoreAuthProvider>} />
-              <Route path="/store/:subdomain/account" element={<StoreAuthProvider><StoreCustomerAccountPage /></StoreAuthProvider>} />
-              <Route path="/store/:subdomain/product/:productId" element={<StoreAuthProvider><StoreProductPage /></StoreAuthProvider>} />
-              <Route path="/store/:subdomain/checkout" element={<StoreAuthProvider><StoreCheckoutPage /></StoreAuthProvider>} />
-              <Route path="/order-confirmation" element={<OrderConfirmation />} />
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </DataProvider>
+                    // </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/admin/products/:id/edit"
+                  element={
+                    <ProtectedRoute requireAdmin>
+                      <AdminProductCreation />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/admin/products/:id"
+                  element={
+                    <ProtectedRoute requireAdmin>
+                      <AdminProductDetail />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/admin/variant-options"
+                  element={
+                    <ProtectedRoute requireAdmin>
+                      <ManageVariantOptions />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/admin/catalogue-fields"
+                  element={
+                    <ProtectedRoute requireAdmin>
+                      <ManageCatalogueFields />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/admin/invoices"
+                  element={
+                    <ProtectedRoute requireAdmin>
+                      <AdminInvoices />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/admin/assets"
+                  element={
+                    <ProtectedRoute requireAdmin>
+                      <AdminAssets />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/create-store"
+                  element={
+                    <ProtectedRoute>
+                      <CreateStore />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route path="/store/:subdomain" element={<StoreAuthProvider><StoreFrontendNew /></StoreAuthProvider>} />
+                <Route path="/store/:subdomain/products" element={<StoreAuthProvider><StoreProductsPage /></StoreAuthProvider>} />
+                <Route path="/store/:subdomain/auth" element={<StoreAuthProvider><StoreAuthPage /></StoreAuthProvider>} />
+                <Route path="/store/:subdomain/account" element={<StoreAuthProvider><StoreCustomerAccountPage /></StoreAuthProvider>} />
+                <Route path="/store/:subdomain/product/:productId" element={<StoreAuthProvider><StoreProductPage /></StoreAuthProvider>} />
+                <Route path="/store/:subdomain/checkout" element={<StoreAuthProvider><StoreCheckoutPage /></StoreAuthProvider>} />
+                <Route path="/order-confirmation" element={<OrderConfirmation />} />
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </DataProvider>
+          </StoreProvider>
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>

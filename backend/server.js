@@ -34,6 +34,9 @@ const storeProductsRoutes = require('./routes/storeProducts');
 const storeCheckoutRoutes = require('./routes/storeCheckout');
 const storeOrdersRoutes = require('./routes/storeOrders');
 const storeCustomerOrdersRoutes = require('./routes/storeCustomerOrders');
+const storeCustomersRoutes = require('./routes/storeCustomers');
+const shippingQuoteRoutes = require('./routes/shippingQuoteRoutes');
+const invoiceRoutes = require('./routes/invoices');
 
 // Initialize Express app
 const app = express();
@@ -161,7 +164,9 @@ app.use('/api/store-checkout', storeCheckoutRoutes);
 app.use('/api/store-orders', storeOrdersRoutes);
 app.use('/api/store-auth', require('./routes/storeAuth'));
 app.use('/api/store-customer/orders', storeCustomerOrdersRoutes);
-app.use('/api', storeCheckoutRoutes);
+app.use('/api/store-customers', storeCustomersRoutes);
+app.use('/api/shipping-quote', shippingQuoteRoutes);
+app.use('/api/invoices', invoiceRoutes);
 
 // 404 handler
 app.use((req, res) => {

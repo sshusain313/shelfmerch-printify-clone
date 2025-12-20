@@ -96,7 +96,7 @@ const DashboardNew = () => {
           <Button variant="ghost" className="w-full justify-start" asChild>
             <Link to="/stores">
               <Store className="mr-2 h-4 w-4" />
-              My Stores
+              Manage Stores
             </Link>
           </Button>
           <Button variant="ghost" className="w-full justify-start" asChild>

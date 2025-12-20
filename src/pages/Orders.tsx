@@ -1,25 +1,15 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { useAuth } from '@/contexts/AuthContext';
-import { Button } from '@/components/ui/button';
+import { useStore } from '@/contexts/StoreContext';
 import { Card } from '@/components/ui/card';
-import { 
-  Package, 
-  Store, 
-  TrendingUp, 
-  ShoppingBag,
-  Users,
-  Settings,
-  LogOut,
-  Search
-} from 'lucide-react';
+import { Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { storeOrdersApi } from '@/lib/api';
 import { Order } from '@/types';
+import DashboardLayout from '@/components/layout/DashboardLayout';
 
 const Orders = () => {
-  const { user, logout, isAdmin } = useAuth();
+  const { selectedStore } = useStore();
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -31,9 +21,24 @@ const Orders = () => {
       try {
         setIsLoading(true);
         const data = await storeOrdersApi.listForMerchant();
-        if (isMounted) {
-          setOrders(data);
+
+        if (!isMounted) return;
+
+        let filtered: Order[] = data || [];
+
+        if (selectedStore) {
+          const storeId = selectedStore.id || selectedStore._id;
+          filtered = filtered.filter((order: any) => {
+            const orderStoreId = order.storeId?._id?.toString() || order.storeId?.toString() || order.storeId;
+            return (
+              orderStoreId === storeId ||
+              orderStoreId === selectedStore._id ||
+              orderStoreId === selectedStore.id
+            );
+          });
         }
+
+        setOrders(filtered);
       } catch (err: any) {
         if (isMounted) {
           setError(err?.message || 'Failed to load orders');
@@ -50,7 +55,7 @@ const Orders = () => {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [selectedStore]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -64,73 +69,9 @@ const Orders = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Sidebar */}
-      <aside className="fixed left-0 top-0 h-full w-64 border-r bg-card p-6">
-        <Link to="/" className="flex items-center space-x-2 mb-8">
-          <span className="font-heading text-xl font-bold text-foreground">
-            Shelf<span className="text-primary">Merch</span>
-          </span>
-        </Link>
-
-        <nav className="space-y-2">
-          <Button variant="ghost" className="w-full justify-start" asChild>
-            <Link to="/dashboard">
-              <Package className="mr-2 h-4 w-4" />
-              My Products
-            </Link>
-          </Button>
-          <Button variant="secondary" className="w-full justify-start">
-            <ShoppingBag className="mr-2 h-4 w-4" />
-            Orders
-          </Button>
-          <Button variant="ghost" className="w-full justify-start" asChild>
-            <Link to="/stores">
-              <Store className="mr-2 h-4 w-4" />
-              My Stores
-            </Link>
-          </Button>
-          <Button variant="ghost" className="w-full justify-start" asChild>
-            <Link to="/analytics">
-              <TrendingUp className="mr-2 h-4 w-4" />
-              Analytics
-            </Link>
-          </Button>
-          {isAdmin && (
-            <Button variant="ghost" className="w-full justify-start" asChild>
-              <Link to="/admin">
-                <Users className="mr-2 h-4 w-4" />
-                Admin Panel
-              </Link>
-            </Button>
-          )}
-          <Button variant="ghost" className="w-full justify-start" asChild>
-            <Link to="/settings">
-              <Settings className="mr-2 h-4 w-4" />
-              Settings
-            </Link>
-          </Button>
-        </nav>
-
-        <div className="absolute bottom-6 left-6 right-6">
-          <div className="border-t pt-4 space-y-2">
-            <p className="text-sm text-muted-foreground">Signed in as</p>
-            <p className="text-sm font-medium">{user?.email}</p>
-            <Button
-              variant="ghost"
-              className="w-full justify-start text-destructive hover:text-destructive"
-              onClick={logout}
-            >
-              <LogOut className="mr-2 h-4 w-4" />
-              Log out
-            </Button>
-          </div>
-        </div>
-      </aside>
-
-      {/* Main Content */}
-      <main className="ml-64 p-8">
-        <div className="max-w-7xl mx-auto">
+  
+    <DashboardLayout>
+      <div className="max-w-7xl mx-auto">
           <div className="mb-8">
             <h1 className="text-3xl font-bold">Orders</h1>
             <p className="text-muted-foreground mt-1">
@@ -158,50 +99,49 @@ const Orders = () => {
           ) : orders.length === 0 ? (
             <p className="text-sm text-muted-foreground">No orders found yet.</p>
           ) : (
-          <Card className="overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-muted/50">
-                  <tr>
-                    <th className="px-6 py-4 text-left text-sm font-semibold">Order ID</th>
-                    <th className="px-6 py-4 text-left text-sm font-semibold">Product</th>
-                    <th className="px-6 py-4 text-left text-sm font-semibold">Customer</th>
-                    <th className="px-6 py-4 text-left text-sm font-semibold">Date</th>
-                    <th className="px-6 py-4 text-left text-sm font-semibold">Status</th>
-                    <th className="px-6 py-4 text-left text-sm font-semibold">Amount</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {orders.map((order) => (
-                    <tr key={order.id} className="hover:bg-muted/30 transition-colors">
-                      <td className="px-6 py-4 text-sm font-medium">#{order.id}</td>
-                      <td className="px-6 py-4 text-sm">
-                        {order.items && order.items.length > 0
-                          ? order.items[0].productName || `${order.items.length} items`
-                          : 'No items'}
-                      </td>
-                      <td className="px-6 py-4 text-sm">{order.customerEmail}</td>
-                      <td className="px-6 py-4 text-sm text-muted-foreground">
-                        {order.createdAt ? new Date(order.createdAt).toLocaleDateString() : '-'}
-                      </td>
-                      <td className="px-6 py-4">
-                        <Badge className={getStatusColor(order.status)}>
-                          {order.status}
-                        </Badge>
-                      </td>
-                      <td className="px-6 py-4 text-sm font-semibold">
-                        {order.total !== undefined ? `$${order.total.toFixed(2)}` : '-'}
-                      </td>
+            <Card className="overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-muted/50">
+                    <tr>
+                      <th className="px-6 py-4 text-left text-sm font-semibold">Order ID</th>
+                      <th className="px-6 py-4 text-left text-sm font-semibold">Product</th>
+                      <th className="px-6 py-4 text-left text-sm font-semibold">Customer</th>
+                      <th className="px-6 py-4 text-left text-sm font-semibold">Date</th>
+                      <th className="px-6 py-4 text-left text-sm font-semibold">Status</th>
+                      <th className="px-6 py-4 text-left text-sm font-semibold">Amount</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Card>
+                  </thead>
+                  <tbody className="divide-y">
+                    {orders.map((order) => (
+                      <tr key={order._id || order.id || `order-${Math.random()}`} className="hover:bg-muted/30 transition-colors">
+                        <td className="px-6 py-4 text-sm font-medium">#{order._id || order.id || 'N/A'}</td>
+                        <td className="px-6 py-4 text-sm">
+                          {order.items && order.items.length > 0
+                            ? order.items[0].productName || `${order.items.length} items`
+                            : 'No items'}
+                        </td>
+                        <td className="px-6 py-4 text-sm">{order.customerEmail}</td>
+                        <td className="px-6 py-4 text-sm text-muted-foreground">
+                          {order.createdAt ? new Date(order.createdAt).toLocaleDateString() : '-'}
+                        </td>
+                        <td className="px-6 py-4">
+                          <Badge className={getStatusColor(order.status)}>
+                            {order.status}
+                          </Badge>
+                        </td>
+                        <td className="px-6 py-4 text-sm font-semibold">
+                          {order.total !== undefined ? `$${order.total.toFixed(2)}` : '-'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
           )}
-        </div>
-      </main>
-    </div>
+      </div>
+    </DashboardLayout>
   );
 };
 

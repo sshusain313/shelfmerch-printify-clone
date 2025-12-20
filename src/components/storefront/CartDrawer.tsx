@@ -25,8 +25,6 @@ const CartDrawer: React.FC<CartDrawerProps> = ({
 }) => {
   const { isAuthenticated } = useStoreAuth();
   const subtotal = cart.reduce((sum, item) => sum + (item.product.price || 0) * (item.quantity || 0), 0);
-  const shipping = subtotal > 0 ? 5.99 : 0;
-  const total = subtotal + shipping;
 
   return (
     <Sheet open={open} onOpenChange={onClose}>
@@ -123,11 +121,11 @@ const CartDrawer: React.FC<CartDrawerProps> = ({
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Shipping</span>
-                <span>${shipping.toFixed(2)}</span>
+                <span className="text-xs text-muted-foreground">Calculated at checkout</span>
               </div>
               <div className="flex justify-between text-lg font-bold pt-2 border-t">
-                <span>Total</span>
-                <span>${total.toFixed(2)}</span>
+                <span>Estimated Total</span>
+                <span>${subtotal.toFixed(2)}</span>
               </div>
               <Button className="w-full" size="lg" onClick={onCheckout}>
                 {isAuthenticated ? 'Proceed to Checkout' : 'Login / Register to Checkout'}

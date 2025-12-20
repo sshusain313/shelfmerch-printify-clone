@@ -7,146 +7,58 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { FileText, Download, CheckCircle, XCircle, Clock } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
-
-interface InvoiceItem {
-  productId: string;
-  productName: string;
-  quantity: number;
-  price: number;
-  total: number;
-}
-
-interface Invoice {
-  id: string;
-  orderId: string;
-  buyerId: string;
-  sellerId: string;
-  items: InvoiceItem[];
-  subtotal: number;
-  tax: number;
-  total: number;
-  status: 'pending' | 'paid' | 'unpaid' | 'cancelled';
-  createdAt: string;
-  pdfUrl?: string;
-}
+import { FileText, Download, CheckCircle, Clock, ExternalLink } from 'lucide-react';
+import { invoiceApi } from '@/lib/api';
+import { Link } from 'react-router-dom';
 
 export const InvoiceManagement = () => {
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+  const [invoices, setInvoices] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [selectedInvoice, setSelectedInvoice] = useState<any | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
-  const { toast } = useToast();
 
   useEffect(() => {
-    // Load mock invoices
-    const mockInvoices: Invoice[] = [
-      {
-        id: 'INV-001',
-        orderId: 'ORD-1234',
-        buyerId: 'user1',
-        sellerId: 'seller1',
-        items: [
-          { productId: 'p1', productName: 'Custom T-Shirt', quantity: 2, price: 29.99, total: 59.98 },
-          { productId: 'p2', productName: 'Canvas Print', quantity: 1, price: 49.99, total: 49.99 },
-        ],
-        subtotal: 109.97,
-        tax: 10.99,
-        total: 120.96,
-        status: 'paid',
-        createdAt: new Date().toISOString(),
-      },
-      {
-        id: 'INV-002',
-        orderId: 'ORD-1235',
-        buyerId: 'user2',
-        sellerId: 'seller1',
-        items: [
-          { productId: 'p3', productName: 'Hoodie', quantity: 1, price: 59.99, total: 59.99 },
-        ],
-        subtotal: 59.99,
-        tax: 6.00,
-        total: 65.99,
-        status: 'pending',
-        createdAt: new Date().toISOString(),
-      },
-      {
-        id: 'INV-003',
-        orderId: 'ORD-1236',
-        buyerId: 'user3',
-        sellerId: 'seller2',
-        items: [
-          { productId: 'p4', productName: 'Mug Set', quantity: 3, price: 19.99, total: 59.97 },
-        ],
-        subtotal: 59.97,
-        tax: 5.99,
-        total: 65.96,
-        status: 'unpaid',
-        createdAt: new Date().toISOString(),
-      },
-    ];
-    setInvoices(mockInvoices);
+    const loadInvoices = async () => {
+      try {
+        setIsLoading(true);
+        const data = await invoiceApi.listAll();
+        setInvoices(data || []);
+      } catch (err) {
+        console.error('Failed to load invoices', err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    loadInvoices();
   }, []);
 
-  const updateInvoiceStatus = async (invoiceId: string, status: Invoice['status']) => {
-    try {
-      // In production, call: PATCH /api/invoices/${invoiceId}
-      setInvoices(prev => prev.map(inv => 
-        inv.id === invoiceId ? { ...inv, status } : inv
-      ));
-
-      toast({
-        title: 'Success',
-        description: `Invoice status updated to ${status}`,
-      });
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'Failed to update invoice status',
-        variant: 'destructive',
-      });
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'paid':
+        return <Badge className="bg-green-500/10 text-green-500 border-green-500/20"><CheckCircle className="h-3 w-3 mr-1" /> Paid</Badge>;
+      case 'pending':
+        return <Badge className="bg-yellow-500/10 text-yellow-500 border-yellow-500/20"><Clock className="h-3 w-3 mr-1" /> Pending</Badge>;
+      default:
+        return <Badge variant="outline">{status}</Badge>;
     }
-  };
-
-  const downloadInvoice = (invoice: Invoice) => {
-    // In production, call: GET /api/invoices/${invoiceId}/download
-    toast({
-      title: 'Download Started',
-      description: `Downloading invoice ${invoice.id}`,
-    });
-  };
-
-  const getStatusBadge = (status: Invoice['status']) => {
-    const variants: Record<Invoice['status'], { variant: any; icon: any }> = {
-      paid: { variant: 'default', icon: CheckCircle },
-      pending: { variant: 'secondary', icon: Clock },
-      unpaid: { variant: 'destructive', icon: XCircle },
-      cancelled: { variant: 'outline', icon: XCircle },
-    };
-
-    const { variant, icon: Icon } = variants[status];
-    return (
-      <Badge variant={variant} className="flex items-center gap-1">
-        <Icon className="h-3 w-3" />
-        {status}
-      </Badge>
-    );
   };
 
   const filteredInvoices = invoices.filter(inv => {
     const matchesStatus = filterStatus === 'all' || inv.status === filterStatus;
-    const matchesSearch = inv.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         inv.orderId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         inv.buyerId.toLowerCase().includes(searchTerm.toLowerCase());
-    return matchesStatus && matchesSearch;
+    const invNum = inv.invoiceNumber || '';
+    const merchantEmail = inv.merchantId?.email || '';
+    return matchesStatus && (
+      invNum.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      merchantEmail.toLowerCase().includes(searchTerm.toLowerCase())
+    );
   });
 
   const stats = {
     total: invoices.length,
     paid: invoices.filter(i => i.status === 'paid').length,
     pending: invoices.filter(i => i.status === 'pending').length,
-    totalRevenue: invoices.filter(i => i.status === 'paid').reduce((sum, i) => sum + i.total, 0),
+    totalRevenue: invoices.reduce((sum, i) => sum + (i.totalAmount || 0), 0),
   };
 
   return (
@@ -154,7 +66,7 @@ export const InvoiceManagement = () => {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <FileText className="h-6 w-6 text-primary" />
-          <h2 className="text-2xl font-bold">Invoice Management</h2>
+          <h2 className="text-2xl font-bold">Fulfillment Invoices</h2>
         </div>
       </div>
 
@@ -188,11 +100,11 @@ export const InvoiceManagement = () => {
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
+            <CardTitle className="text-sm font-medium">Platform Revenue</CardTitle>
             <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">${stats.totalRevenue.toFixed(2)}</div>
+            <div className="text-2xl font-bold">₹{stats.totalRevenue.toFixed(2)}</div>
           </CardContent>
         </Card>
       </div>
@@ -203,21 +115,19 @@ export const InvoiceManagement = () => {
             <CardTitle>All Invoices</CardTitle>
             <div className="flex gap-2">
               <Input
-                placeholder="Search invoices..."
+                placeholder="Search by invoice # or merchant..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-64"
               />
               <Select value={filterStatus} onValueChange={setFilterStatus}>
                 <SelectTrigger className="w-40">
-                  <SelectValue placeholder="Filter by status" />
+                  <SelectValue placeholder="Status" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Status</SelectItem>
                   <SelectItem value="paid">Paid</SelectItem>
                   <SelectItem value="pending">Pending</SelectItem>
-                  <SelectItem value="unpaid">Unpaid</SelectItem>
-                  <SelectItem value="cancelled">Cancelled</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -227,116 +137,130 @@ export const InvoiceManagement = () => {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Invoice ID</TableHead>
-                <TableHead>Order ID</TableHead>
-                <TableHead>Buyer</TableHead>
-                <TableHead>Total</TableHead>
+                <TableHead>Invoice #</TableHead>
+                <TableHead>Merchant</TableHead>
+                <TableHead>Store</TableHead>
+                <TableHead>Amount</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Date</TableHead>
-                <TableHead>Actions</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredInvoices.map((invoice) => (
-                <TableRow key={invoice.id}>
-                  <TableCell className="font-medium">{invoice.id}</TableCell>
-                  <TableCell>{invoice.orderId}</TableCell>
-                  <TableCell>{invoice.buyerId}</TableCell>
-                  <TableCell>${invoice.total.toFixed(2)}</TableCell>
-                  <TableCell>{getStatusBadge(invoice.status)}</TableCell>
-                  <TableCell>{new Date(invoice.createdAt).toLocaleDateString()}</TableCell>
-                  <TableCell>
-                    <div className="flex gap-2">
+              {isLoading ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground italic">
+                    Loading invoices...
+                  </TableCell>
+                </TableRow>
+              ) : filteredInvoices.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground italic">
+                    No invoices found.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filteredInvoices.map((invoice) => (
+                  <TableRow key={invoice._id}>
+                    <TableCell className="font-bold">{invoice.invoiceNumber}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-col">
+                        <span className="text-sm font-medium">{invoice.merchantId?.name || 'User'}</span>
+                        <span className="text-xs text-muted-foreground">{invoice.merchantId?.email}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell>{invoice.storeId?.storeName || 'N/A'}</TableCell>
+                    <TableCell className="font-semibold">₹{invoice.totalAmount?.toFixed(2)}</TableCell>
+                    <TableCell>{getStatusBadge(invoice.status)}</TableCell>
+                    <TableCell className="text-muted-foreground italic text-xs">
+                      {new Date(invoice.createdAt).toLocaleDateString()}
+                    </TableCell>
+                    <TableCell className="text-right">
                       <Dialog>
                         <DialogTrigger asChild>
-                          <Button 
-                            variant="ghost" 
-                            size="sm"
-                            onClick={() => setSelectedInvoice(invoice)}
-                          >
+                          <Button variant="outline" size="sm" onClick={() => setSelectedInvoice(invoice)}>
                             View
                           </Button>
                         </DialogTrigger>
-                        <DialogContent className="max-w-3xl">
+                        <DialogContent className="max-w-2xl">
                           <DialogHeader>
-                            <DialogTitle>Invoice Details - {selectedInvoice?.id}</DialogTitle>
+                            <DialogTitle>Invoice Details - {selectedInvoice?.invoiceNumber}</DialogTitle>
                           </DialogHeader>
                           {selectedInvoice && (
-                            <div className="space-y-4">
-                              <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-6">
+                              <div className="grid grid-cols-2 gap-6 bg-muted/30 p-4 rounded-lg">
                                 <div>
-                                  <Label>Order ID</Label>
-                                  <p className="font-medium">{selectedInvoice.orderId}</p>
+                                  <Label className="text-xs text-muted-foreground uppercase">Merchant</Label>
+                                  <p className="font-semibold">{selectedInvoice.merchantId?.name}</p>
+                                  <p className="text-sm text-muted-foreground">{selectedInvoice.merchantId?.email}</p>
                                 </div>
                                 <div>
-                                  <Label>Status</Label>
+                                  <Label className="text-xs text-muted-foreground uppercase">Store/Order</Label>
+                                  <p className="font-semibold">{selectedInvoice.storeId?.storeName}</p>
+                                  {selectedInvoice.orderId && (
+                                    <Link to={`/admin/orders/${selectedInvoice.orderId?._id}`} className="text-sm text-primary hover:underline flex items-center gap-1">
+                                      Order #{selectedInvoice.orderId?.orderNumber || selectedInvoice.orderId?._id?.slice(-6)}
+                                      <ExternalLink className="h-3 w-3" />
+                                    </Link>
+                                  )}
+                                </div>
+                                <div>
+                                  <Label className="text-xs text-muted-foreground uppercase">Status</Label>
                                   <div className="mt-1">{getStatusBadge(selectedInvoice.status)}</div>
                                 </div>
                                 <div>
-                                  <Label>Buyer</Label>
-                                  <p>{selectedInvoice.buyerId}</p>
-                                </div>
-                                <div>
-                                  <Label>Seller</Label>
-                                  <p>{selectedInvoice.sellerId}</p>
+                                  <Label className="text-xs text-muted-foreground uppercase">Date Generated</Label>
+                                  <p className="font-medium mt-1">{new Date(selectedInvoice.createdAt).toLocaleString()}</p>
                                 </div>
                               </div>
-                              
+
                               <div>
-                                <Label>Items</Label>
-                                <Table>
-                                  <TableHeader>
-                                    <TableRow>
-                                      <TableHead>Product</TableHead>
-                                      <TableHead>Qty</TableHead>
-                                      <TableHead>Price</TableHead>
-                                      <TableHead>Total</TableHead>
-                                    </TableRow>
-                                  </TableHeader>
-                                  <TableBody>
-                                    {selectedInvoice.items.map((item, idx) => (
-                                      <TableRow key={idx}>
-                                        <TableCell>{item.productName}</TableCell>
-                                        <TableCell>{item.quantity}</TableCell>
-                                        <TableCell>${item.price}</TableCell>
-                                        <TableCell>${item.total}</TableCell>
+                                <Label className="text-sm font-bold mb-2 block">Line Items</Label>
+                                <div className="border rounded-md overflow-hidden text-sm">
+                                  <Table>
+                                    <TableHeader className="bg-muted/50">
+                                      <TableRow>
+                                        <TableHead>Product</TableHead>
+                                        <TableHead className="text-center">Qty</TableHead>
+                                        <TableHead className="text-right">Base Price</TableHead>
+                                        <TableHead className="text-right">Total</TableHead>
                                       </TableRow>
-                                    ))}
-                                  </TableBody>
-                                </Table>
+                                    </TableHeader>
+                                    <TableBody>
+                                      {selectedInvoice.items?.map((item: any, idx: number) => (
+                                        <tr key={idx} className="border-b last:border-0 h-10 px-4">
+                                          <td className="px-4 font-medium">{item.productName}</td>
+                                          <td className="px-4 text-center">{item.quantity}</td>
+                                          <td className="px-4 text-right">₹{item.productionCost?.toFixed(2)}</td>
+                                          <td className="px-4 text-right font-semibold">₹{(item.productionCost * item.quantity).toFixed(2)}</td>
+                                        </tr>
+                                      ))}
+                                    </TableBody>
+                                  </Table>
+                                </div>
                               </div>
 
-                              <div className="border-t pt-4 space-y-2">
-                                <div className="flex justify-between">
-                                  <span>Subtotal:</span>
-                                  <span>${selectedInvoice.subtotal.toFixed(2)}</span>
+                              <div className="flex flex-col items-end gap-1.5 pt-4 border-t">
+                                <div className="flex justify-between w-full max-w-[200px] text-sm">
+                                  <span>Production:</span>
+                                  <span>₹{selectedInvoice.productionCost?.toFixed(2)}</span>
                                 </div>
-                                <div className="flex justify-between">
+                                <div className="flex justify-between w-full max-w-[200px] text-sm">
+                                  <span>Shipping:</span>
+                                  <span>₹{selectedInvoice.shippingCost?.toFixed(2)}</span>
+                                </div>
+                                <div className="flex justify-between w-full max-w-[200px] text-sm">
                                   <span>Tax:</span>
-                                  <span>${selectedInvoice.tax.toFixed(2)}</span>
+                                  <span>₹{selectedInvoice.tax?.toFixed(2)}</span>
                                 </div>
-                                <div className="flex justify-between font-bold text-lg">
+                                <div className="flex justify-between w-full max-w-[200px] font-bold text-lg text-primary border-t pt-2 mt-2">
                                   <span>Total:</span>
-                                  <span>${selectedInvoice.total.toFixed(2)}</span>
+                                  <span>₹{selectedInvoice.totalAmount?.toFixed(2)}</span>
                                 </div>
                               </div>
 
-                              <div className="flex gap-2">
-                                <Select 
-                                  value={selectedInvoice.status}
-                                  onValueChange={(value) => updateInvoiceStatus(selectedInvoice.id, value as Invoice['status'])}
-                                >
-                                  <SelectTrigger>
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="paid">Paid</SelectItem>
-                                    <SelectItem value="pending">Pending</SelectItem>
-                                    <SelectItem value="unpaid">Unpaid</SelectItem>
-                                    <SelectItem value="cancelled">Cancelled</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                                <Button onClick={() => downloadInvoice(selectedInvoice)}>
+                              <div className="flex justify-end gap-3 pt-4 border-t">
+                                <Button variant="outline" size="sm">
                                   <Download className="h-4 w-4 mr-2" />
                                   Download PDF
                                 </Button>
@@ -345,17 +269,10 @@ export const InvoiceManagement = () => {
                           )}
                         </DialogContent>
                       </Dialog>
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        onClick={() => downloadInvoice(invoice)}
-                      >
-                        <Download className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
             </TableBody>
           </Table>
         </CardContent>

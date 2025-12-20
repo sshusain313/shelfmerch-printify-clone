@@ -246,6 +246,18 @@ export const storeOrdersApi = {
   },
 };
 
+// Store customers API (merchant dashboard)
+export const storeCustomersApi = {
+  // List customers for a specific store
+  listByStore: async (storeId: string) => {
+    return apiRequest<any>(`/store-customers/store/${encodeURIComponent(storeId)}`);
+  },
+  // Get single customer by id
+  getById: async (id: string) => {
+    return apiRequest<any>(`/store-customers/${encodeURIComponent(id)}`);
+  },
+};
+
 // Storefront Checkout API (uses store-customer token, not merchant token)
 export const checkoutApi = {
   // Place an order for a public store by subdomain
@@ -279,6 +291,113 @@ export const checkoutApi = {
     }
 
     return data as { success: boolean; data: any; message?: string };
+  },
+
+  // Create Razorpay order
+  createRazorpayOrder: async (
+    subdomain: string,
+    payload: { cart: any[]; shippingInfo: any; shipping?: number; tax?: number }
+  ) => {
+    const storeTokenKey = `store_token_${subdomain}`;
+    const storeToken = localStorage.getItem(storeTokenKey);
+
+    const response = await fetch(
+      `${API_BASE_URL}/store-checkout/${encodeURIComponent(subdomain)}/razorpay/create-order`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(storeToken ? { Authorization: `Bearer ${storeToken}` } : {}),
+        },
+        credentials: 'include',
+        body: JSON.stringify(payload),
+      }
+    );
+
+    const data = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      return (data || {
+        success: false,
+        message: 'Failed to create Razorpay order',
+      }) as { success: boolean; data?: { razorpayOrder?: any }; message?: string };
+    }
+
+    return data as { success: boolean; data?: { razorpayOrder?: any; razorpayKeyId?: string }; message?: string };
+  },
+
+  // Verify Razorpay payment and create order
+  verifyRazorpayPayment: async (
+    subdomain: string,
+    payload: {
+      cart: any[];
+      shippingInfo: any;
+      razorpay_order_id: string;
+      razorpay_payment_id: string;
+      razorpay_signature: string;
+      shipping?: number;
+      tax?: number;
+    }
+  ) => {
+    const storeTokenKey = `store_token_${subdomain}`;
+    const storeToken = localStorage.getItem(storeTokenKey);
+
+    const response = await fetch(
+      `${API_BASE_URL}/store-checkout/${encodeURIComponent(subdomain)}/razorpay/verify-payment`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(storeToken ? { Authorization: `Bearer ${storeToken}` } : {}),
+        },
+        credentials: 'include',
+        body: JSON.stringify(payload),
+      }
+    );
+
+    const data = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      return (data || {
+        success: false,
+        message: 'Failed to verify payment',
+      }) as { success: boolean; data?: any; message?: string };
+    }
+
+    return data as { success: boolean; data?: any; message?: string };
+  },
+};
+
+// Shipping API
+export const shippingApi = {
+  getQuote: async (destPincode: string, weightGrams: number) => {
+    return apiRequest<any>('/shipping-quote', {
+      method: 'POST',
+      body: JSON.stringify({ destPincode, weightGrams }),
+    });
+  },
+};
+
+// Fulfillment Invoices API
+export const invoiceApi = {
+  // Get all invoices for logged in merchant
+  listForMerchant: async () => {
+    return apiRequest<any[]>('/invoices');
+  },
+  // Get all invoices for super admin
+  listAll: async () => {
+    return apiRequest<any[]>('/invoices/all');
+  },
+  // Get single invoice by ID
+  getById: async (id: string) => {
+    return apiRequest<any>(`/invoices/${encodeURIComponent(id)}`);
+  },
+  // Pay invoice
+  pay: async (id: string, paymentDetails: { transactionId?: string; method?: string }) => {
+    return apiRequest<any>(`/invoices/${encodeURIComponent(id)}/pay`, {
+      method: 'POST',
+      body: JSON.stringify(paymentDetails),
+    });
   },
 };
 
@@ -1128,6 +1247,44 @@ export const storeApi = {
 
     const json = await response.json();
     return json as { success: boolean; data: any | null };
+  },
+  // Update basic store settings
+  update: async (
+    storeId: string,
+    data: {
+      description?: string;
+      theme?: string;
+      settings?: {
+        currency?: string;
+        timezone?: string;
+        logoUrl?: string;
+        primaryColor?: string;
+      };
+    }
+  ) => {
+    const token = getToken();
+
+    const response = await fetch(`${API_BASE_URL}/stores/${storeId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      credentials: 'include',
+      body: JSON.stringify(data),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new ApiError(
+        errorData.message || 'Failed to update store',
+        response.status,
+        errorData.errors
+      );
+    }
+
+    const json = await response.json();
+    return json as { success: boolean; message: string; data: any };
   },
 };
 

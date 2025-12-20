@@ -1,25 +1,20 @@
 import { Link, useNavigate } from 'react-router-dom';
-import { useAuth } from '@/contexts/AuthContext';
+import { useStore } from '@/contexts/StoreContext';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import {
   Package,
-  Store,
-  TrendingUp,
+  Plus,
   DollarSign,
   ShoppingBag,
-  Users,
-  Settings,
-  LogOut,
-  Plus
+  TrendingUp,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Product } from '@/types';
-import { storeProductsApi, storeApi } from '@/lib/api';
+import { storeProductsApi } from '@/lib/api';
 import { storeOrdersApi } from '@/lib/api';
 import { getProducts } from '@/lib/localStorage';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ExternalLink, Pencil, Trash2 } from 'lucide-react';
 import { Order } from '@/types';
 import {
   Dialog,
@@ -28,10 +23,13 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog"
+} from "@/components/ui/dialog";
+import { Badge } from '@/components/ui/badge';
+import { toast } from 'sonner';
+import DashboardLayout from '@/components/layout/DashboardLayout';
 
 const Dashboard = () => {
-  const { user, logout, isAdmin } = useAuth();
+  const { selectedStore, stores } = useStore();
   const navigate = useNavigate();
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
@@ -42,23 +40,15 @@ const Dashboard = () => {
   const [spLoading, setSpLoading] = useState(false);
   const [spFilter, setSpFilter] = useState<{ status?: 'draft' | 'published'; isActive?: boolean }>({});
 
-  // Store selection state
-  const [stores, setStores] = useState<any[]>([]);
   const [publishDialogOpen, setPublishDialogOpen] = useState(false);
   const [productToPublish, setProductToPublish] = useState<any>(null);
   const [targetStoreIds, setTargetStoreIds] = useState<string[]>([]);
 
-  const storageKey = useMemo(() => (user?.id ? `products_${user.id}` : null), [user?.id]);
+  const storageKey = useMemo(() => `products_storage`, []);
 
   useEffect(() => {
-    if (!user?.id) {
-      setProducts([]);
-      setSelectedProducts([]);
-      return;
-    }
-
     const loadProducts = () => {
-      const loadedProducts = getProducts(user.id);
+      const loadedProducts = getProducts('default');
       setProducts(loadedProducts);
       if (storageKey) {
         const raw = localStorage.getItem(storageKey) || '';
@@ -89,19 +79,26 @@ const Dashboard = () => {
       window.removeEventListener('shelfmerch-data-update', handleUpdate);
       window.removeEventListener('storage', handleStorage);
     };
-  }, [user?.id, storageKey]);
+  }, [storageKey]);
 
-  // Load Store Products from backend
+  // Load Store Products from backend - filtered by selected store
   useEffect(() => {
     const loadSP = async () => {
-      if (!user?.id) {
-        setStoreProducts([]);
-        return;
-      }
       try {
         setSpLoading(true);
         const resp = await storeProductsApi.list(spFilter);
-        if (resp.success) setStoreProducts(resp.data || []);
+        if (resp.success) {
+          let products = resp.data || [];
+          // Filter by selected store if one is selected
+          if (selectedStore) {
+            const storeId = selectedStore.id || selectedStore._id;
+            products = products.filter((sp: any) => {
+              const spStoreId = sp.storeId?._id?.toString() || sp.storeId?.toString() || sp.storeId;
+              return spStoreId === storeId || spStoreId === selectedStore._id || spStoreId === selectedStore.id;
+            });
+          }
+          setStoreProducts(products);
+        }
       } catch (e) {
         console.error('Failed to load store products', e);
       } finally {
@@ -109,9 +106,9 @@ const Dashboard = () => {
       }
     };
     loadSP();
-  }, [user?.id, spFilter]);
+  }, [spFilter, selectedStore]);
 
-  // Load Orders from backend
+  // Load Orders from backend - filtered by selected store
   useEffect(() => {
     let isMounted = true;
 
@@ -120,7 +117,16 @@ const Dashboard = () => {
         setSpLoading(true);
         const data = await storeOrdersApi.listForMerchant();
         if (isMounted) {
-          setOrders(data);
+          // Filter orders by selected store if one is selected
+          let filteredOrders = data || [];
+          if (selectedStore) {
+            const storeId = selectedStore.id || selectedStore._id;
+            filteredOrders = data.filter((order: Order) => {
+              const orderStoreId = order.storeId?.toString();
+              return orderStoreId === storeId || orderStoreId === selectedStore._id || orderStoreId === selectedStore.id;
+            });
+          }
+          setOrders(filteredOrders);
         }
       } catch (err: any) {
         if (isMounted) {
@@ -138,16 +144,9 @@ const Dashboard = () => {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [selectedStore]);
 
-  // Load Stores
-  useEffect(() => {
-    if (user?.id) {
-      storeApi.listMyStores().then(resp => {
-        if (resp.success) setStores(resp.data);
-      }).catch(console.error);
-    }
-  }, [user?.id]);
+  // Note: StoreContext automatically refreshes stores when user changes, no need to call refreshStores here
 
   const updateStoreProduct = async (id: string, updates: any) => {
     try {
@@ -164,13 +163,18 @@ const Dashboard = () => {
     // If multiple stores, allow choice
     if (stores.length > 1) {
       setProductToPublish(sp);
-      // Default to current store if available, or first store
-      const currentStoreId = sp.storeId || stores[0]?._id;
-      setTargetStoreIds([currentStoreId]);
+      // Default to selected store if available, or the product's store, or first store
+      const currentStoreId = selectedStore?.id || selectedStore?._id ||
+        sp.storeId?._id?.toString() || sp.storeId?.toString() ||
+        stores[0]?.id || stores[0]?._id;
+      setTargetStoreIds(currentStoreId ? [currentStoreId] : []);
       setPublishDialogOpen(true);
-    } else {
+    } else if (stores.length === 1) {
       // Just one store, proceed as before
       updateStoreProduct(sp._id, { status: 'published' });
+    } else {
+      // No stores available
+      toast.error('Please create a store first');
     }
   };
 
@@ -268,84 +272,27 @@ const Dashboard = () => {
   const stats = [
     { label: 'Total Orders', value: `${orders.length}`, icon: ShoppingBag, color: 'text-primary' },
     { label: 'Products', value: `${storeProducts.length}`, icon: Package, color: 'text-blue-500' },
-    { label: 'Revenue', value: '$0', icon: DollarSign, color: 'text-green-500' },
+    {
+      label: 'Revenue',
+      value: `$${orders.reduce((sum, order) => sum + (order.total || 0), 0).toFixed(2)}`,
+      icon: DollarSign,
+      color: 'text-green-500',
+    },
     { label: 'Profit', value: '$0', icon: TrendingUp, color: 'text-purple-500' },
   ];
 
   return (
+    <DashboardLayout >
     <div className="min-h-screen bg-background">
-      {/* Sidebar */}
-      <aside className="fixed left-0 top-0 h-full w-64 border-r bg-card p-6">
-        <Link to="/" className="flex items-center space-x-2 mb-8">
-          <span className="font-heading text-xl font-bold text-foreground">
-            Shelf<span className="text-primary">Merch</span>
-          </span>
-        </Link>
-
-        <nav className="space-y-2">
-          <Button variant="ghost" className="w-full justify-start">
-            <Package className="mr-2 h-4 w-4" />
-            My Products
-          </Button>
-          <Button variant="ghost" className="w-full justify-start" asChild>
-            <Link to="/orders">
-              <ShoppingBag className="mr-2 h-4 w-4" />
-              Orders
-            </Link>
-          </Button>
-          <Button variant="ghost" className="w-full justify-start" asChild>
-            <Link to="/stores">
-              <Store className="mr-2 h-4 w-4" />
-              My Stores
-            </Link>
-          </Button>
-          <Button variant="ghost" className="w-full justify-start" asChild>
-            <Link to="/analytics">
-              <TrendingUp className="mr-2 h-4 w-4" />
-              Analytics
-            </Link>
-          </Button>
-          {isAdmin && (
-            <Button variant="ghost" className="w-full justify-start" asChild>
-              <Link to="/admin">
-                <Users className="mr-2 h-4 w-4" />
-                Admin Panel
-              </Link>
-            </Button>
-          )}
-
-          <Button variant="ghost" className="w-full justify-start" asChild>
-            <Link to="/settings">
-              <Settings className="mr-2 h-4 w-4" />
-              Settings
-            </Link>
-          </Button>
-        </nav>
-
-        <div className="absolute bottom-6 left-6 right-6">
-          <div className="border-t pt-4 space-y-2">
-            <p className="text-sm text-muted-foreground">Signed in as</p>
-            <p className="text-sm font-medium">{user?.email}</p>
-            <Button
-              variant="ghost"
-              className="w-full justify-start text-destructive hover:text-destructive"
-              onClick={logout}
-            >
-              <LogOut className="mr-2 h-4 w-4" />
-              Log out
-            </Button>
-          </div>
-        </div>
-      </aside>
-
-      {/* Main Content */}
-      <main className="ml-64 p-8">
-        <div className="max-w-7xl mx-auto">
           <div className="flex items-center justify-between mb-8">
-            <div>
-              <h1 className="text-3xl font-bold">Welcome back, {user?.name}!</h1>
-              <p className="text-muted-foreground mt-1">
-                Here's what's happening with your store today.
+            <div className="flex-1">
+              <div className="flex items-center gap-4 mb-2">
+                <h1 className="text-3xl font-bold">Welcome back!</h1>
+              </div>
+              <p className="text-muted-foreground">
+                {selectedStore
+                  ? `Here's what's happening with ${selectedStore.storeName} today.`
+                  : "Select a store from the sidebar to view its dashboard."}
               </p>
             </div>
             <Link to="/products">
@@ -357,22 +304,36 @@ const Dashboard = () => {
           </div>
 
           {/* Stats Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            {stats.map((stat) => (
-              <Card key={stat.label} className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground mb-1">{stat.label}</p>
-                    <p className="text-3xl font-bold">{stat.value}</p>
+          {selectedStore && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+              {stats.map((stat) => (
+                <Card key={stat.label} className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-muted-foreground mb-1">{stat.label}</p>
+                      <p className="text-3xl font-bold">{stat.value}</p>
+                    </div>
+                    <stat.icon className={`h-8 w-8 ${stat.color}`} />
                   </div>
-                  <stat.icon className={`h-8 w-8 ${stat.color}`} />
-                </div>
-              </Card>
-            ))}
-          </div>
+                </Card>
+              ))}
+            </div>
+          )}
+
+
+          {/* No Stores Message */}
+          {!selectedStore && (
+            <Card className="p-12 text-center mb-8">
+              <Package className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
+              <h2 className="text-2xl font-bold mb-2">No Store Selected</h2>
+              <p className="text-muted-foreground mb-6">
+                Select a store from the sidebar to view its dashboard.
+              </p>
+            </Card>
+          )}
 
           {/* Products Display (Store Products from backend) */}
-          {storeProducts.length > 0 ? (
+          {selectedStore && storeProducts.length > 0 ? (
             <Card className="p-0 overflow-hidden">
               <div className="px-6 pt-6 pb-4 flex flex-col gap-2">
                 <h2 className="text-xl font-bold">Your Products</h2>
@@ -482,7 +443,7 @@ const Dashboard = () => {
                 </div>
               )}
             </Card>
-          ) : (
+          ) : selectedStore ? (
             <Card className="p-12 text-center">
               <Package className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
               <h2 className="text-2xl font-bold mb-2">No products yet</h2>
@@ -495,7 +456,7 @@ const Dashboard = () => {
                 </Button>
               </Link>
             </Card>
-          )}
+          ) : null}
 
           {/* Publish Dialog */}
           <Dialog open={publishDialogOpen} onOpenChange={setPublishDialogOpen}>
@@ -507,26 +468,32 @@ const Dashboard = () => {
                 </DialogDescription>
               </DialogHeader>
               <div className="py-4 space-y-3">
-                {stores.map(store => (
-                  <div key={store._id} className="flex items-center space-x-2">
-                    <Checkbox
-                      id={`store-${store._id}`}
-                      checked={targetStoreIds.includes(store._id)}
-                      onCheckedChange={(checked) => {
-                        setTargetStoreIds(prev => {
-                          if (checked) return [...prev, store._id];
-                          return prev.filter(id => id !== store._id);
-                        });
-                      }}
-                    />
-                    <label
-                      htmlFor={`store-${store._id}`}
-                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                    >
-                      {store.storeName}
-                    </label>
-                  </div>
-                ))}
+                {stores.map(store => {
+                  const storeId = store.id || store._id || '';
+                  return (
+                    <div key={storeId} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`store-${storeId}`}
+                        checked={targetStoreIds.includes(storeId)}
+                        onCheckedChange={(checked) => {
+                          setTargetStoreIds(prev => {
+                            if (checked) return [...prev, storeId];
+                            return prev.filter(id => id !== storeId);
+                          });
+                        }}
+                      />
+                      <label
+                        htmlFor={`store-${storeId}`}
+                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer flex items-center gap-2"
+                      >
+                        <span>{store.storeName}</span>
+                        {selectedStore && (selectedStore.id === storeId || selectedStore._id === storeId) && (
+                          <Badge variant="secondary" className="text-xs">Current</Badge>
+                        )}
+                      </label>
+                    </div>
+                  );
+                })}
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setPublishDialogOpen(false)}>Cancel</Button>
@@ -536,9 +503,8 @@ const Dashboard = () => {
               </DialogFooter>
             </DialogContent>
           </Dialog>
-        </div>
-      </main>
-    </div>
+      </div>
+    </DashboardLayout>
   );
 };
 

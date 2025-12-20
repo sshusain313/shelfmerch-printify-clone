@@ -71,6 +71,16 @@ const StoreOrderSchema = new mongoose.Schema(
         status: String,
       },
     ],
+    // Payment information
+    payment: {
+      method: {
+        type: String,
+        enum: ['razorpay', 'cod', 'other'],
+      },
+      razorpayOrderId: String,
+      razorpayPaymentId: String,
+      razorpaySignature: String,
+    },
   },
   {
     timestamps: true,
