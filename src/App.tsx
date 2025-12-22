@@ -271,9 +271,9 @@ const App = () => (
                 <Route path="/store/:subdomain/auth" element={<StoreAuthProvider><StoreAuthPage /></StoreAuthProvider>} />
                 <Route path="/store/:subdomain/account" element={<StoreAuthProvider><StoreCustomerAccountPage /></StoreAuthProvider>} />
                 <Route path="/store/:subdomain/product/:productId" element={
-                  // <StoreAuthProvider>
+                  <StoreAuthProvider>
                     <StoreProductPage />
-                  // </StoreAuthProvider>
+                  </StoreAuthProvider>
                 } />
                 <Route path="/store/:subdomain/checkout" element={<StoreAuthProvider><StoreCheckoutPage /></StoreAuthProvider>} />
                 <Route path="/order-confirmation" element={<OrderConfirmation />} />
