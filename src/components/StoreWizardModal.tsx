@@ -8,7 +8,7 @@ import { Card } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { Store as StoreIcon, Check, Loader2, Sparkles } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { useData } from '@/contexts\DataContext';
+import { useData } from '@/contexts/DataContext';
 import { Store, StoreTheme } from '@/types';
 import { themes } from '@/lib/themes';
 import { storeApi } from '@/lib/api';

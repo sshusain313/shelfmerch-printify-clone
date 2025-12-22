@@ -30,11 +30,13 @@ const AdminInvoices = () => {
         const loadInvoices = async () => {
             try {
                 setIsLoading(true);
-                const resp = await invoiceApi.listAll();
-                if (resp.success) {
-                    setInvoices(resp.data);
+                const resp = await invoiceApi.listAll() as any;
+                if (resp?.success) {
+                    setInvoices(resp.data || []);
+                } else if (Array.isArray(resp)) {
+                    setInvoices(resp);
                 } else {
-                    setError(resp.message || 'Failed to load invoices');
+                    setError(resp?.message || 'Failed to load invoices');
                 }
             } catch (err: any) {
                 setError(err?.message || 'Failed to load invoices');

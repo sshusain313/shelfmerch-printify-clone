@@ -575,15 +575,6 @@ const AdminProductCreation = () => {
                   physicalHeight={designData.physicalDimensions?.height ?? DEFAULT_PHYSICAL_HEIGHT}
                   physicalLength={designData.physicalDimensions?.length ?? DEFAULT_PHYSICAL_LENGTH}
                   unit="in"
-                  displacementSettings={
-                    designData.displacementSettings || defaultDisplacementSettings
-                  }
-                  onDisplacementSettingsChange={(settings) =>
-                    setDesignData((prev) => ({
-                      ...prev,
-                      displacementSettings: settings,
-                    }))
-                  }
                 />
                 <div className="flex justify-between pt-4">
                   <Button

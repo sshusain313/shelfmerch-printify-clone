@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { Product, Order, Store as StoreType } from '@/types';
+import { Product, Order, Store as StoreType, OrderStatus } from '@/types';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -1428,8 +1428,8 @@ const Admin = () => {
                                   value={currentStatus}
                                   onValueChange={async (value) => {
                                     try {
-                                      const newStatus = value as Order['status'];
-                                      await storeOrdersApi.updateStatus(orderId, newStatus);
+                                      const newStatus = value as OrderStatus;
+                                      await storeOrdersApi.updateStatus(orderId, newStatus as any);
                                       setPlatformOrders((prev) =>
                                         prev.map((o) => {
                                           const oId = (o as any)._id || (o as any).id;

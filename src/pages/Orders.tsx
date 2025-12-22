@@ -114,8 +114,8 @@ const Orders = () => {
                   </thead>
                   <tbody className="divide-y">
                     {orders.map((order) => (
-                      <tr key={order._id || order.id || `order-${Math.random()}`} className="hover:bg-muted/30 transition-colors">
-                        <td className="px-6 py-4 text-sm font-medium">#{order._id || order.id || 'N/A'}</td>
+                      <tr key={(order as any)._id || order.id || `order-${Math.random()}`} className="hover:bg-muted/30 transition-colors">
+                        <td className="px-6 py-4 text-sm font-medium">#{(order as any)._id || order.id || 'N/A'}</td>
                         <td className="px-6 py-4 text-sm">
                           {order.items && order.items.length > 0
                             ? order.items[0].productName || `${order.items.length} items`

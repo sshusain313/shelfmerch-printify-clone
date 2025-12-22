@@ -144,7 +144,7 @@ export default function ManageVariantOptions() {
   // Get subcategories for selected category
   const getSubcategories = (categoryId: string): string[] => {
     const category = Object.values(CATEGORIES).find(cat => cat.id === categoryId);
-    return category?.subcategories || [];
+    return category?.subcategories ? [...category.subcategories] : [];
   };
 
   // Group options by category
