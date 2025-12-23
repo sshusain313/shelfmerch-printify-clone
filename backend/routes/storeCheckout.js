@@ -154,6 +154,10 @@ router.post('/:subdomain', verifyStoreToken, async (req, res) => {
     }
 
     customer.lastSeenAt = new Date();
+    // Update name from shipping info if available
+    if (shippingInfo?.fullName && shippingInfo.fullName.trim()) {
+      customer.name = shippingInfo.fullName.trim();
+    }
     await customer.save();
 
     // 2) Compute totals (mirror frontend for now)

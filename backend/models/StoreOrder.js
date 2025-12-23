@@ -81,6 +81,31 @@ const StoreOrderSchema = new mongoose.Schema(
       razorpayPaymentId: String,
       razorpaySignature: String,
     },
+    // Merchant Fulfillment Payment
+    fulfillmentPayment: {
+      status: {
+        type: String,
+        enum: ['PAYMENT_PENDING', 'PAID', 'FAILED', 'REFUNDED'],
+        default: 'PAYMENT_PENDING'
+      },
+      walletAppliedPaise: {
+        type: Number,
+        default: 0,
+        validate: {
+          validator: Number.isInteger,
+          message: '{VALUE} is not an integer value'
+        }
+      },
+      razorpayOrderId: String,
+      razorpayPaymentId: String,
+      totalAmountPaise: {
+        type: Number,
+        validate: {
+          validator: Number.isInteger,
+          message: '{VALUE} is not an integer value'
+        }
+      }
+    },
   },
   {
     timestamps: true,

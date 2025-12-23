@@ -156,6 +156,8 @@ router.post('/', protect, authorize('superadmin'), async (req, res) => {
       shipping,
       galleryImages: Array.isArray(galleryImages) ? galleryImages : [],
       details: details || {},
+      pricing: pricing || {}, // Preserve pricing object if sent from frontend
+      gst: (pricing && pricing.gst) ? pricing.gst : { slab: 18, mode: 'EXCLUSIVE', hsn: '' },
       createdBy: req.user.id,
       isActive: true,
       isPublished: true // Auto-publish for now (can be changed later)
@@ -588,6 +590,7 @@ router.get('/:id', protect, async (req, res) => {
     });
     productResponse.availableSizes = [...new Set(variants.map(v => v.size))];
     productResponse.availableColors = [...new Set(variants.map(v => v.color))];
+    productResponse.gst = product.gst; // Ensure gst is included
 
     res.json({
       success: true,
@@ -623,6 +626,7 @@ router.put('/:id', protect, authorize('superadmin'), async (req, res) => {
       details,
       design,
       shipping,
+      pricing,
       variants,
       galleryImages,
       isActive,
@@ -643,9 +647,17 @@ router.put('/:id', protect, authorize('superadmin'), async (req, res) => {
     if (details !== undefined) product.details = details;
     if (design) product.design = design;
     if (shipping) product.shipping = shipping;
+    if (pricing) product.pricing = pricing;
     if (galleryImages) product.galleryImages = galleryImages;
     if (isActive !== undefined) product.isActive = isActive;
     if (isPublished !== undefined) product.isPublished = isPublished;
+
+    // Handle GST update if nested in pricing
+    if (pricing && pricing.gst) {
+      product.gst = pricing.gst;
+    } else if (req.body.gst) {
+      product.gst = req.body.gst;
+    }
 
     await product.save();
 
@@ -719,10 +731,18 @@ router.put('/:id', protect, authorize('superadmin'), async (req, res) => {
     });
   } catch (error) {
     console.error('Error updating product:', error);
+    if (error.name === 'ValidationError') {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation Error',
+        errors: Object.values(error.errors).map(err => err.message)
+      });
+    }
     res.status(500).json({
       success: false,
       message: 'Error updating product',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 });
@@ -763,6 +783,50 @@ router.delete('/:id', protect, authorize('superadmin'), async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error deleting product',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+// @route   PATCH /api/products/:id/gst
+// @desc    Update GST configuration specifically
+// @access  Private/Admin
+router.patch('/:id/gst', protect, authorize('superadmin'), async (req, res) => {
+  try {
+    const { slab, mode, hsn } = req.body;
+
+    // Basic validation
+    if (slab !== undefined && ![0, 5, 12, 18].includes(slab)) {
+      return res.status(400).json({ success: false, message: 'Invalid GST slab' });
+    }
+
+    if (mode !== undefined && !['EXCLUSIVE', 'INCLUSIVE'].includes(mode)) {
+      return res.status(400).json({ success: false, message: 'Invalid GST mode' });
+    }
+
+    const product = await CatalogProduct.findById(req.params.id);
+    if (!product) {
+      return res.status(404).json({ success: false, message: 'Product not found' });
+    }
+
+    // Update GST config
+    if (!product.gst) product.gst = {};
+    if (slab !== undefined) product.gst.slab = slab;
+    if (mode !== undefined) product.gst.mode = mode;
+    if (hsn !== undefined) product.gst.hsn = hsn;
+
+    await product.save();
+
+    res.json({
+      success: true,
+      message: 'GST configuration updated successfully',
+      data: product.gst
+    });
+  } catch (error) {
+    console.error('Error updating GST:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error updating GST configuration',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }

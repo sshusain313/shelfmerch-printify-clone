@@ -125,6 +125,8 @@ const Admin = () => {
   const [storesTotal, setStoresTotal] = useState(0);
   const [storesSortBy, setStoresSortBy] = useState('createdAt');
   const [storesSortOrder, setStoresSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [suspendingStoreId, setSuspendingStoreId] = useState<string | null>(null);
+  const [isSuspendingStore, setIsSuspendingStore] = useState(false);
 
   // Admin sees ALL data across platform (stores/products from localStorage snapshot)
   const allStores = JSON.parse(localStorage.getItem('shelfmerch_all_stores') || '[]') as StoreType[];
@@ -135,11 +137,22 @@ const Admin = () => {
   const [isLoadingOrders, setIsLoadingOrders] = useState(false);
   const [ordersError, setOrdersError] = useState<string | null>(null);
 
+  // Platform Statistics
+  const [adminStats, setAdminStats] = useState<{
+    totalRevenue: number;
+    totalOrders: number;
+    deliveredOrders: number;
+    monthlyRevenue: number;
+    monthlyOrders: number;
+    topProducts: any[];
+  } | null>(null);
+  const [isLoadingStats, setIsLoadingStats] = useState(false);
+
   // Derive effective stores list: prefer backend data when available, otherwise fall back to local snapshot
   const effectiveStores: StoreType[] = !error && stores.length > 0 ? stores : allStores;
 
   // Calculate real stats from data
-  const totalRevenue = platformOrders.reduce((sum, order) => sum + (order.total || 0), 0);
+  const totalRevenue = adminStats?.totalRevenue || 0;
   const activeStores = effectiveStores.length;
   const totalProducts = allProducts.length;
   const pendingOrders = platformOrders.filter(o => o.status === 'on-hold').length;
@@ -237,6 +250,27 @@ const Admin = () => {
     };
 
     fetchOrders();
+  }, [user?.role, activeTab]);
+
+  // Fetch admin dashboard statistics
+  useEffect(() => {
+    const fetchAdminStats = async () => {
+      if (user?.role !== 'superadmin' || activeTab !== 'overview') return;
+
+      setIsLoadingStats(true);
+      try {
+        const response = await storeOrdersApi.getAdminStats();
+        if (response.success) {
+          setAdminStats(response.data);
+        }
+      } catch (error) {
+        console.error('Failed to fetch admin stats:', error);
+      } finally {
+        setIsLoadingStats(false);
+      }
+    };
+
+    fetchAdminStats();
   }, [user?.role, activeTab]);
 
   // Filter and sort products
@@ -387,10 +421,40 @@ const Admin = () => {
     }
   }, [activeTab, productsPage, productsSearchQuery, user?.role, fetchProducts]);
 
+  // Handle suspending/unsuspending a store
+  const handleSuspendStore = async () => {
+    if (!suspendingStoreId) return;
+
+    try {
+      setIsSuspendingStore(true);
+      const response = await storeApi.suspend(suspendingStoreId);
+
+      if (response.success) {
+        toast.success(response.message || 'Store status updated successfully');
+        setSuspendingStoreId(null);
+        // Reload stores list
+        const updatedResponse = await storeApi.listAllStores({
+          page: storesPage,
+          limit: storesLimit,
+          search: searchQuery,
+          sortBy: storesSortBy,
+          sortOrder: storesSortOrder
+        });
+        if (updatedResponse.success) {
+          setStores(updatedResponse.data || []);
+        }
+      }
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to update store status');
+    } finally {
+      setIsSuspendingStore(false);
+    }
+  };
+
   const stats = [
     {
       label: 'Monthly Revenue',
-      value: `$${totalRevenue.toLocaleString()}`,
+      value: isLoadingStats ? '...' : `₹${(adminStats?.monthlyRevenue || 0).toLocaleString()}`,
       change: '+23%',
       trend: 'up',
       icon: DollarSign
@@ -411,7 +475,7 @@ const Admin = () => {
     },
     {
       label: 'Orders Delivered',
-      value: platformOrders.filter(o => o.status === 'delivered').length.toString(),
+      value: isLoadingStats ? '...' : (adminStats?.deliveredOrders || 0).toString(),
       change: '+12%',
       trend: 'up',
       icon: Truck
@@ -434,11 +498,13 @@ const Admin = () => {
     { name: 'Others', value: 7, color: 'hsl(var(--muted-foreground))' },
   ];
 
-  const topProducts = allProducts.slice(0, 5).map((p, i) => ({
-    ...p,
-    sales: Math.floor(Math.random() * 500) + 100,
-    revenue: Math.floor(Math.random() * 10000) + 2000,
-  }));
+  const topProducts = adminStats?.topProducts?.map(p => ({
+    id: p._id,
+    name: p.productName,
+    sales: p.salesCount,
+    revenue: p.revenue,
+    imageUrl: '' // We could expand aggregation to get an image if needed
+  })) || [];
 
   const fulfillmentPartners = [
     { id: 2, name: 'EuroFulfill', status: 'active', performance: 95, avgTime: '3.1 days', orders: 892 },
@@ -999,7 +1065,13 @@ const Admin = () => {
                                       <Button variant="ghost" size="sm" asChild>
                                         <Link to={`/store/${store.subdomain}`}>View</Link>
                                       </Button>
-                                      <AlertDialog>
+                                      <AlertDialog open={suspendingStoreId === store.id} onOpenChange={(open) => {
+                                        if (open) {
+                                          setSuspendingStoreId(store.id);
+                                        } else {
+                                          setSuspendingStoreId(null);
+                                        }
+                                      }}>
                                         <AlertDialogTrigger asChild>
                                           <Button variant="ghost" size="sm">
                                             <Ban className="h-4 w-4" />
@@ -1007,14 +1079,19 @@ const Admin = () => {
                                         </AlertDialogTrigger>
                                         <AlertDialogContent>
                                           <AlertDialogHeader>
-                                            <AlertDialogTitle>Suspend Store?</AlertDialogTitle>
+                                            <AlertDialogTitle>{store.isActive ? 'Suspend Store?' : 'Reactivate Store?'}</AlertDialogTitle>
                                             <AlertDialogDescription>
-                                              This will temporarily disable the store and prevent new orders.
+                                              {store.isActive
+                                                ? 'This will temporarily disable the store and prevent new orders.'
+                                                : 'This will reactivate the store and allow new orders.'
+                                              }
                                             </AlertDialogDescription>
                                           </AlertDialogHeader>
                                           <AlertDialogFooter>
                                             <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                            <AlertDialogAction>Suspend</AlertDialogAction>
+                                            <AlertDialogAction onClick={handleSuspendStore} disabled={isSuspendingStore}>
+                                              {isSuspendingStore ? 'Processing...' : (store.isActive ? 'Suspend' : 'Reactivate')}
+                                            </AlertDialogAction>
                                           </AlertDialogFooter>
                                         </AlertDialogContent>
                                       </AlertDialog>

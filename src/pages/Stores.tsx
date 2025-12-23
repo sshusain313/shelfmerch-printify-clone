@@ -1,5 +1,6 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { getStoreUrl } from '@/utils/storeUrl';
 import { Card } from '@/components/ui/card';
@@ -9,21 +10,25 @@ import { storeApi, storeProductsApi } from '@/lib/api';
 import type { Store as StoreType } from '@/types';
 import { toast } from 'sonner';
 import {
+  Package,
   Store,
+  TrendingUp,
+  ShoppingBag,
+  Users,
+  Settings,
+  LogOut,
   Plus,
   ArrowRight,
   ExternalLink,
+  Info,
   Paintbrush,
   CheckCircle2,
   Loader2,
-  ShoppingBag,
-  Settings,
 } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import DashboardLayout from '@/components/layout/DashboardLayout';
 
 const ChannelButton = ({ name, icon, isNew }: { name: string; icon?: React.ReactNode; isNew?: boolean }) => (
   <Button variant="outline" className="h-14 justify-start px-4 gap-3 relative hover:border-primary/50 hover:bg-muted/50 transition-all group">
@@ -38,6 +43,7 @@ const ChannelButton = ({ name, icon, isNew }: { name: string; icon?: React.React
 );
 
 const Stores = () => {
+  const { user, logout, isAdmin } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const state = location.state as any; // Product data from listing editor
@@ -165,7 +171,7 @@ const Stores = () => {
 
       const newStore = createResp.data;
       toast.success('Store created successfully!');
-
+      
       // Refresh stores list
       const response = await storeApi.listMyStores();
       if (response.success) {
@@ -185,8 +191,71 @@ const Stores = () => {
   };
 
   return (
-    <DashboardLayout>
-      <div className="max-w-6xl mx-auto space-y-12">
+    <div className="min-h-screen bg-background flex">
+      {/* Sidebar */}
+      <aside className="hidden lg:block w-64 border-r bg-muted/10 p-6 space-y-8 sticky top-0 h-screen overflow-y-auto">
+        <Link to="/" className="flex items-center space-x-2">
+          <span className="font-heading text-xl font-bold text-foreground">
+            Shelf<span className="text-primary">Merch</span>
+          </span>
+        </Link>
+
+        <nav className="space-y-2">
+          <Button variant="ghost" className="w-full justify-start" asChild>
+            <Link to="/dashboard">
+              <Package className="mr-2 h-4 w-4" />
+              My Products
+            </Link>
+          </Button>
+
+          <Button variant="ghost" className="w-full justify-start" asChild>
+            <Link to="/orders">
+              <ShoppingBag className="mr-2 h-4 w-4" />
+              Orders
+            </Link>
+          </Button>
+
+          <Button variant="secondary" className="w-full justify-start">
+            <Store className="mr-2 h-4 w-4" />
+            My Stores
+          </Button>
+
+          <Button variant="ghost" className="w-full justify-start" asChild>
+            <Link to="/analytics">
+              <TrendingUp className="mr-2 h-4 w-4" />
+              Analytics
+            </Link>
+          </Button>
+
+          {isAdmin && (
+            <Button variant="ghost" className="w-full justify-start" asChild>
+              <Link to="/admin">
+                <Users className="mr-2 h-4 w-4" />
+                Admin Panel
+              </Link>
+            </Button>
+          )}
+
+          <Button variant="ghost" className="w-full justify-start" asChild>
+            <Link to="/settings">
+              <Settings className="mr-2 h-4 w-4" />
+              Settings
+            </Link>
+          </Button>
+        </nav>
+
+        <div className="pt-4 border-t">
+          <p className="text-sm text-muted-foreground mb-2 px-2">Signed in as</p>
+          <p className="text-sm font-medium px-2 truncate mb-4">{user?.email}</p>
+          <Button variant="ghost" className="w-full justify-start text-destructive" onClick={logout}>
+            <LogOut className="mr-2 h-4 w-4" /> Log out
+          </Button>
+        </div>
+      </aside>
+
+      {/* Main Content */}
+      <main className="flex-1 p-8 lg:p-12 max-w-[1600px] mx-auto overflow-y-auto">
+        <div className="max-w-6xl mx-auto space-y-12">
 
           {/* My Stores List (if any) */}
           {!loading && (
@@ -198,7 +267,7 @@ const Stores = () => {
                   Create New Store
                 </Button>
               </div>
-
+              
               {stores.length === 0 ? (
                 <Card className="p-12 text-center">
                   <Store className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
@@ -214,52 +283,52 @@ const Stores = () => {
               ) : (
                 <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
                   {stores.map((store) => (
-                    <Card key={store.id} className="p-6 flex flex-col justify-between gap-4 border-l-4 border-l-primary">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <h3 className="font-bold text-lg">{store.storeName}</h3>
-                          <p className="text-sm text-muted-foreground">{store.subdomain}.shelfmerch.com</p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {store.useBuilder && (
-                            <Badge variant="secondary" className="text-xs flex items-center gap-1 bg-green-100 text-green-700 border-green-200">
-                              <CheckCircle2 className="w-3 h-3" />
-                              Builder
-                            </Badge>
-                          )}
-                          <Badge variant="outline" className="text-xs">Active</Badge>
-                        </div>
+                  <Card key={store.id} className="p-6 flex flex-col justify-between gap-4 border-l-4 border-l-primary">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <h3 className="font-bold text-lg">{store.storeName}</h3>
+                        <p className="text-sm text-muted-foreground">{store.subdomain}.shelfmerch.com</p>
                       </div>
+                      <div className="flex items-center gap-2">
+                        {store.useBuilder && (
+                          <Badge variant="secondary" className="text-xs flex items-center gap-1 bg-green-100 text-green-700 border-green-200">
+                            <CheckCircle2 className="w-3 h-3" />
+                            Builder
+                          </Badge>
+                        )}
+                        <Badge variant="outline" className="text-xs">Active</Badge>
+                      </div>
+                    </div>
 
-                      {store.builderLastPublishedAt && (
-                        <p className="text-xs text-muted-foreground">
-                          Last published: {new Date(store.builderLastPublishedAt).toLocaleDateString()}
-                        </p>
-                      )}
+                    {store.builderLastPublishedAt && (
+                      <p className="text-xs text-muted-foreground">
+                        Last published: {new Date(store.builderLastPublishedAt).toLocaleDateString()}
+                      </p>
+                    )}
 
-                      <div className="flex flex-col gap-2 pt-2">
-                        <div className="flex items-center gap-2">
-                          <Button variant="outline" size="sm" className="flex-1" asChild>
-                            <a href={getStoreUrl(store.subdomain)} target="_blank" rel="noreferrer">
-                              <ExternalLink className="w-4 h-4 mr-2" />
-                              Visit Store
-                            </a>
-                          </Button>
-                          <Button variant="default" size="sm" className="flex-1" onClick={() => toast.info('Dashboard coming soon')}>
-                            Dashboard
-                          </Button>
-                        </div>
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          className="w-full"
-                          onClick={() => navigate(`/stores/${store.id}/builder`)}
-                        >
-                          <Paintbrush className="w-4 h-4 mr-2" />
-                          Customize Storefront
+                    <div className="flex flex-col gap-2 pt-2">
+                      <div className="flex items-center gap-2">
+                        <Button variant="outline" size="sm" className="flex-1" asChild>
+                          <a href={getStoreUrl(store.subdomain)} target="_blank" rel="noreferrer">
+                            <ExternalLink className="w-4 h-4 mr-2" />
+                            Visit Store
+                          </a>
+                        </Button>
+                        <Button variant="default" size="sm" className="flex-1" onClick={() => toast.info('Dashboard coming soon')}>
+                          Dashboard
                         </Button>
                       </div>
-                    </Card>
+                      <Button 
+                        variant="secondary" 
+                        size="sm" 
+                        className="w-full"
+                        onClick={() => navigate(`/stores/${store.id}/builder`)}
+                      >
+                        <Paintbrush className="w-4 h-4 mr-2" />
+                        Customize Storefront
+                      </Button>
+                    </div>
+                  </Card>
                   ))}
                 </div>
               )}
@@ -393,6 +462,7 @@ const Stores = () => {
           </div>
 
         </div>
+      </main>
 
       {/* Create Store Dialog */}
       <Dialog open={createStoreDialogOpen} onOpenChange={setCreateStoreDialogOpen}>
@@ -461,7 +531,7 @@ const Stores = () => {
           </div>
         </DialogContent>
       </Dialog>
-    </ DashboardLayout>
+    </div>
   );
 };
 

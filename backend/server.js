@@ -37,6 +37,9 @@ const storeCustomerOrdersRoutes = require('./routes/storeCustomerOrders');
 const storeCustomersRoutes = require('./routes/storeCustomers');
 const shippingQuoteRoutes = require('./routes/shippingQuoteRoutes');
 const invoiceRoutes = require('./routes/invoices');
+const walletRoutes = require('./routes/wallet');
+const adminWalletRoutes = require('./routes/adminWallet');
+const razorpayWebhookRoutes = require('./routes/razorpayWebhook');
 
 // Initialize Express app
 const app = express();
@@ -98,6 +101,10 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false,
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
+
+// Razorpay webhook route - MUST be registered BEFORE express.json() to get raw body
+// The webhook handler has its own express.raw() middleware
+app.use('/api/razorpay', razorpayWebhookRoutes);
 
 // Body parser middleware - Increased limit for base64 images
 app.use(express.json({ limit: '50mb' }));
@@ -167,6 +174,8 @@ app.use('/api/store-customer/orders', storeCustomerOrdersRoutes);
 app.use('/api/store-customers', storeCustomersRoutes);
 app.use('/api/shipping-quote', shippingQuoteRoutes);
 app.use('/api/invoices', invoiceRoutes);
+app.use('/api/wallet', walletRoutes);
+app.use('/api/admin/wallet', adminWalletRoutes);
 
 // 404 handler
 app.use((req, res) => {

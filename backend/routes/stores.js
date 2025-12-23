@@ -310,6 +310,59 @@ router.put('/:id', protect, async (req, res) => {
   }
 });
 
+// @route   PATCH /api/stores/:id/suspend
+// @desc    Suspend or unsuspend a store (toggle isActive)
+// @access  Private (superadmin only)
+router.patch('/:id/suspend', protect, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = req.user;
+
+    // Only superadmin can suspend stores
+    if (user.role !== 'superadmin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized. Superadmin access required.'
+      });
+    }
+
+    if (!id.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid store ID format',
+      });
+    }
+
+    const store = await Store.findById(id);
+
+    if (!store) {
+      return res.status(404).json({
+        success: false,
+        message: 'Store not found',
+      });
+    }
+
+    // Toggle isActive status
+    store.isActive = !store.isActive;
+    await store.save();
+
+    const frontendStore = mapStoreToFrontend(store);
+
+    return res.json({
+      success: true,
+      message: `Store ${store.isActive ? 'reactivated' : 'suspended'} successfully`,
+      data: frontendStore,
+    });
+  } catch (error) {
+    console.error('Error suspending store:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to suspend store',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+    });
+  }
+});
+
 // @route   GET /api/stores
 // @desc    Get all active native stores for the current merchant
 // @access  Private

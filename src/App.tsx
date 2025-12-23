@@ -46,6 +46,7 @@ import PopupStores from "./pages/PopupStores";
 import MerchantInvoices from "./pages/MerchantInvoices";
 import AdminInvoices from "./pages/AdminInvoices";
 import WalletTopUp from "./pages/WalletTopUp";
+import WalletTransactions from "./pages/WalletTransactions";
 
 const queryClient = new QueryClient();
 
@@ -135,6 +136,14 @@ const App = () => (
                   element={
                     <ProtectedRoute>
                       <WalletTopUp />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/wallet/transactions"
+                  element={
+                    <ProtectedRoute>
+                      <WalletTransactions />
                     </ProtectedRoute>
                   }
                 />

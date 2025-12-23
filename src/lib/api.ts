@@ -222,6 +222,20 @@ export const storeProductsApi = {
   },
 };
 
+// Catalog Product Variants API
+export const catalogVariantsApi = {
+  // Get all catalog variants for a specific catalog product
+  listByProduct: async (productId: string) => {
+    return apiRequest<{
+      success: boolean;
+      data: any[];
+      count?: number;
+    }>(`/variants/product/${encodeURIComponent(productId)}`, {
+      method: 'GET',
+    });
+  },
+};
+
 // Store orders API (merchant dashboard)
 export const storeOrdersApi = {
   // List store orders for the current user:
@@ -392,12 +406,196 @@ export const invoiceApi = {
   getById: async (id: string) => {
     return apiRequest<any>(`/invoices/${encodeURIComponent(id)}`);
   },
-  // Pay invoice
+  // Pay invoice (legacy)
   pay: async (id: string, paymentDetails: { transactionId?: string; method?: string }) => {
     return apiRequest<any>(`/invoices/${encodeURIComponent(id)}/pay`, {
       method: 'POST',
       body: JSON.stringify(paymentDetails),
     });
+  },
+  // Pay invoice with wallet (full or partial + Razorpay)
+  payWithWallet: async (id: string, useWallet: boolean = true) => {
+    return apiRequest<{
+      invoiceId: string;
+      status: string;
+      walletDebitedPaise: number;
+      walletDebitedRupees: string;
+      remainingPaise: number;
+      remainingRupees?: string;
+      razorpayOrderId?: string;
+      razorpayKeyId?: string;
+      razorpayAmount?: number;
+      razorpayCurrency?: string;
+    }>(`/invoices/${encodeURIComponent(id)}/pay-with-wallet`, {
+      method: 'POST',
+      body: JSON.stringify({ useWallet }),
+    });
+  },
+};
+
+// Wallet API
+export const walletApi = {
+  // Get current user's wallet balance
+  getBalance: async () => {
+    return apiRequest<{
+      balancePaise: number;
+      balanceRupees: string;
+      currency: string;
+      status: string;
+    }>('/wallet');
+  },
+
+  // Get paginated transaction history
+  getTransactions: async (params?: { limit?: number; cursor?: string; status?: string }) => {
+    const queryParams = new URLSearchParams();
+    if (params?.limit) queryParams.append('limit', params.limit.toString());
+    if (params?.cursor) queryParams.append('cursor', params.cursor);
+    if (params?.status) queryParams.append('status', params.status);
+    const query = queryParams.toString();
+
+    return apiRequest<{
+      data: Array<{
+        id: string;
+        type: string;
+        direction: string;
+        amountPaise: number;
+        amountRupees: string;
+        status: string;
+        source: string;
+        referenceType: string;
+        referenceId: string;
+        description: string;
+        balanceBeforePaise: number;
+        balanceAfterPaise: number;
+        createdAt: string;
+        completedAt: string;
+      }>;
+      pagination: {
+        total: number;
+        hasMore: boolean;
+        nextCursor: string | null;
+      };
+    }>(`/wallet/transactions${query ? `?${query}` : ''}`);
+  },
+
+  // Create Razorpay order for wallet top-up
+  createTopupOrder: async (amountPaise: number) => {
+    return apiRequest<{
+      razorpayOrderId: string;
+      amountPaise: number;
+      currency: string;
+      razorpayKeyId: string;
+      receipt: string;
+    }>('/wallet/topup/create-order', {
+      method: 'POST',
+      body: JSON.stringify({ amountPaise }),
+    });
+  },
+};
+
+// Admin Wallet API
+export const adminWalletApi = {
+  // List all wallets
+  listWallets: async (params?: { search?: string; limit?: number; skip?: number }) => {
+    const queryParams = new URLSearchParams();
+    if (params?.search) queryParams.append('search', params.search);
+    if (params?.limit) queryParams.append('limit', params.limit.toString());
+    if (params?.skip) queryParams.append('skip', params.skip.toString());
+    const query = queryParams.toString();
+
+    return apiRequest<{
+      data: Array<{
+        id: string;
+        userId: string;
+        userEmail: string;
+        userName: string;
+        balancePaise: number;
+        balanceRupees: string;
+        currency: string;
+        status: string;
+        createdAt: string;
+        updatedAt: string;
+      }>;
+      pagination: {
+        total: number;
+        limit: number;
+        skip: number;
+      };
+    }>(`/admin/wallet/wallets${query ? `?${query}` : ''}`);
+  },
+
+  // Get specific user's wallet
+  getWallet: async (userId: string) => {
+    return apiRequest<{
+      userId: string;
+      balancePaise: number;
+      balanceRupees: string;
+      currency: string;
+      status: string;
+    }>(`/admin/wallet/wallets/${encodeURIComponent(userId)}`);
+  },
+
+  // Get user's transaction history
+  getTransactions: async (userId: string, params?: { limit?: number; cursor?: string }) => {
+    const queryParams = new URLSearchParams();
+    if (params?.limit) queryParams.append('limit', params.limit.toString());
+    if (params?.cursor) queryParams.append('cursor', params.cursor);
+    const query = queryParams.toString();
+
+    return apiRequest<{
+      data: Array<{
+        id: string;
+        type: string;
+        direction: string;
+        amountPaise: number;
+        amountRupees: string;
+        status: string;
+        source: string;
+        description: string;
+        adminId?: string;
+        meta?: any;
+        createdAt: string;
+        completedAt: string;
+      }>;
+      pagination: {
+        total: number;
+        hasMore: boolean;
+        nextCursor: string | null;
+      };
+    }>(`/admin/wallet/wallets/${encodeURIComponent(userId)}/transactions${query ? `?${query}` : ''}`);
+  },
+
+  // Adjust wallet balance (credit or debit)
+  adjustBalance: async (data: {
+    userId: string;
+    direction: 'CREDIT' | 'DEBIT';
+    amountPaise: number;
+    reason: string;
+  }) => {
+    return apiRequest<{
+      newBalancePaise: number;
+      newBalanceRupees: string;
+      transactionId: string;
+    }>('/admin/wallet/wallets/adjust', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  // Get wallet statistics
+  getStats: async () => {
+    return apiRequest<{
+      totalWallets: number;
+      activeWallets: number;
+      lockedWallets: number;
+      totalBalancePaise: number;
+      totalBalanceRupees: string;
+      transactionsByType: Record<string, {
+        count: number;
+        totalPaise: number;
+        totalRupees: string;
+      }>;
+    }>('/admin/wallet/stats');
   },
 };
 

@@ -113,20 +113,36 @@ const Dashboard = () => {
     let isMounted = true;
 
     const loadOrders = async () => {
+      if (!selectedStore) {
+        setOrders([]);
+        return;
+      } 
       try {
-        setSpLoading(true);
-        const data = await storeOrdersApi.listForMerchant();
+        setSpLoading(true)
+        const resp = await storeOrdersApi.listForMerchant();
+        const data = (resp as any)?.data || resp || [];
         if (isMounted) {
           // Filter orders by selected store if one is selected
-          let filteredOrders = data || [];
-          if (selectedStore) {
-            const storeId = selectedStore.id || selectedStore._id;
-            filteredOrders = data.filter((order: Order) => {
-              const orderStoreId = order.storeId?.toString();
-              return orderStoreId === storeId || orderStoreId === selectedStore._id || orderStoreId === selectedStore.id;
-            });
-          }
-          setOrders(filteredOrders);
+          // let filteredOrders = data || [];
+          // if (selectedStore) {
+          //   const storeId = selectedStore.id || selectedStore._id;
+          //   filteredOrders = data.filter((order: Order) => {
+          //     const orderStoreId = order.storeId?.toString();
+          //     return orderStoreId === storeId || orderStoreId === selectedStore._id || orderStoreId === selectedStore.id;
+          //   });
+          // }
+          const storeId = (selectedStore as any).id || (selectedStore as any)._id;
+
+          const filtered = (data as any[]).filter((order: any) => {
+            const orderStoreId = order.storeId?._id?.toString() || order.storeId?._id || order.storeId?.toString() || order.storeId;
+            return (
+                orderStoreId === storeId ||
+                orderStoreId === (selectedStore as any)._id ||
+                orderStoreId === (selectedStore as any).id
+            );
+        });
+
+          setOrders(filtered);
         }
       } catch (err: any) {
         if (isMounted) {

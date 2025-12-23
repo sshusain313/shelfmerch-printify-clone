@@ -3,7 +3,7 @@ import { ViewTabs } from './ViewTabs';
 import { CanvasMockup } from './CanvasMockup';
 import { PlaceholderControls } from './PlaceholderControls';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { ViewKey, Placeholder, ViewConfig } from '@/types/product';
+import { ViewKey, Placeholder, ViewConfig, DisplacementSettings } from '@/types/product';
 import { uploadApi } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { computeRefinedPolygonPoints } from '@/lib/polygonRefinement';
@@ -15,6 +15,8 @@ interface ProductImageConfiguratorProps {
   physicalHeight?: number; // Physical height in inches
   physicalLength?: number; // Physical length in inches (for left/right views)
   unit?: 'in' | 'cm'; // Unit for display
+  displacementSettings?: DisplacementSettings;
+  onDisplacementSettingsChange?: (settings: DisplacementSettings) => void;
 }
 
 export const ProductImageConfigurator = ({
@@ -24,6 +26,8 @@ export const ProductImageConfigurator = ({
   physicalHeight,
   physicalLength,
   unit = 'in',
+  displacementSettings,
+  onDisplacementSettingsChange,
 }: ProductImageConfiguratorProps) => {
   const [activeView, setActiveView] = useState<ViewKey>('front');
   const [uploadingViews, setUploadingViews] = useState<Set<ViewKey>>(new Set());
@@ -37,17 +41,17 @@ export const ProductImageConfigurator = ({
 
   const handleImageUpload = useCallback(async (view: ViewKey, file: File) => {
     setUploadingViews(prev => new Set(prev).add(view));
-    
+
     try {
       // Upload to S3
       const s3Url = await uploadApi.uploadImage(file, 'mockups');
-      
+
       const updatedViews = views.map(v =>
         v.key === view
           ? { ...v, mockupImageUrl: s3Url }
           : v
       );
-      
+
       // If view doesn't exist, add it
       if (!views.find(v => v.key === view)) {
         updatedViews.push({
@@ -56,9 +60,9 @@ export const ProductImageConfigurator = ({
           placeholders: [],
         });
       }
-      
+
       onViewsChange(updatedViews);
-      
+
       toast({
         title: 'Upload successful',
         description: `Mockup image for ${view} view uploaded to S3 successfully`,
@@ -96,7 +100,7 @@ export const ProductImageConfigurator = ({
     const isSideView = activeView === 'left' || activeView === 'right';
     const defaultXIn = (isSideView ? (physicalLength || 18) : (physicalWidth || 20)) / 2 - defaultWidthIn / 2;
     const defaultYIn = (physicalHeight || 24) / 2 - defaultHeightIn / 2;
-    
+
     const newPlaceholder: Placeholder = {
       id: `${activeView}-${Date.now()}`,
       xIn: defaultXIn,
@@ -159,11 +163,11 @@ export const ProductImageConfigurator = ({
     const updatedViews = views.map(v =>
       v.key === activeView
         ? {
-            ...v,
-            placeholders: v.placeholders.map(p =>
-              p.id === id ? { ...p, ...updates } : p
-            ),
-          }
+          ...v,
+          placeholders: v.placeholders.map(p =>
+            p.id === id ? { ...p, ...updates } : p
+          ),
+        }
         : v
     );
     onViewsChange(updatedViews);

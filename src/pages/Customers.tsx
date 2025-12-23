@@ -69,7 +69,8 @@ const Customers: React.FC = () => {
         const customerMap = new Map<string, StoreCustomerRow>();
 
         storeOrders.forEach((order: any) => {
-          const email = order.customerEmail || order.shippingInfo?.email || '';
+          const email = order.customerEmail || order.shippingAddress?.email || '';
+          const name = order.shippingAddress?.fullName || order.customerName || '';
           if (!email) return;
 
           const customerId = email.toLowerCase();
@@ -90,7 +91,7 @@ const Customers: React.FC = () => {
             customerMap.set(customerId, {
               id: customerId,
               email: email,
-              name: order.shippingInfo?.name || order.customerName || undefined,
+              name: name,
               createdAt: order.createdAt,
               lastSeenAt: order.createdAt,
               orderCount: 1,

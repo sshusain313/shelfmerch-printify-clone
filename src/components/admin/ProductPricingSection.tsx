@@ -1,70 +1,93 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Button } from '@/components/ui/button';
-import { ProductPricingData, SpecificPrice } from '@/types/product';
+import { Card } from '@/components/ui/card';
+import { ProductPricingData, SpecificPrice, ProductVariant } from '@/types/product';
 import { Separator } from '@/components/ui/separator';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { SpecificPriceModal } from './SpecificPriceModal';
-import { Plus, Trash2, Pencil } from 'lucide-react';
-import { Info } from 'lucide-react';
-import { useEffect } from 'react';
+import { Plus, Trash2, Pencil, Info } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 interface ProductPricingSectionProps {
   data: ProductPricingData;
+  variants: ProductVariant[];
   onChange: (data: ProductPricingData) => void;
 }
 
-// Common tax rules (can be made dynamic later)
-const TAX_RULES = [
-  { id: 'gst-12', name: '12% GST Rate Slab (12%)', rate: 12 },
-  { id: 'gst-18', name: '18% GST Rate Slab (18%)', rate: 18 },
-  { id: 'gst-5', name: '5% GST Rate Slab (5%)', rate: 5 },
-  { id: 'no-tax', name: 'No Tax (0%)', rate: 0 },
-];
+const GST_SLABS = [0, 5, 12, 18] as const;
 
-export const ProductPricingSection = ({ data, onChange }: ProductPricingSectionProps) => {
+export const ProductPricingSection = ({ data, variants, onChange }: ProductPricingSectionProps) => {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingPrice, setEditingPrice] = useState<SpecificPrice | null>(null);
 
-  // Calculate tax-inclusive price when tax-exclusive price or tax rate changes
+  // Initialize GST if not present
   useEffect(() => {
-    if (data.retailPriceTaxExcl > 0 && data.taxRate > 0) {
-      const taxIncl = data.retailPriceTaxExcl * (1 + data.taxRate / 100);
-      if (Math.abs(data.retailPriceTaxIncl - taxIncl) > 0.01) {
-        onChange({ ...data, retailPriceTaxIncl: parseFloat(taxIncl.toFixed(6)) });
-      }
-    } else if (data.retailPriceTaxExcl > 0 && data.retailPriceTaxIncl !== data.retailPriceTaxExcl) {
-      onChange({ ...data, retailPriceTaxIncl: data.retailPriceTaxExcl });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data.retailPriceTaxExcl, data.taxRate]);
-
-
-  const handleTaxRuleChange = (ruleId: string) => {
-    const rule = TAX_RULES.find(r => r.id === ruleId);
-    if (rule) {
+    if (!data.gst) {
       onChange({
         ...data,
-        taxRule: rule.name,
-        taxRate: rule.rate,
+        gst: {
+          slab: 18,
+          mode: 'EXCLUSIVE',
+          hsn: ''
+        }
       });
     }
+  }, [data, onChange]);
+
+  const gstConfig = data.gst || { slab: 18, mode: 'EXCLUSIVE', hsn: '' };
+
+  const pricingSummary = useMemo(() => {
+    if (!variants || variants.length === 0) return null;
+
+    const prices = variants
+      .map((v) => v.price)
+      .filter((p): p is number => p !== undefined && p > 0);
+
+    if (prices.length === 0) return null;
+
+    const minPrice = Math.min(...prices);
+    const maxPrice = Math.max(...prices);
+
+    const calculateFinal = (val: number) => {
+      if (gstConfig.mode === 'EXCLUSIVE') {
+        const gst = val * (gstConfig.slab / 100);
+        return { initial: val, gst, final: val + gst };
+      } else {
+        const base = val / (1 + gstConfig.slab / 100);
+        return { initial: val, gst: val - base, final: val };
+      }
+    };
+
+    return {
+      min: calculateFinal(minPrice),
+      max: calculateFinal(maxPrice),
+      count: variants.length
+    };
+  }, [variants, gstConfig]);
+
+  const handleGstUpdate = (patch: Partial<NonNullable<ProductPricingData['gst']>>) => {
+    onChange({
+      ...data,
+      gst: {
+        ...gstConfig,
+        ...patch
+      }
+    });
   };
 
   const handleSavePrice = (specificPrice: SpecificPrice) => {
     const existingPrices = data.specificPrices || [];
     const existingIndex = existingPrices.findIndex(sp => sp.id === specificPrice.id);
-    
+
     let updatedPrices: SpecificPrice[];
     if (existingIndex >= 0) {
-      // Update existing
       updatedPrices = [...existingPrices];
       updatedPrices[existingIndex] = specificPrice;
     } else {
-      // Add new
       updatedPrices = [...existingPrices, specificPrice];
     }
 
@@ -72,7 +95,7 @@ export const ProductPricingSection = ({ data, onChange }: ProductPricingSectionP
       ...data,
       specificPrices: updatedPrices,
     });
-    
+
     setEditingPrice(null);
   };
 
@@ -88,66 +111,124 @@ export const ProductPricingSection = ({ data, onChange }: ProductPricingSectionP
 
   return (
     <div className="space-y-6">
-      {/* Retail Price Section */}
+      {/* GST Configuration Section */}
       <div className="space-y-4">
         <div>
-          <h3 className="text-lg font-semibold mb-1">Retail Price</h3>
-          <p className="text-sm text-muted-foreground">Set the selling price for this product</p>
+          <h3 className="text-lg font-semibold mb-1">GST Configuration</h3>
+          <p className="text-sm text-muted-foreground">Configure GST settings for this product</p>
         </div>
 
-        <div className="grid grid-cols-3 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="space-y-2">
-            <Label htmlFor="retailPriceTaxExcl">Retail price (tax excl.) *</Label>
-            <Input
-              id="retailPriceTaxExcl"
-              type="number"
-              step="0.01"
-              placeholder="0.00"
-              value={data.retailPriceTaxExcl || ''}
-              onChange={(e) => onChange({
-                ...data,
-                retailPriceTaxExcl: parseFloat(e.target.value) || 0,
-              })}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="taxRule">Tax rule *</Label>
+            <Label htmlFor="gstSlab">GST Slab *</Label>
             <Select
-              value={TAX_RULES.find(r => r.name === data.taxRule)?.id || ''}
-              onValueChange={handleTaxRuleChange}
+              value={String(gstConfig.slab)}
+              onValueChange={(val) => handleGstUpdate({ slab: parseInt(val) as any })}
             >
-              <SelectTrigger id="taxRule">
-                <SelectValue placeholder="Select tax rule" />
+              <SelectTrigger id="gstSlab">
+                <SelectValue placeholder="Select GST Slab" />
               </SelectTrigger>
               <SelectContent>
-                {TAX_RULES.map((rule) => (
-                  <SelectItem key={rule.id} value={rule.id}>
-                    {rule.name}
+                {GST_SLABS.map((slab) => (
+                  <SelectItem key={slab} value={String(slab)}>
+                    {slab}% GST Slab
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
 
+          <div className="space-y-3">
+            <Label>GST Mode *</Label>
+            <RadioGroup
+              value={gstConfig.mode}
+              onValueChange={(val) => handleGstUpdate({ mode: val as any })}
+              className="flex gap-4 pt-1"
+            >
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="EXCLUSIVE" id="mode-exclusive" />
+                <Label htmlFor="mode-exclusive" className="font-normal cursor-pointer">Tax Exclusive</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="INCLUSIVE" id="mode-inclusive" />
+                <Label htmlFor="mode-inclusive" className="font-normal cursor-pointer">Tax Inclusive</Label>
+              </div>
+            </RadioGroup>
+            <p className="text-[10px] text-muted-foreground pt-1">
+              {gstConfig.mode === 'EXCLUSIVE'
+                ? 'GST will be added ON TOP of variant prices.'
+                : 'Variant prices already INCLUDE GST.'}
+            </p>
+          </div>
+
           <div className="space-y-2">
-            <Label htmlFor="retailPriceTaxIncl">Retail price (tax incl.)</Label>
+            <Label htmlFor="hsnCode">HSN Code (Optional)</Label>
             <Input
-              id="retailPriceTaxIncl"
-              type="number"
-              step="0.01"
-              placeholder="0.00"
-              value={data.retailPriceTaxIncl || ''}
-              readOnly
-              className="bg-muted"
+              id="hsnCode"
+              placeholder="e.g., 6109"
+              value={gstConfig.hsn || ''}
+              onChange={(e) => handleGstUpdate({ hsn: e.target.value })}
             />
-            <p className="text-xs text-muted-foreground">Tax IN: {data.taxRate || 0}%</p>
           </div>
         </div>
 
-        <div className="text-sm text-muted-foreground">
-          <a href="#" className="text-primary hover:underline">Manage tax rules</a>
+        <Alert className="bg-primary/5 border-primary/20">
+          <Info className="h-4 w-4 text-primary" />
+          <AlertDescription className="text-xs text-primary/80">
+            GST will apply on top of variant prices (after specific price rules if any).
+          </AlertDescription>
+        </Alert>
+      </div>
+
+      <Separator />
+
+      {/* Pricing Summary Preview */}
+      <div className="space-y-4">
+        <div>
+          <h3 className="text-lg font-semibold mb-1">Pricing Summary</h3>
+          <p className="text-sm text-muted-foreground">Summary based on variant prices set in Step 3</p>
         </div>
+
+        {!pricingSummary ? (
+          <div className="p-4 border border-dashed rounded-lg text-center text-muted-foreground">
+            No variant prices found. Please set prices in Step 3.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {[
+              { label: 'Minimum Price', data: pricingSummary.min },
+              { label: 'Maximum Price', data: pricingSummary.max }
+            ].map((item, idx) => (
+              <Card key={idx} className="p-4 bg-muted/30">
+                <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">{item.label}</p>
+                <div className="space-y-2">
+                  <div className="flex justify-between items-end">
+                    <span className="text-sm text-muted-foreground">Base Price:</span>
+                    <span className="text-lg font-semibold">₹{item.data.initial.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between items-end">
+                    <span className="text-sm text-muted-foreground">GST ({gstConfig.slab}%):</span>
+                    <span className="text-sm font-medium text-primary">
+                      {gstConfig.mode === 'EXCLUSIVE' ? '+' : ''}₹{item.data.gst.toFixed(2)}
+                    </span>
+                  </div>
+                  <Separator className="my-1" />
+                  <div className="flex justify-between items-end pt-1">
+                    <span className="text-sm font-bold">Final Price:</span>
+                    <span className="text-xl font-bold">₹{item.data.final.toFixed(2)}</span>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
+
+        {gstConfig.mode === 'EXCLUSIVE' && (
+          <p className="text-xs text-muted-foreground flex items-center gap-1 italic">
+            <Info className="h-3 w-3" />
+            Base price is set per variant in Step 3. These prices exclude GST.
+          </p>
+        )}
       </div>
 
       <Separator />
@@ -238,11 +319,11 @@ export const ProductPricingSection = ({ data, onChange }: ProductPricingSectionP
                         : '—'}
                     </TableCell>
                     <TableCell>
-                      {sp.isUnlimited 
+                      {sp.isUnlimited
                         ? 'Unlimited'
                         : sp.startDate && sp.endDate
-                        ? `${sp.startDate} → ${sp.endDate}`
-                        : '—'}
+                          ? `${sp.startDate} → ${sp.endDate}`
+                          : '—'}
                     </TableCell>
                     <TableCell>{sp.minQuantity || 1}</TableCell>
                     <TableCell>

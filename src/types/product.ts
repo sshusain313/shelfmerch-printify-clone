@@ -142,12 +142,17 @@ export interface SpecificPrice {
 
 // SECTION D: Pricing Data
 export interface ProductPricingData {
-  retailPriceTaxExcl: number; // Retail price excluding tax
-  taxRule: string; // Tax rule identifier (e.g., "12% GST Rate Slab")
-  taxRate: number; // Tax rate percentage (e.g., 12)
-  retailPriceTaxIncl: number; // Retail price including tax (auto-calculated)
+  retailPriceTaxExcl: number; // Retail price excluding tax (Legacy: now driven by variant prices)
+  taxRule: string; // Tax rule identifier (Legacy: replaced by gst.slab)
+  taxRate: number; // Tax rate percentage (Legacy: replaced by gst.slab)
+  retailPriceTaxIncl: number; // Retail price including tax (Legacy)
   costPriceTaxExcl: number; // Cost price excluding tax
   specificPrices?: SpecificPrice[]; // Array of specific price rules
+  gst?: {
+    slab: 0 | 5 | 12 | 18;
+    mode: 'EXCLUSIVE' | 'INCLUSIVE';
+    hsn?: string;
+  };
 }
 
 // SECTION E: Stocks / Inventory Data

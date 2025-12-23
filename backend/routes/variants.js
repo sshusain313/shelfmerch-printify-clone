@@ -49,13 +49,15 @@ router.post('/', protect, authorize('superadmin'), async (req, res) => {
     });
 
     // Transform variant: basePrice -> price, skuTemplate -> sku for frontend compatibility
+    // Keep basePrice in response for production cost calculation (required by ListingEditor)
     const variantObj = variant.toObject ? variant.toObject() : variant;
     const transformedVariant = {
       ...variantObj,
       sku: variantObj.skuTemplate || variantObj.sku,
-      price: variantObj.basePrice,
-      skuTemplate: undefined, // Remove skuTemplate to avoid confusion
-      basePrice: undefined // Remove basePrice to avoid confusion
+      price: variantObj.basePrice, // For backward compatibility
+      // Keep basePrice for production cost calculation (ListingEditor requirement)
+      basePrice: variantObj.basePrice,
+      skuTemplate: undefined // Remove skuTemplate to avoid confusion
     };
 
     res.status(201).json({
@@ -133,14 +135,16 @@ router.post('/bulk', protect, authorize('superadmin'), async (req, res) => {
     });
 
     // Transform variants: basePrice -> price, skuTemplate -> sku for frontend compatibility
+    // Keep basePrice in response for production cost calculation (required by ListingEditor)
     const transformedVariants = createdVariants.map(v => {
       const variant = v.toObject ? v.toObject() : v;
       return {
         ...variant,
         sku: variant.skuTemplate || variant.sku,
-        price: variant.basePrice,
-        skuTemplate: undefined, // Remove skuTemplate to avoid confusion
-        basePrice: undefined // Remove basePrice to avoid confusion
+        price: variant.basePrice, // For backward compatibility
+        // Keep basePrice for production cost calculation (ListingEditor requirement)
+        basePrice: variant.basePrice,
+        skuTemplate: undefined // Remove skuTemplate to avoid confusion
       };
     });
 
@@ -180,14 +184,16 @@ router.get('/product/:productId', protect, async (req, res) => {
     }).sort({ size: 1, color: 1 });
 
     // Transform variants: basePrice -> price, skuTemplate -> sku for frontend compatibility
+    // Keep basePrice in response for production cost calculation (required by ListingEditor)
     const transformedVariants = variants.map(v => {
       const variant = v.toObject ? v.toObject() : v;
       return {
         ...variant,
         sku: variant.skuTemplate || variant.sku,
-        price: variant.basePrice,
-        skuTemplate: undefined, // Remove skuTemplate to avoid confusion
-        basePrice: undefined // Remove basePrice to avoid confusion
+        price: variant.basePrice, // For backward compatibility
+        // Keep basePrice for production cost calculation (ListingEditor requirement)
+        basePrice: variant.basePrice,
+        skuTemplate: undefined // Remove skuTemplate to avoid confusion
       };
     });
 
@@ -222,13 +228,15 @@ router.get('/:id', protect, async (req, res) => {
     }
 
     // Transform variant: basePrice -> price, skuTemplate -> sku for frontend compatibility
+    // Keep basePrice in response for production cost calculation (required by ListingEditor)
     const variantObj = variant.toObject ? variant.toObject() : variant;
     const transformedVariant = {
       ...variantObj,
       sku: variantObj.skuTemplate || variantObj.sku,
-      price: variantObj.basePrice,
-      skuTemplate: undefined, // Remove skuTemplate to avoid confusion
-      basePrice: undefined // Remove basePrice to avoid confusion
+      price: variantObj.basePrice, // For backward compatibility
+      // Keep basePrice for production cost calculation (ListingEditor requirement)
+      basePrice: variantObj.basePrice,
+      skuTemplate: undefined // Remove skuTemplate to avoid confusion
     };
 
     res.json({

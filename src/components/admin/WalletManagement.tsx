@@ -3,22 +3,22 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Wallet, DollarSign, TrendingUp, Plus, Minus, History } from 'lucide-react';
+import { Wallet, TrendingUp, Plus, Minus, History, RefreshCw, Search, Users } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { adminWalletApi } from '@/lib/api';
+import { Badge } from '@/components/ui/badge';
 
 interface WalletData {
   id: string;
   userId: string;
-  storeId?: string;
-  storeType: 'connected' | 'popup';
-  balance: number;
-  payoutBalance: number;
-  pendingPayoutBalance: number;
-  lifetimeEarnings: number;
+  userEmail: string;
+  userName: string;
+  balancePaise: number;
+  balanceRupees: string;
   currency: string;
-  lowBalanceThreshold: number;
   status: string;
   createdAt: string;
   updatedAt: string;
@@ -26,88 +26,90 @@ interface WalletData {
 
 interface Transaction {
   id: string;
-  transactionId: string;
-  category: 'fulfillment' | 'top_up' | 'payout' | 'customer_payment' | 'refund' | 'adjustment' | 'platform_fee';
-  type: 'credit' | 'debit';
-  amount: number;
-  balanceBefore: number;
-  balanceAfter: number;
-  affectsBalance: 'wallet' | 'payout' | 'both';
-  description: string;
+  type: string;
+  direction: string;
+  amountPaise: number;
+  amountRupees: string;
   status: string;
-  createdAt: string;
-  completedAt?: string;
+  source: string;
+  description: string;
   adminId?: string;
-  orderId?: string;
-  payoutId?: string;
+  meta?: Record<string, unknown>;
+  createdAt: string;
+  completedAt: string;
+}
+
+interface WalletStats {
+  totalWallets: number;
+  activeWallets: number;
+  lockedWallets: number;
+  totalBalancePaise: number;
+  totalBalanceRupees: string;
+  transactionsByType: Record<string, {
+    count: number;
+    totalPaise: number;
+    totalRupees: string;
+  }>;
 }
 
 export const WalletManagement = () => {
   const [wallets, setWallets] = useState<WalletData[]>([]);
-  const [selectedUserId, setSelectedUserId] = useState<string>('');
+  const [selectedWallet, setSelectedWallet] = useState<WalletData | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [stats, setStats] = useState<WalletStats | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
   const [amount, setAmount] = useState('');
-  const [description, setDescription] = useState('');
-  const [transactionType, setTransactionType] = useState<'credit' | 'debit'>('credit');
-  const [creditDebitOpen, setCreditDebitOpen] = useState(false);
-  const [historyOpen, setHistoryOpen] = useState(false);
+  const [reason, setReason] = useState('');
+  const [adjustmentType, setAdjustmentType] = useState<'CREDIT' | 'DEBIT'>('CREDIT');
+  const [adjustModalOpen, setAdjustModalOpen] = useState(false);
+  const [historyModalOpen, setHistoryModalOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [loadingWallets, setLoadingWallets] = useState(true);
+  const [loadingStats, setLoadingStats] = useState(true);
   const { toast } = useToast();
 
-  // Mock data - replace with actual API calls
   useEffect(() => {
-    const mockWallets: WalletData[] = [
-      {
-        id: '1',
-        userId: 'user_001',
-        storeId: 'store_001',
-        storeType: 'connected',
-        balance: 250.50,
-        payoutBalance: 0,
-        pendingPayoutBalance: 0,
-        lifetimeEarnings: 0,
-        currency: 'USD',
-        lowBalanceThreshold: 20,
-        status: 'active',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      },
-      {
-        id: '2',
-        userId: 'user_002',
-        storeId: 'store_002',
-        storeType: 'popup',
-        balance: 1500.00,
-        payoutBalance: 850.75,
-        pendingPayoutBalance: 125.50,
-        lifetimeEarnings: 3250.00,
-        currency: 'USD',
-        lowBalanceThreshold: 20,
-        status: 'active',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      },
-      {
-        id: '3',
-        userId: 'user_003',
-        storeId: 'store_003',
-        storeType: 'popup',
-        balance: 50.25,
-        payoutBalance: 425.00,
-        pendingPayoutBalance: 75.00,
-        lifetimeEarnings: 1200.50,
-        currency: 'USD',
-        lowBalanceThreshold: 20,
-        status: 'active',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      },
-    ];
-    setWallets(mockWallets);
+    loadWallets();
+    loadStats();
   }, []);
 
-  const handleCreditDebit = async () => {
-    if (!selectedUserId || !amount || !description) {
+  const loadWallets = async () => {
+    try {
+      setLoadingWallets(true);
+      const response = await adminWalletApi.listWallets({ search: searchQuery || undefined });
+      const walletList = Array.isArray(response) ? response : (response.data || []);
+      setWallets(walletList);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Failed to load wallets';
+      toast({
+        title: 'Error',
+        description: message,
+        variant: 'destructive',
+      });
+    } finally {
+      setLoadingWallets(false);
+    }
+  };
+
+  const loadStats = async () => {
+    try {
+      setLoadingStats(true);
+      const response = await adminWalletApi.getStats();
+      setStats(response);
+    } catch (error: unknown) {
+      console.error('Failed to load stats:', error);
+    } finally {
+      setLoadingStats(false);
+    }
+  };
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    loadWallets();
+  };
+
+  const handleAdjustBalance = async () => {
+    if (!selectedWallet || !amount || !reason) {
       toast({
         title: 'Error',
         description: 'Please fill all fields',
@@ -116,43 +118,50 @@ export const WalletManagement = () => {
       return;
     }
 
-    setLoading(true);
-    try {
-      // In production, call API: POST /api/wallets/${userId}/credit or debit
-      const wallet = wallets.find(w => w.userId === selectedUserId);
-      if (wallet) {
-        const newBalance = transactionType === 'credit' 
-          ? wallet.balance + parseFloat(amount)
-          : wallet.balance - parseFloat(amount);
-
-        if (transactionType === 'debit' && newBalance < 0) {
-          toast({
-            title: 'Error',
-            description: 'Insufficient balance',
-            variant: 'destructive',
-          });
-          return;
-        }
-
-        setWallets(prev => prev.map(w => 
-          w.userId === selectedUserId 
-            ? { ...w, balance: newBalance, updatedAt: new Date().toISOString() }
-            : w
-        ));
-
-        toast({
-          title: 'Success',
-          description: `Wallet ${transactionType}ed successfully`,
-        });
-
-        setAmount('');
-        setDescription('');
-        setCreditDebitOpen(false);
-      }
-    } catch (error) {
+    const amountNum = parseFloat(amount);
+    if (isNaN(amountNum) || amountNum <= 0) {
       toast({
         title: 'Error',
-        description: 'Failed to update wallet',
+        description: 'Please enter a valid positive amount',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const amountPaise = Math.round(amountNum * 100);
+
+      const response = await adminWalletApi.adjustBalance({
+        userId: selectedWallet.userId,
+        direction: adjustmentType,
+        amountPaise,
+        reason,
+      });
+
+      toast({
+        title: 'Success',
+        description: `Successfully ${adjustmentType.toLowerCase()}ed ₹${amountNum.toFixed(2)}. New balance: ₹${response.newBalanceRupees}`,
+      });
+
+      // Update wallet in list
+      setWallets(prev => prev.map(w =>
+        w.userId === selectedWallet.userId
+          ? { ...w, balancePaise: response.newBalancePaise, balanceRupees: response.newBalanceRupees }
+          : w
+      ));
+
+      // Refresh stats
+      loadStats();
+
+      setAmount('');
+      setReason('');
+      setAdjustModalOpen(false);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Failed to adjust balance';
+      toast({
+        title: 'Error',
+        description: message,
         variant: 'destructive',
       });
     } finally {
@@ -160,342 +169,331 @@ export const WalletManagement = () => {
     }
   };
 
-  const loadTransactions = (userId: string) => {
-    // Mock transaction history
-    const mockTransactions: Transaction[] = [
-      { 
-        id: '1', 
-        transactionId: 'TXN-ABC123',
-        category: 'adjustment',
-        type: 'credit', 
-        amount: 100, 
-        balanceBefore: 150.50,
-        balanceAfter: 250.50,
-        affectsBalance: 'wallet',
-        description: 'Manual credit by admin', 
-        status: 'completed',
-        createdAt: new Date().toISOString(),
-        completedAt: new Date().toISOString(),
-        adminId: 'admin_001' 
-      },
-      { 
-        id: '2', 
-        transactionId: 'TXN-DEF456',
-        category: 'fulfillment',
-        type: 'debit', 
-        amount: 25.50, 
-        balanceBefore: 250.50,
-        balanceAfter: 225.00,
-        affectsBalance: 'wallet',
-        description: 'Order payment', 
-        status: 'completed',
-        createdAt: new Date(Date.now() - 86400000).toISOString(),
-        completedAt: new Date(Date.now() - 86400000).toISOString(),
-        orderId: 'ORD-12345'
-      },
-      { 
-        id: '3', 
-        transactionId: 'TXN-GHI789',
-        category: 'top_up',
-        type: 'credit', 
-        amount: 500, 
-        balanceBefore: 0,
-        balanceAfter: 500,
-        affectsBalance: 'wallet',
-        description: 'Wallet top-up', 
-        status: 'completed',
-        createdAt: new Date(Date.now() - 172800000).toISOString(),
-        completedAt: new Date(Date.now() - 172800000).toISOString()
-      },
-      { 
-        id: '4', 
-        transactionId: 'TXN-JKL012',
-        category: 'customer_payment',
-        type: 'credit', 
-        amount: 45.75, 
-        balanceBefore: 380.00,
-        balanceAfter: 425.75,
-        affectsBalance: 'payout',
-        description: 'Customer order profit', 
-        status: 'completed',
-        createdAt: new Date(Date.now() - 259200000).toISOString(),
-        completedAt: new Date(Date.now() - 259200000).toISOString(),
-        orderId: 'ORD-67890'
-      },
-    ];
-    setTransactions(mockTransactions);
+  const loadTransactionHistory = async (wallet: WalletData) => {
+    setSelectedWallet(wallet);
+    setHistoryModalOpen(true);
+
+    try {
+      const response = await adminWalletApi.getTransactions(wallet.userId, { limit: 50 });
+      const txnList = Array.isArray(response) ? response : (response.data || []);
+      setTransactions(txnList);
+    } catch (error: unknown) {
+      toast({
+        title: 'Error',
+        description: 'Failed to load transaction history',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const openAdjustModal = (wallet: WalletData, type: 'CREDIT' | 'DEBIT') => {
+    setSelectedWallet(wallet);
+    setAdjustmentType(type);
+    setAdjustModalOpen(true);
   };
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-3xl font-bold tracking-tight">Wallet Management</h2>
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center gap-4">
+              <div className="p-3 rounded-full bg-primary/10">
+                <Users className="h-6 w-6 text-primary" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Total Wallets</p>
+                <p className="text-2xl font-bold">
+                  {loadingStats ? '...' : stats?.totalWallets || 0}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center gap-4">
+              <div className="p-3 rounded-full bg-green-500/10">
+                <Wallet className="h-6 w-6 text-green-500" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Active Wallets</p>
+                <p className="text-2xl font-bold">
+                  {loadingStats ? '...' : stats?.activeWallets || 0}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center gap-4">
+              <div className="p-3 rounded-full bg-blue-500/10">
+                <TrendingUp className="h-6 w-6 text-blue-500" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Total Balance</p>
+                <p className="text-2xl font-bold">
+                  ₹{loadingStats ? '...' : stats?.totalBalanceRupees || '0.00'}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center gap-4">
+              <div className="p-3 rounded-full bg-orange-500/10">
+                <History className="h-6 w-6 text-orange-500" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Top-ups</p>
+                <p className="text-2xl font-bold">
+                  {loadingStats ? '...' : stats?.transactionsByType?.TOPUP?.count || 0}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-4 mb-6">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Wallets</CardTitle>
-            <Wallet className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{wallets.length}</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {wallets.filter(w => w.storeType === 'popup').length} Popup Stores
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Wallet Balance</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              ${wallets.reduce((sum, w) => sum + w.balance, 0).toFixed(2)}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Fulfillment funds
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Payout Balance</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              ${wallets.reduce((sum, w) => sum + w.payoutBalance, 0).toFixed(2)}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Available for withdrawal
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Lifetime Earnings</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              ${wallets.reduce((sum, w) => sum + w.lifetimeEarnings, 0).toFixed(2)}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Total store profits
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
+      {/* Search and Wallets Table */}
       <Card>
         <CardHeader>
-          <CardTitle>All Wallets</CardTitle>
+          <div className="flex justify-between items-center">
+            <CardTitle className="flex items-center gap-2">
+              <Wallet className="h-5 w-5" />
+              User Wallets
+            </CardTitle>
+            <div className="flex gap-2">
+              <form onSubmit={handleSearch} className="flex gap-2">
+                <Input
+                  placeholder="Search by email or name..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-64"
+                />
+                <Button type="submit" variant="secondary" size="icon">
+                  <Search className="h-4 w-4" />
+                </Button>
+              </form>
+              <Button variant="outline" onClick={() => { setSearchQuery(''); loadWallets(); }}>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Refresh
+              </Button>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>User ID</TableHead>
-                <TableHead>Store Type</TableHead>
-                <TableHead>Wallet Balance</TableHead>
-                <TableHead>Payout Balance</TableHead>
-                <TableHead>Pending Payout</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {wallets.map((wallet) => (
-                <TableRow key={wallet.id}>
-                  <TableCell className="font-medium">{wallet.userId}</TableCell>
-                  <TableCell>
-                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                      wallet.storeType === 'popup' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'
-                    }`}>
-                      {wallet.storeType === 'popup' ? 'Popup Store' : 'Connected'}
-                    </span>
-                  </TableCell>
-                  <TableCell>
-                    <div className="font-medium">${wallet.balance.toFixed(2)}</div>
-                    {wallet.balance < wallet.lowBalanceThreshold && (
-                      <span className="text-xs text-orange-600">Low balance</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {wallet.storeType === 'popup' ? (
-                      <div className="font-medium text-green-600">
-                        ${wallet.payoutBalance.toFixed(2)}
-                      </div>
-                    ) : (
-                      <span className="text-muted-foreground">N/A</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {wallet.storeType === 'popup' ? (
-                      <div className="text-muted-foreground">
-                        ${wallet.pendingPayoutBalance.toFixed(2)}
-                      </div>
-                    ) : (
-                      <span className="text-muted-foreground">N/A</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                      wallet.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                    }`}>
-                      {wallet.status}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          setSelectedUserId(wallet.userId);
-                          setTransactionType('credit');
-                          setCreditDebitOpen(true);
-                        }}
-                      >
-                        <Plus className="h-4 w-4 mr-1" />
-                        Credit
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          setSelectedUserId(wallet.userId);
-                          setTransactionType('debit');
-                          setCreditDebitOpen(true);
-                        }}
-                      >
-                        <Minus className="h-4 w-4 mr-1" />
-                        Debit
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => {
-                          setSelectedUserId(wallet.userId);
-                          loadTransactions(wallet.userId);
-                          setHistoryOpen(true);
-                        }}
-                      >
-                        <History className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-
-      {/* Credit/Debit Dialog */}
-      <Dialog open={creditDebitOpen} onOpenChange={setCreditDebitOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {transactionType === 'credit' ? 'Credit' : 'Debit'} Wallet - {selectedUserId}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label>Amount ($)</Label>
-              <Input
-                type="number"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder="0.00"
-                min="0"
-                step="0.01"
-              />
+          {loadingWallets ? (
+            <div className="flex items-center justify-center py-12">
+              <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
-            <div>
-              <Label>Description</Label>
-              <Input
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Reason for transaction"
-              />
+          ) : wallets.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <Wallet className="h-12 w-12 mx-auto mb-4 opacity-30" />
+              <p>No wallets found</p>
             </div>
-            <Button
-              onClick={handleCreditDebit}
-              disabled={loading}
-              className="w-full"
-            >
-              {loading ? 'Processing...' : `Confirm ${transactionType === 'credit' ? 'Credit' : 'Debit'}`}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Transaction History Dialog */}
-      <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
-        <DialogContent className="max-w-4xl">
-          <DialogHeader>
-            <DialogTitle>Transaction History - {selectedUserId}</DialogTitle>
-          </DialogHeader>
-          <div className="max-h-[500px] overflow-auto">
+          ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Transaction ID</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Category</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Amount</TableHead>
+                  <TableHead>User</TableHead>
                   <TableHead>Balance</TableHead>
-                  <TableHead>Description</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Last Updated</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {transactions.map((txn) => (
-                  <TableRow key={txn.id}>
-                    <TableCell className="font-mono text-xs">{txn.transactionId}</TableCell>
-                    <TableCell className="text-sm">{new Date(txn.createdAt).toLocaleString()}</TableCell>
+                {wallets.map((wallet) => (
+                  <TableRow key={wallet.id}>
                     <TableCell>
-                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                        {txn.category.replace('_', ' ')}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                        txn.type === 'credit' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                      }`}>
-                        {txn.type}
-                      </span>
-                    </TableCell>
-                    <TableCell className={txn.type === 'credit' ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>
-                      {txn.type === 'credit' ? '+' : '-'}${txn.amount.toFixed(2)}
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-sm">
-                        <div className="text-muted-foreground">${txn.balanceBefore.toFixed(2)}</div>
-                        <div className="text-xs">→ ${txn.balanceAfter.toFixed(2)}</div>
+                      <div>
+                        <p className="font-medium">{wallet.userName || 'N/A'}</p>
+                        <p className="text-sm text-muted-foreground">{wallet.userEmail}</p>
                       </div>
                     </TableCell>
                     <TableCell>
-                      <div className="max-w-xs">
-                        <div className="text-sm">{txn.description}</div>
-                        {txn.orderId && (
-                          <div className="text-xs text-muted-foreground mt-1">Order: {txn.orderId}</div>
-                        )}
-                        {txn.affectsBalance !== 'wallet' && (
-                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800 mt-1">
-                            Affects: {txn.affectsBalance}
-                          </span>
-                        )}
+                      <span className="font-bold text-lg">₹{wallet.balanceRupees}</span>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={wallet.status === 'ACTIVE' ? 'default' : 'secondary'}>
+                        {wallet.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {new Date(wallet.updatedAt).toLocaleDateString()}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => openAdjustModal(wallet, 'CREDIT')}
+                        >
+                          <Plus className="h-3 w-3 mr-1" />
+                          Credit
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => openAdjustModal(wallet, 'DEBIT')}
+                        >
+                          <Minus className="h-3 w-3 mr-1" />
+                          Debit
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => loadTransactionHistory(wallet)}
+                        >
+                          <History className="h-3 w-3 mr-1" />
+                          History
+                        </Button>
                       </div>
                     </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Adjust Balance Modal */}
+      <Dialog open={adjustModalOpen} onOpenChange={setAdjustModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {adjustmentType === 'CREDIT' ? (
+                <><Plus className="h-5 w-5 text-green-500" /> Credit Wallet</>
+              ) : (
+                <><Minus className="h-5 w-5 text-red-500" /> Debit Wallet</>
+              )}
+            </DialogTitle>
+            <DialogDescription>
+              {selectedWallet && (
+                <span>
+                  Adjusting wallet for <strong>{selectedWallet.userEmail}</strong>
+                  <br />
+                  Current balance: <strong>₹{selectedWallet.balanceRupees}</strong>
+                </span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="amount">Amount (₹)</Label>
+              <Input
+                id="amount"
+                type="number"
+                min="0.01"
+                step="0.01"
+                placeholder="0.00"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="reason">Reason (required for audit)</Label>
+              <Textarea
+                id="reason"
+                placeholder="e.g., Refund for order #123, Bonus credit, etc."
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                rows={3}
+              />
+            </div>
           </div>
+
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setAdjustModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAdjustBalance}
+              disabled={loading || !amount || !reason}
+              className={adjustmentType === 'CREDIT' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}
+            >
+              {loading ? 'Processing...' : `${adjustmentType === 'CREDIT' ? 'Credit' : 'Debit'} ₹${amount || '0'}`}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Transaction History Modal */}
+      <Dialog open={historyModalOpen} onOpenChange={setHistoryModalOpen}>
+        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <History className="h-5 w-5" />
+              Transaction History
+            </DialogTitle>
+            <DialogDescription>
+              {selectedWallet && (
+                <span>
+                  Showing transactions for <strong>{selectedWallet.userEmail}</strong>
+                </span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          {transactions.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <History className="h-12 w-12 mx-auto mb-4 opacity-30" />
+              <p>No transactions found</p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Description</TableHead>
+                  <TableHead>Amount</TableHead>
+                  <TableHead>Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {transactions.map((txn) => (
+                  <TableRow key={txn.id}>
+                    <TableCell className="text-muted-foreground">
+                      {new Date(txn.createdAt).toLocaleString(undefined, {
+                        dateStyle: 'short',
+                        timeStyle: 'short'
+                      })}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline">{txn.type}</Badge>
+                    </TableCell>
+                    <TableCell className="max-w-[200px] truncate">
+                      {txn.description}
+                    </TableCell>
+                    <TableCell>
+                      <span className={txn.direction === 'CREDIT' ? 'text-green-600' : 'text-red-600'}>
+                        {txn.direction === 'CREDIT' ? '+' : '-'}₹{txn.amountRupees}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={txn.status === 'SUCCESS' ? 'default' : 'secondary'}
+                        className={txn.status === 'SUCCESS' ? 'bg-green-500' : ''}
+                      >
+                        {txn.status}
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </DialogContent>
       </Dialog>
     </div>

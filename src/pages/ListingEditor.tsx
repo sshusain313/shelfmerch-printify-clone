@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -19,14 +19,21 @@ import {
 } from '@/components/ui/table';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { storeApi, storeProductsApi } from '@/lib/api';
+import { storeApi, storeProductsApi, catalogVariantsApi } from '@/lib/api';
+
+// Normalize key for matching: trim, lowercase, collapse spaces
+const norm = (str: string): string => {
+  return (str || '').trim().toLowerCase().replace(/\s+/g, '');
+};
 
 interface IncomingVariant {
   id?: string;
   size: string;
   color: string;
   sku?: string;
-  productionCost: number;
+  // Optional fields passed from previous steps
+  price?: number; // retail price / selling price suggestion
+  productionCost?: number; // optional if already computed elsewhere
 }
 
 interface LocationState {
@@ -59,6 +66,9 @@ const ListingEditor = () => {
   const storeProductId = searchParams.get('storeProductId') || state?.storeProductId;
   const [draftData, setDraftData] = useState<any>(null);
   const [isLoadingDraft, setIsLoadingDraft] = useState(false);
+  const [variantCostMap, setVariantCostMap] = useState<
+    Record<string, { cost: number; id?: string; sku?: string }>
+  >({});
 
   // Load draft from database if storeProductId is provided
   useEffect(() => {
@@ -83,25 +93,9 @@ const ListingEditor = () => {
     }
   }, [storeProductId]);
 
-  const initialVariantRows: VariantRow[] = useMemo(() => {
-    const incoming = state?.variants || [];
-    if (!incoming.length) return [];
-
-    return incoming.map((v) => {
-      const cost = Number.isFinite(v.productionCost) ? v.productionCost : 0;
-      // Default retail price to a 40% margin over cost if possible
-      const defaultRetail = cost > 0 ? parseFloat((cost / 0.6).toFixed(2)) : cost;
-      return {
-        id: v.id,
-        size: v.size,
-        color: v.color,
-        sku: v.sku || '',
-        productionCost: parseFloat(cost.toFixed(2)),
-        retailPrice: defaultRetail,
-      };
-    });
-  }, [state]);
-
+  // Get productId from state or draftData
+  const productId = state?.productId || draftData?.catalogProductId;
+  
   // Initialize title and description from draft or state
   const [title, setTitle] = useState(() => {
     return draftData?.title || state?.title || 'wyz Logo Circle Graphic T-Shirt | Minimal Branding Tee';
@@ -124,7 +118,227 @@ const ListingEditor = () => {
   const [syncDescription, setSyncDescription] = useState(true);
   const [syncMockups, setSyncMockups] = useState(true);
   const [syncPricing, setSyncPricing] = useState(false);
-  const [variantRows, setVariantRows] = useState<VariantRow[]>(initialVariantRows);
+  const [variantRows, setVariantRows] = useState<VariantRow[]>([]);
+  // Ref to track user-entered retail prices so they don't reset when cost map loads
+  const retailPriceRef = useRef<Record<string, number>>({});
+
+  // Load catalog variant costs (production basePrice) and SKU template
+  // for the specific catalog product backing this design.
+  useEffect(() => {
+    // Get productId from state OR draftData (draft may load later)
+    const currentProductId = state?.productId || draftData?.catalogProductId;
+    
+    console.log('[ListingEditor] Fetch catalog variants:', {
+      productId: currentProductId,
+      fromState: state?.productId,
+      fromDraft: draftData?.catalogProductId,
+    });
+
+    if (!currentProductId) {
+      console.log('[ListingEditor] No productId available yet, skipping fetch');
+      return;
+    }
+
+    let isCancelled = false;
+
+    (async () => {
+      try {
+        console.log('[ListingEditor] Calling catalogVariantsApi.listByProduct:', currentProductId);
+        const resp = await catalogVariantsApi.listByProduct(currentProductId);
+        
+        console.log('[ListingEditor] Raw API response:', {
+          resp,
+          respType: typeof resp,
+          isArray: Array.isArray(resp),
+          hasData: !!(resp as any)?.data,
+          dataType: typeof (resp as any)?.data,
+          dataIsArray: Array.isArray((resp as any)?.data),
+        });
+
+        // Handle various response shapes: resp.data, resp.data.data, or resp is array
+        let data: any[] = [];
+        if (Array.isArray(resp)) {
+          data = resp;
+        } else if (Array.isArray((resp as any)?.data)) {
+          data = (resp as any).data;
+        } else if (Array.isArray((resp as any)?.data?.data)) {
+          data = (resp as any).data.data;
+        }
+
+        console.log('[ListingEditor] Extracted data array:', {
+          length: data.length,
+          sample: data[0],
+          sampleFields: data[0] ? Object.keys(data[0]) : [],
+        });
+
+        if (!Array.isArray(data) || isCancelled) {
+          console.warn('[ListingEditor] No valid data array, aborting');
+          return;
+        }
+
+        const map: Record<string, { cost: number; id?: string; sku?: string }> = {};
+        data.forEach((v: any) => {
+          // Normalize keys for matching
+          const normalizedSize = norm(v.size || '');
+          const normalizedColor = norm(v.color || '');
+          const key = `${normalizedSize}__${normalizedColor}`;
+          
+          // Production cost: prefer basePrice (DB field), fallback to price (transformed)
+          // Requirement: productionCost MUST come from basePrice
+          const basePrice = typeof v.basePrice === 'number' && Number.isFinite(v.basePrice) 
+            ? v.basePrice 
+            : undefined;
+          const price = typeof v.price === 'number' && Number.isFinite(v.price) 
+            ? v.price 
+            : undefined;
+          
+          // Use basePrice if available (DB field), otherwise use price (if backend transformed it)
+          const cost = basePrice !== undefined ? basePrice : (price !== undefined ? price : 0);
+          
+          // SKU: backend may transform skuTemplate -> sku, but check both
+          const sku = v.sku || v.skuTemplate || '';
+
+          map[key] = {
+            cost,
+            id: v._id || v.id,
+            sku,
+          };
+
+          console.log('[ListingEditor] Mapped catalog variant:', {
+            originalSize: v.size,
+            originalColor: v.color,
+            normalizedKey: key,
+            basePrice,
+            price,
+            finalCost: cost,
+            sku,
+            id: v._id || v.id,
+          });
+        });
+
+        console.log('[ListingEditor] Final variantCostMap:', {
+          keyCount: Object.keys(map).length,
+          keys: Object.keys(map),
+          sampleEntry: Object.entries(map)[0],
+        });
+
+        if (!isCancelled) {
+          setVariantCostMap(map);
+        }
+      } catch (err) {
+        console.error('[ListingEditor] Failed to load catalog variant costs:', err);
+      }
+    })();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [productId, draftData?.catalogProductId]);
+
+  // Initialize/recompute variantRows when incoming variants OR cost map changes
+  // Preserve user-entered retailPrice using ref
+  useEffect(() => {
+    const incoming = state?.variants || [];
+    
+    console.log('[ListingEditor] Recompute variantRows:', {
+      incomingCount: incoming.length,
+      variantCostMapKeys: Object.keys(variantCostMap).length,
+      existingRowsCount: variantRows.length,
+      sampleIncoming: incoming[0],
+    });
+
+    if (!incoming.length) {
+      console.log('[ListingEditor] No incoming variants, skipping row creation');
+      return;
+    }
+
+    const rows: VariantRow[] = incoming.map((v) => {
+      // Normalize keys for matching
+      const normalizedSize = norm(v.size || '');
+      const normalizedColor = norm(v.color || '');
+      const key = `${normalizedSize}__${normalizedColor}`;
+      const mapped = variantCostMap[key];
+
+      console.log('[ListingEditor] Processing variant:', {
+        originalSize: v.size,
+        originalColor: v.color,
+        normalizedKey: key,
+        foundInMap: !!mapped,
+        mappedData: mapped,
+      });
+
+      // Production cost (base price) – MUST come from CatalogProductVariant.basePrice
+      const costFromCatalog = mapped?.cost;
+      const costSource = Number.isFinite(costFromCatalog as number)
+        ? (costFromCatalog as number)
+        : Number.isFinite(v.productionCost as number)
+          ? (v.productionCost as number)
+          : 0;
+      const cost = costSource || 0;
+
+      console.log('[ListingEditor] Cost resolution:', {
+        costFromCatalog,
+        costFromIncoming: v.productionCost,
+        finalCost: cost,
+      });
+
+      // Retail price: preserve user-entered value if exists, otherwise use default
+      const rowKey = `${v.size}__${v.color}`;
+      const preservedRetailPrice = retailPriceRef.current[rowKey];
+      
+      let defaultRetail = 0;
+      if (preservedRetailPrice !== undefined && Number.isFinite(preservedRetailPrice)) {
+        // User has entered a price, preserve it
+        defaultRetail = preservedRetailPrice;
+        console.log('[ListingEditor] Preserving user-entered retailPrice:', preservedRetailPrice);
+      } else {
+        // No user entry yet, use default
+        if (Number.isFinite(v.price as number)) {
+          defaultRetail = v.price as number;
+        } else if (Number.isFinite(state?.baseSellingPrice as number)) {
+          defaultRetail = state!.baseSellingPrice as number;
+        } else if (cost > 0) {
+          defaultRetail = parseFloat((cost / 0.6).toFixed(2));
+        }
+      }
+
+      const row: VariantRow = {
+        id: v.id || mapped?.id,
+        size: v.size,
+        color: v.color,
+        // SKU from catalog variant, or fallback
+        sku: mapped?.sku || v.sku || '',
+        productionCost: parseFloat(cost.toFixed(2)),
+        retailPrice: defaultRetail,
+      };
+
+      // Store retail price in ref for preservation
+      if (defaultRetail > 0) {
+        retailPriceRef.current[rowKey] = defaultRetail;
+      }
+
+      return row;
+    });
+
+    console.log('[ListingEditor] Final rows created:', {
+      count: rows.length,
+      sampleRow: rows[0],
+      allCosts: rows.map(r => r.productionCost),
+      allSkus: rows.map(r => r.sku),
+    });
+
+    setVariantRows(rows);
+  }, [state?.variants, state?.baseSellingPrice, variantCostMap]);
+
+  // Update ref when user edits retail price
+  useEffect(() => {
+    variantRows.forEach((row) => {
+      const rowKey = `${row.size}__${row.color}`;
+      if (row.retailPrice > 0) {
+        retailPriceRef.current[rowKey] = row.retailPrice;
+      }
+    });
+  }, [variantRows]);
   const [isPublishing, setIsPublishing] = useState(false);
 
   const hasVariantData = variantRows.length > 0;
@@ -468,13 +682,19 @@ const ListingEditor = () => {
                                 onChange={(event) => {
                                   const value = event.target.value.replace(/[^0-9.]/g, '');
                                   const parsed = parseFloat(value);
+                                  const newRetailPrice = Number.isNaN(parsed) ? 0 : parseFloat(parsed.toFixed(2));
+                                  
+                                  // Update ref to preserve user entry
+                                  const rowKey = `${variant.size}__${variant.color}`;
+                                  retailPriceRef.current[rowKey] = newRetailPrice;
+                                  
                                   setVariantRows((rows) =>
                                     rows.map((row) =>
                                       row === variant
                                         ? {
-                                          ...row,
-                                          retailPrice: Number.isNaN(parsed) ? 0 : parseFloat(parsed.toFixed(2)),
-                                        }
+                                            ...row,
+                                            retailPrice: newRetailPrice,
+                                          }
                                         : row,
                                     ),
                                   );

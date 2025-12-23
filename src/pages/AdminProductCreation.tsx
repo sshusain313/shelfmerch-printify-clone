@@ -109,6 +109,11 @@ const AdminProductCreation = () => {
     taxRate: 0,
     retailPriceTaxIncl: 0,
     costPriceTaxExcl: 0,
+    gst: {
+      slab: 18,
+      mode: 'EXCLUSIVE',
+      hsn: '',
+    },
   });
 
   // SECTION H: Stocks/Inventory Data
@@ -515,6 +520,36 @@ const AdminProductCreation = () => {
                 </div>
               </TabsContent>
 
+              {/* Step 2: Product Details */}
+              <TabsContent value="details" className="space-y-4">
+                <div>
+                  <h2 className="text-xl font-semibold mb-1">Step 2: Product Details</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Enter product identification codes and barcodes (optional)
+                  </p>
+                </div>
+                <ProductDetailsSection
+                  data={detailsData}
+                  onChange={setDetailsData}
+                />
+                <div className="flex justify-between pt-4">
+                  <Button
+                    variant="outline"
+                    onClick={() => setActiveStep('catalogue')}
+                    className="gap-2"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    Back
+                  </Button>
+                  <Button
+                    onClick={() => setActiveStep('variants')}
+                    className="gap-2"
+                  >
+                    Next: Variants
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </TabsContent>
 
               {/* Step 3: Product Variants */}
               <TabsContent value="variants" className="space-y-4">
@@ -685,6 +720,7 @@ const AdminProductCreation = () => {
                 </div>
                 <ProductPricingSection
                   data={pricingData}
+                  variants={variants}
                   onChange={setPricingData}
                 />
                 <div className="flex justify-between pt-4">

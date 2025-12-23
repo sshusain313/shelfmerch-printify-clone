@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { FileText, Download, CheckCircle, Clock, ExternalLink } from 'lucide-react';
 import { invoiceApi } from '@/lib/api';
 import { Link } from 'react-router-dom';
+import jsPDF from 'jspdf';
 
 export const InvoiceManagement = () => {
   const [invoices, setInvoices] = useState<any[]>([]);
@@ -32,6 +33,206 @@ export const InvoiceManagement = () => {
     };
     loadInvoices();
   }, []);
+
+  // Generate invoice PDF similar to INV-2025-0001-ultra-clean.pdf
+  const handleDownloadPdf = (invoice: any) => {
+    if (!invoice) return;
+
+    try {
+      const doc = new jsPDF('p', 'pt', 'a4');
+
+      const marginLeft = 40;
+      let y = 40;
+
+      const addLine = (text: string, options: { bold?: boolean; size?: number } = {}) => {
+        const { bold = false, size = 10 } = options;
+        doc.setFont('helvetica', bold ? 'bold' : 'normal');
+        doc.setFontSize(size);
+        doc.text(text, marginLeft, y);
+        y += size + 4;
+      };
+
+      const addRight = (text: string, options: { bold?: boolean; size?: number } = {}) => {
+        const { bold = false, size = 10 } = options;
+        doc.setFont('helvetica', bold ? 'bold' : 'normal');
+        doc.setFontSize(size);
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const textWidth = doc.getTextWidth(text);
+        doc.text(text, pageWidth - marginLeft - textWidth, y);
+      };
+
+      const formatCurrency = (v?: number) => `Rs ${Number(v || 0).toFixed(2)}`;
+
+      const invoiceNumber = invoice.invoiceNumber || 'INV-XXXX';
+      const createdAt = invoice.createdAt ? new Date(invoice.createdAt) : new Date();
+      const status = (invoice.status || 'paid').toUpperCase();
+
+      // Header
+      addLine('INVOICE', { bold: true, size: 18 });
+      y += 4;
+      addLine(`Invoice # ${invoiceNumber}`, { bold: true, size: 12 });
+      addRight(
+        createdAt.toLocaleString('en-IN', {
+          day: '2-digit',
+          month: 'short',
+          year: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit',
+        }),
+        { size: 10 },
+      );
+      y += 4;
+      addLine(`Status ${status}`, { size: 10 });
+
+      y += 16;
+
+      // Platform address (hard-coded as in sample)
+      addLine('G2, Win-Win Towers, Siddhi Vinayak Nagar, Madhapur, Hyderabad, Telangana 500081', {
+        size: 9,
+      });
+      addLine('Phone: 095158 88515 • support@shelfmerch.com', { size: 9 });
+
+      y += 20;
+
+      // Order/Payment table (simplified)
+      const orderId =
+        invoice.orderId?.orderNumber ||
+        invoice.orderId?._id?.slice(-8) ||
+        invoice.orderId ||
+        '—';
+      const storeName = invoice.storeId?.storeName || '—';
+      const paymentMethod = invoice.paymentDetails?.method?.toUpperCase() || 'UPI';
+      const txnId = invoice.paymentDetails?.transactionId || `TXN-${invoice._id?.slice(-10)}`;
+
+      addLine(`Order ID: ${orderId}`, { size: 10, bold: true });
+      addLine(`Store: ${storeName}`, { size: 10 });
+      y += 6;
+      addLine(`Payment: ${paymentMethod}`, { size: 10 });
+      addLine(`Txn ID: ${txnId}`, { size: 10 });
+
+      y += 6;
+      addLine('Currency: INR', { size: 10 });
+
+      y += 24;
+
+      // Billing section
+      addLine('BILLING', { bold: true, size: 12 });
+      y += 8;
+
+      // Bill From
+      addLine('Bill From', { bold: true, size: 10 });
+      addLine('ShelfMerch (Platform)', { size: 9 });
+      addLine('G2, Win-Win Towers, Siddhi Vinayak Nagar, Madhapur,', { size: 9 });
+      addLine('Hyderabad, Telangana 500081', { size: 9 });
+      addLine('support@shelfmerch.com • 095158 88515', { size: 9 });
+
+      y += 12;
+
+      // Bill To
+      addLine('Bill To', { bold: true, size: 10 });
+      const merchantName = invoice.merchantId?.name || 'Merchant';
+      const merchantEmail = invoice.merchantId?.email || '';
+      const merchantPhone = invoice.merchantId?.phone || '';
+      const storeCity = invoice.storeId?.city || '';
+      const storeState = invoice.storeId?.state || '';
+
+      addLine(merchantName, { size: 9 });
+      addLine([storeCity, storeState].filter(Boolean).join(', ') || '—', { size: 9 });
+      addLine(
+        [merchantEmail, merchantPhone].filter(Boolean).join(' • ') || merchantEmail || merchantPhone || '—',
+        { size: 9 },
+      );
+
+      y += 20;
+
+      // Items header
+      addLine('ITEMS', { bold: true, size: 12 });
+      y += 10;
+
+      // Items table (quick layout with manual columns)
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9);
+      doc.text('Description', marginLeft, y);
+      doc.text('Qty', marginLeft + 260, y);
+      doc.text('Unit Price', marginLeft + 300, y);
+      doc.text('Amount', marginLeft + 380, y);
+      y += 10;
+      doc.setLineWidth(0.5);
+      doc.line(marginLeft, y, marginLeft + 430, y);
+      y += 12;
+
+      doc.setFont('helvetica', 'normal');
+      const items = Array.isArray(invoice.items) ? invoice.items : [];
+
+      let subtotal = 0;
+      items.forEach((item: any) => {
+        const descParts = [item.productName || 'Product'];
+        if (item.variant) {
+          descParts.push(`Variant: ${item.variant}`);
+        }
+        const desc = descParts.join('\n');
+        const qty = item.quantity || 1;
+        const unitPrice = item.productionCost || 0;
+        const lineTotal = unitPrice * qty;
+        subtotal += lineTotal;
+
+        // Description (multi-line if needed)
+        const descLines = doc.splitTextToSize(desc, 240);
+        descLines.forEach((line: string, idx: number) => {
+          doc.text(line, marginLeft, y + idx * 11);
+        });
+
+        doc.text(String(qty), marginLeft + 260, y);
+        doc.text(formatCurrency(unitPrice), marginLeft + 300, y);
+        doc.text(formatCurrency(lineTotal), marginLeft + 380, y);
+
+        y += descLines.length * 11 + 4;
+      });
+
+      if (!items.length) {
+        addLine('No line items', { size: 9 });
+        y += 4;
+      }
+
+      y += 10;
+
+      // Totals
+      const shipping = invoice.shippingCost || 0;
+      const tax = invoice.tax || 0;
+      const total = invoice.totalAmount || subtotal + shipping + tax;
+
+      const rightColX = marginLeft + 380;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+
+      doc.text('Subtotal', rightColX - 80, y);
+      doc.text(formatCurrency(subtotal), rightColX, y, { align: 'right' });
+      y += 14;
+
+      doc.text('Shipping', rightColX - 80, y);
+      doc.text(formatCurrency(shipping), rightColX, y, { align: 'right' });
+      y += 14;
+
+      doc.text('Tax', rightColX - 80, y);
+      doc.text(formatCurrency(tax), rightColX, y, { align: 'right' });
+      y += 16;
+
+      doc.setFont('helvetica', 'bold');
+      doc.text('Total', rightColX - 80, y);
+      doc.text(formatCurrency(total), rightColX, y, { align: 'right' });
+      y += 24;
+
+      // Footer
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.text('System-generated invoice • For billing queries: support@shelfmerch.com', marginLeft, y);
+
+      doc.save(`${invoiceNumber}.pdf`);
+    } catch (err) {
+      console.error('Failed to generate invoice PDF', err);
+      toast.error('Failed to generate PDF');
+    }
+  };
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -260,7 +461,11 @@ export const InvoiceManagement = () => {
                               </div>
 
                               <div className="flex justify-end gap-3 pt-4 border-t">
-                                <Button variant="outline" size="sm">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleDownloadPdf(selectedInvoice)}
+                                >
                                   <Download className="h-4 w-4 mr-2" />
                                   Download PDF
                                 </Button>

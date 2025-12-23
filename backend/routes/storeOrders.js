@@ -92,4 +92,78 @@ router.patch('/:id/status', protect, authorize('superadmin'), async (req, res) =
   }
 });
 
+// @route   GET /api/store-orders/admin/stats
+// @desc    Get dashboard statistics for superadmins
+// @access  Private (superadmin)
+router.get('/admin/stats', protect, authorize('superadmin'), async (req, res) => {
+  try {
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    // 1. Revenue and Order counts
+    const statsResult = await StoreOrder.aggregate([
+      {
+        $facet: {
+          overall: [
+            {
+              $group: {
+                _id: null,
+                totalRevenue: { $sum: '$total' },
+                totalOrders: { $sum: 1 },
+                deliveredOrders: {
+                  $sum: { $cond: [{ $eq: ['$status', 'delivered'] }, 1, 0] }
+                }
+              }
+            }
+          ],
+          monthly: [
+            { $match: { createdAt: { $gte: thirtyDaysAgo } } },
+            {
+              $group: {
+                _id: null,
+                monthlyRevenue: { $sum: '$total' },
+                monthlyOrders: { $sum: 1 }
+              }
+            }
+          ],
+          topProducts: [
+            { $unwind: '$items' },
+            {
+              $group: {
+                _id: '$items.storeProductId',
+                productName: { $first: '$items.productName' },
+                mockupUrl: { $first: '$items.mockupUrl' },
+                salesCount: { $sum: '$items.quantity' },
+                revenue: { $sum: { $multiply: ['$items.quantity', '$items.price'] } }
+              }
+            },
+            { $sort: { salesCount: -1 } },
+            { $limit: 10 }
+          ]
+        }
+      }
+    ]);
+
+    const stats = statsResult[0];
+    const overall = stats.overall[0] || { totalRevenue: 0, totalOrders: 0, deliveredOrders: 0 };
+    const monthly = stats.monthly[0] || { monthlyRevenue: 0, monthlyOrders: 0 };
+    const topProducts = stats.topProducts || [];
+
+    return res.json({
+      success: true,
+      data: {
+        totalRevenue: overall.totalRevenue,
+        totalOrders: overall.totalOrders,
+        deliveredOrders: overall.deliveredOrders,
+        monthlyRevenue: monthly.monthlyRevenue,
+        monthlyOrders: monthly.monthlyOrders,
+        topProducts: topProducts
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching admin stats:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch admin statistics' });
+  }
+});
+
 module.exports = router;
