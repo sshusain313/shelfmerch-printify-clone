@@ -109,7 +109,7 @@ export const getCategoryIds = (): CategoryId[] => Object.keys(CATEGORIES) as Cat
  */
 export const getSubcategories = (categoryId: CategoryId): string[] => {
   const category = CATEGORIES[categoryId];
-  return category ? category.subcategories : [];
+  return category ? [...category.subcategories] : [];
 };
 
 /**

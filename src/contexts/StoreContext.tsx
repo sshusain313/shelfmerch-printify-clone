@@ -100,7 +100,7 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children }) => {
           }
         }
       } else {
-        setError(response.message || 'Failed to load stores');
+        setError('Failed to load stores');
       }
     } catch (err: any) {
       console.error('Error loading stores:', err);

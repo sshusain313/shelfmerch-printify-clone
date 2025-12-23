@@ -108,7 +108,8 @@ export const generateMockupImage = async ({
                 );
 
                 const dispSprite = new Sprite(dispTexture);
-                dispSprite.transform = garmentSprite.transform; // Match garment transform
+                dispSprite.position.copyFrom(garmentSprite.position);
+                dispSprite.scale.copyFrom(garmentSprite.scale);
                 dispSprite.visible = false; // Hidden, used for filter
                 app.stage.addChild(dispSprite);
 
@@ -138,6 +139,6 @@ export const generateMockupImage = async ({
         throw error;
     } finally {
         // 5. Cleanup
-        app.destroy({ removeView: true, children: true, texture: true, textureSource: true });
+        app.destroy(true);
     }
 };

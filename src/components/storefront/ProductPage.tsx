@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowLeft, ShoppingCart, Star, Package, Shield, Minus, Plus, Heart, Share2, Truck, RefreshCw, Check, ChevronLeft, ChevronRight } from "lucide-react";
-import ProductCard from "@/components/store/ProductCard";
-import StoreFooter from "@/components/store/StoreFooter";
+import EnhancedProductCard from "@/components/storefront/EnhancedProductCard";
+import EnhancedFooter from "@/components/storefront/EnhancedFooter";
 
 const ProductPage = () => {
   const [quantity, setQuantity] = useState(1);
@@ -531,13 +531,13 @@ const ProductPage = () => {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {relatedProducts.map((item) => (
-              <ProductCard key={item.id} {...item} />
+              <EnhancedProductCard key={item.id} product={item as any} onProductClick={() => {}} />
             ))}
           </div>
         </div>
       </section>
 
-      <StoreFooter />
+      <EnhancedFooter storeName="Store" />
     </div>
   );
 };

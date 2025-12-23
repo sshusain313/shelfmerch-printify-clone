@@ -290,6 +290,7 @@ const StoreProductsPage: React.FC = () => {
     }
 
     // Category filter
+    // Category filter
     if (selectedCategories.size > 0) {
       filtered = filtered.filter((product) => {
         const productCategoryId = product.catalogProduct?.categoryId?.toString();
@@ -297,6 +298,7 @@ const StoreProductsPage: React.FC = () => {
       });
     }
 
+    // Subcategory filter
     // Subcategory filter
     if (selectedSubcategories.size > 0) {
       filtered = filtered.filter((product) => {
@@ -403,10 +405,10 @@ const StoreProductsPage: React.FC = () => {
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium text-muted-foreground">Active Filters</span>
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              onClick={clearFilters} 
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={clearFilters}
               className="h-7 text-xs text-primary hover:text-primary/80"
             >
               Clear All
@@ -417,9 +419,9 @@ const StoreProductsPage: React.FC = () => {
               const category = CATEGORIES[catId as CategoryId];
               if (!category) return null;
               return (
-                <Badge 
-                  key={catId} 
-                  variant="secondary" 
+                <Badge
+                  key={catId}
+                  variant="secondary"
                   className="gap-1 pl-2 pr-1 py-1 bg-primary/10 text-primary border-primary/20 hover:bg-primary/20 transition-colors"
                 >
                   {category.name}
@@ -433,9 +435,9 @@ const StoreProductsPage: React.FC = () => {
               );
             })}
             {Array.from(selectedSubcategories).map((subcat) => (
-              <Badge 
-                key={subcat} 
-                variant="secondary" 
+              <Badge
+                key={subcat}
+                variant="secondary"
                 className="gap-1 pl-2 pr-1 py-1 bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors"
               >
                 {subcat}
@@ -477,12 +479,11 @@ const StoreProductsPage: React.FC = () => {
                 return (
                   <div key={category.id} className="space-y-1">
                     {/* Category Header */}
-                    <div 
-                      className={`flex items-center gap-3 p-2.5 rounded-lg cursor-pointer transition-all duration-200 group ${
-                        isCategorySelected 
-                          ? 'bg-primary/10 border border-primary/20' 
-                          : 'hover:bg-muted/80'
-                      }`}
+                    <div
+                      className={`flex items-center gap-3 p-2.5 rounded-lg cursor-pointer transition-all duration-200 group ${isCategorySelected
+                        ? 'bg-primary/10 border border-primary/20'
+                        : 'hover:bg-muted/80'
+                        }`}
                       onClick={() => toggleCategory(category.id)}
                     >
                       <Checkbox
@@ -507,10 +508,9 @@ const StoreProductsPage: React.FC = () => {
                               }}
                               className="p-1 hover:bg-background rounded transition-colors"
                             >
-                              <ChevronDown 
-                                className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${
-                                  isExpanded ? 'rotate-180' : ''
-                                }`} 
+                              <ChevronDown
+                                className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''
+                                  }`}
                               />
                             </button>
                           )}
@@ -529,13 +529,12 @@ const StoreProductsPage: React.FC = () => {
                               (p) => p.subcategoryIds?.includes(subcategory) || p.subcategoryId === subcategory
                             ).length;
                             return (
-                              <div 
-                                key={subcategory} 
-                                className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-all duration-200 ${
-                                  isSubSelected 
-                                    ? 'bg-secondary/50' 
-                                    : 'hover:bg-muted/50'
-                                }`}
+                              <div
+                                key={subcategory}
+                                className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-all duration-200 ${isSubSelected
+                                  ? 'bg-secondary/50'
+                                  : 'hover:bg-muted/50'
+                                  }`}
                                 onClick={() => toggleSubcategory(subcategory, category.id)}
                               >
                                 <Checkbox
@@ -564,7 +563,7 @@ const StoreProductsPage: React.FC = () => {
     </div>
   );
 
-  if (!store) {
+  if (!store && !loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/30 flex items-center justify-center">
         <div className="text-center max-w-md mx-auto px-6">
@@ -585,6 +584,8 @@ const StoreProductsPage: React.FC = () => {
       </div>
     );
   }
+
+  if (!store) return null;
 
   const theme = getTheme(store.theme);
   const cartItemCount = cart.reduce((sum, item) => sum + item.quantity, 0);
@@ -616,8 +617,8 @@ const StoreProductsPage: React.FC = () => {
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-12 lg:py-16 relative">
           {/* Breadcrumb */}
           <nav className="flex items-center gap-2 text-sm text-muted-foreground mb-6">
-            <Link 
-              to={`/store/${store.subdomain}`} 
+            <Link
+              to={`/store/${store.subdomain}`}
               className="flex items-center gap-1.5 hover:text-primary transition-colors"
             >
               <Home className="h-3.5 w-3.5" />
@@ -629,8 +630,8 @@ const StoreProductsPage: React.FC = () => {
 
           <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
             <div className="max-w-2xl">
-              <h1 
-                className="text-4xl lg:text-5xl xl:text-6xl font-bold tracking-tight mb-4" 
+              <h1
+                className="text-4xl lg:text-5xl xl:text-6xl font-bold tracking-tight mb-4"
                 style={{ fontFamily: theme.fonts.heading }}
               >
                 <span className="bg-gradient-to-r from-foreground via-foreground to-foreground/70 bg-clip-text">
@@ -641,28 +642,6 @@ const StoreProductsPage: React.FC = () => {
                 Discover {allProducts.length} carefully curated products crafted with quality and passion
               </p>
             </div>
-
-            {/* Quick Stats */}
-            {/* <div className="flex items-center gap-6">
-              <div className="flex items-center gap-2 text-sm">
-                <div className="p-2 rounded-lg bg-primary/10">
-                  <Sparkles className="h-4 w-4 text-primary" />
-                </div>
-                <div>
-                  <p className="font-semibold text-foreground">{allProducts.length}</p>
-                  <p className="text-xs text-muted-foreground">Products</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 text-sm">
-                <div className="p-2 rounded-lg bg-primary/10">
-                  <Tag className="h-4 w-4 text-primary" />
-                </div>
-                <div>
-                  <p className="font-semibold text-foreground">{availableCategories.length}</p>
-                  <p className="text-xs text-muted-foreground">Categories</p>
-                </div>
-              </div>
-            </div> */}
           </div>
         </div>
       </section>
@@ -674,7 +653,6 @@ const StoreProductsPage: React.FC = () => {
           <aside className="hidden lg:block w-72 flex-shrink-0">
             <div className="sticky top-24">
               <div className="bg-card border border-border/50 rounded-2xl p-6 shadow-sm">
-                {/* Sidebar Header */}
                 <div className="flex items-center gap-2 pb-4 border-b border-border/50 mb-6">
                   <div className="p-2 rounded-lg bg-primary/10">
                     <SlidersHorizontal className="h-4 w-4 text-primary" />
@@ -686,7 +664,6 @@ const StoreProductsPage: React.FC = () => {
                     </Badge>
                   )}
                 </div>
-
                 <FilterContent />
               </div>
             </div>
@@ -800,9 +777,9 @@ const StoreProductsPage: React.FC = () => {
                 <span className="font-semibold text-foreground">{allProducts.length}</span> products
               </p>
               {hasActiveFilters && (
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
+                <Button
+                  variant="ghost"
+                  size="sm"
                   onClick={clearFilters}
                   className="text-primary hover:text-primary/80 hover:bg-primary/5"
                 >
@@ -835,7 +812,7 @@ const StoreProductsPage: React.FC = () => {
                   <div
                     key={product.id}
                     className="animate-fade-up opacity-0"
-                    style={{ 
+                    style={{
                       animationDelay: `${Math.min(index * 0.05, 0.5)}s`,
                       animationFillMode: 'forwards'
                     }}
@@ -848,7 +825,7 @@ const StoreProductsPage: React.FC = () => {
                       />
                     ) : (
                       // List View Card
-                      <div 
+                      <div
                         className="group flex gap-5 p-5 bg-card border border-border/50 rounded-2xl hover:shadow-lg hover:border-primary/20 transition-all duration-300 cursor-pointer"
                         onClick={() => handleProductClick(product)}
                       >
@@ -885,7 +862,7 @@ const StoreProductsPage: React.FC = () => {
                               {product.description || 'Premium quality product'}
                             </p>
                           </div>
-                          
+
                           <div className="flex items-center justify-between mt-3">
                             <div className="flex items-baseline gap-2">
                               <span className="text-xl font-bold text-primary">
@@ -909,8 +886,8 @@ const StoreProductsPage: React.FC = () => {
                               >
                                 <Heart className="h-4 w-4" />
                               </Button>
-                              <Button 
-                                size="sm" 
+                              <Button
+                                size="sm"
                                 className="rounded-full px-5"
                                 onClick={(e) => {
                                   e.stopPropagation();

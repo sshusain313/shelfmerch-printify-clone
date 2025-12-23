@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Label } from '@/components/ui/label';
-import { CloudUpgradePrompt } from '@/components/CloudUpgradePrompt';
+// import { CloudUpgradePrompt } from '@/components/CloudUpgradePrompt';
 import { Badge } from '@/components/ui/badge';
 import {
   Package,
@@ -156,9 +156,9 @@ const DashboardNew = () => {
           </div>
 
           {/* Cloud Upgrade Prompt */}
-          <div className="mb-8">
+          {/* <div className="mb-8">
             <CloudUpgradePrompt />
-          </div>
+          </div> */}
 
           {/* Tabs */}
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">

@@ -1,4 +1,4 @@
-export type OrderStatus = 'on-hold' | 'in-production' | 'shipped' | 'delivered' | 'canceled';
+export type OrderStatus = 'on-hold' | 'in-production' | 'shipped' | 'delivered' | 'canceled' | 'cancelled' | 'refunded';
 
 export type StoreTheme = 'modern' | 'classic' | 'minimal';
 

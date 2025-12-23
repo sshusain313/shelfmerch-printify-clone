@@ -172,8 +172,8 @@ export const MockupPreview = ({
           {placeholders.map((placeholder, index) => {
             const xPx = canvasPadding + inchesToPixels(placeholder.xIn);
             const yPx = canvasPadding + inchesToPixels(placeholder.yIn);
-            const widthPx = inchesToPixels(placeholder.wIn);
-            const heightPx = inchesToPixels(placeholder.hIn);
+            const widthPx = inchesToPixels(placeholder.widthIn);
+            const heightPx = inchesToPixels(placeholder.heightIn);
             
             const centerX = xPx + widthPx / 2;
             const centerY = yPx + heightPx / 2;
