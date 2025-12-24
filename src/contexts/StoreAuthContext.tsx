@@ -41,7 +41,7 @@ export const StoreAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         }
 
         try {
-            const resp = await fetch(`${API_BASE}/api/store-auth/me`, {
+            const resp = await fetch(`${API_BASE}/store-auth/me`, {
                 headers: {
                     'Authorization': `Bearer ${token}`
                 }
@@ -65,7 +65,7 @@ export const StoreAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     const login = async (subdomain: string, email: string, password: string): Promise<boolean> => {
         try {
-            const resp = await fetch(`${API_BASE}/api/store-auth/login`, {
+            const resp = await fetch(`${API_BASE}/store-auth/login`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ subdomain, email, password }),
@@ -90,7 +90,7 @@ export const StoreAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     const register = async (subdomain: string, name: string, email: string, password: string): Promise<boolean> => {
         try {
-            const resp = await fetch(`${API_BASE}/api/store-auth/register`, {
+            const resp = await fetch(`${API_BASE}/store-auth/register`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ subdomain, name, email, password }),
