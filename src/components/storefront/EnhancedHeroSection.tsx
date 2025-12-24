@@ -57,3 +57,4 @@ const EnhancedHeroSection = ({ storeName, description }: EnhancedHeroSectionProp
 
 export default EnhancedHeroSection;
 
+

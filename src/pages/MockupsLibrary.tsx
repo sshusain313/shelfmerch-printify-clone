@@ -9,6 +9,7 @@ import { AlertTriangle, ArrowLeft, Image as ImageIcon, Save, Check, Loader2 } fr
 import { RealisticWebGLPreview } from '@/components/admin/RealisticWebGLPreview';
 import type { DisplacementSettings } from '@/types/product';
 import { toast } from 'sonner';
+import { RAW_API_URL } from '@/config';
 
 interface LocationState {
     storeProductId?: string;
@@ -36,7 +37,7 @@ const MockupsLibrary = () => {
     const [previewMap, setPreviewMap] = useState<Record<string, string>>({});
     const [generatingMap, setGeneratingMap] = useState<Record<string, boolean>>({});
     const previewCache = useRef<Record<string, string>>({});
-    
+
     // WebGL preview state
     // Higher displacement values for lifestyle mockups where garments are smaller in frame
     const defaultDisplacementSettings: DisplacementSettings = {
@@ -50,19 +51,19 @@ const MockupsLibrary = () => {
     const [savingMockups, setSavingMockups] = useState<Record<string, boolean>>({});
     const [allSaved, setAllSaved] = useState(false);
     const [isSavingAll, setIsSavingAll] = useState(false);
-    
+
     // Track which mockups have WebGL ready
     const [webglReadyMap, setWebglReadyMap] = useState<Record<string, boolean>>({});
-    
+
     // Selected colors and sizes from DesignEditor
     const [selectedColors, setSelectedColors] = useState<string[]>([]);
     const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
     const [selectedSizesByColor, setSelectedSizesByColor] = useState<Record<string, string[]>>({});
     const [primaryColorHex, setPrimaryColorHex] = useState<string | null>(null);
-    
+
     // Available colors from catalog product
     const [availableColors, setAvailableColors] = useState<string[]>([]);
-    
+
     // Currently selected color for preview (defaults to first selected color)
     const [currentPreviewColor, setCurrentPreviewColor] = useState<string | null>(null);
 
@@ -110,7 +111,7 @@ const MockupsLibrary = () => {
 
         // Check if placeholder uses inch values
         const usesInches = placeholder.xIn !== undefined || placeholder.widthIn !== undefined;
-        
+
         if (usesInches) {
             const xIn = placeholder.xIn || 0;
             const yIn = placeholder.yIn || 0;
@@ -135,7 +136,7 @@ const MockupsLibrary = () => {
             const y = yRelStage * scaleToRaw;
             const width = wStage * scaleToRaw;
             const height = hStage * scaleToRaw;
-            
+
             console.log('📐 Converted inches to raw image pixels:', {
                 input: { xIn, yIn, widthIn, heightIn },
                 physicalDims: { physW, physH },
@@ -165,7 +166,7 @@ const MockupsLibrary = () => {
                     rotation
                 }
             });
-            
+
             return { x, y, width, height, rotation };
         } else {
             // Already in pixels
@@ -305,22 +306,22 @@ const MockupsLibrary = () => {
                 return;
             }
 
-                try {
+            try {
                 setIsLoadingMockups(true);
                 const resp = await productApi.getById(storeProduct.catalogProductId);
                 if (resp && resp.success !== false && resp.data) {
                     const catalogProduct = resp.data;
-                    
+
                     // Extract available colors from catalog product
                     if (Array.isArray(catalogProduct.availableColors) && catalogProduct.availableColors.length > 0) {
                         setAvailableColors(catalogProduct.availableColors);
                     }
-                    
+
                     // Extract sampleMockups from product design
                     const productDesign = catalogProduct.design || {};
                     const mockups = productDesign.sampleMockups || [];
                     setSampleMockups(mockups);
-                    
+
                     // Also get physical dimensions for inch-to-pixel conversion
                     const physDims = productDesign.physicalDimensions;
                     if (physDims) {
@@ -332,7 +333,7 @@ const MockupsLibrary = () => {
                         // Default physical dimensions (same as DesignEditor defaults)
                         setCatalogPhysicalDimensions({ width: 20, height: 24 });
                     }
-                    
+
                     console.log('✅ Loaded sampleMockups from productcatalogs:', {
                         catalogProductId: storeProduct.catalogProductId,
                         sampleMockupsCount: mockups.length,
@@ -370,7 +371,7 @@ const MockupsLibrary = () => {
     useEffect(() => {
         if (storeProduct?.designData) {
             const designData = storeProduct.designData;
-            
+
             // Extract selected colors
             if (Array.isArray(designData.selectedColors)) {
                 setSelectedColors(designData.selectedColors);
@@ -378,7 +379,7 @@ const MockupsLibrary = () => {
                 // Fallback to navigation state if available
                 setSelectedColors(state.selectedColors);
             }
-            
+
             // Extract selected sizes
             if (Array.isArray(designData.selectedSizes)) {
                 setSelectedSizes(designData.selectedSizes);
@@ -386,12 +387,12 @@ const MockupsLibrary = () => {
                 // Fallback to navigation state if available
                 setSelectedSizes(state.selectedSizes);
             }
-            
+
             // Extract selected sizes by color
             if (designData.selectedSizesByColor && typeof designData.selectedSizesByColor === 'object') {
                 setSelectedSizesByColor(designData.selectedSizesByColor);
             }
-            
+
             // Extract primary color hex for garment tinting
             if (typeof designData.primaryColorHex === 'string') {
                 setPrimaryColorHex(designData.primaryColorHex);
@@ -399,7 +400,7 @@ const MockupsLibrary = () => {
                 // Fallback to navigation state if available
                 setPrimaryColorHex(state.primaryColorHex);
             }
-            
+
             console.log('✅ Extracted color/size selections from designData:', {
                 selectedColors: designData.selectedColors || state.selectedColors,
                 selectedSizes: designData.selectedSizes || state.selectedSizes,
@@ -461,14 +462,14 @@ const MockupsLibrary = () => {
             'clear': '#FFFFFF',
             'kraft': '#D4A574',
         };
-        
+
         const normalized = colorName.toLowerCase().trim();
         return colorMap[normalized] || '#CCCCCC';
     };
 
     // Get the hex color for the current preview color
     const currentPreviewColorHex = currentPreviewColor ? getColorHex(currentPreviewColor) : null;
-    
+
     // Colors to display in selector (use selectedColors if available, otherwise availableColors)
     const colorsToDisplay = selectedColors.length > 0 ? selectedColors : availableColors;
 
@@ -476,7 +477,7 @@ const MockupsLibrary = () => {
     // The design is stored in designData.elements, each element has a `view` property and `imageUrl`
     const designImagesByView: Record<string, string> = (() => {
         const result: Record<string, string> = {};
-        
+
         // Method 1: Check designData.views (object format like { front: { imageUrl: '...' } })
         if (designData.views && typeof designData.views === 'object') {
             Object.keys(designData.views).forEach((viewKey) => {
@@ -487,7 +488,7 @@ const MockupsLibrary = () => {
                 }
             });
         }
-        
+
         // Method 2: Check designData.designUrlsByPlaceholder (keyed by view)
         if (designData.designUrlsByPlaceholder && typeof designData.designUrlsByPlaceholder === 'object') {
             Object.keys(designData.designUrlsByPlaceholder).forEach((viewKey) => {
@@ -502,7 +503,7 @@ const MockupsLibrary = () => {
                 }
             });
         }
-        
+
         // Method 3: Extract from designData.elements (array of design elements)
         if (Array.isArray(designData.elements) && designData.elements.length > 0) {
             designData.elements.forEach((el: any) => {
@@ -516,7 +517,7 @@ const MockupsLibrary = () => {
                 }
             });
         }
-        
+
         // Method 4: Check savedPreviewImages
         if (designData.savedPreviewImages && typeof designData.savedPreviewImages === 'object') {
             Object.keys(designData.savedPreviewImages).forEach((viewKey) => {
@@ -526,7 +527,7 @@ const MockupsLibrary = () => {
                 }
             });
         }
-        
+
         console.log('📐 Extracted designImagesByView:', result);
         return result;
     })();
@@ -538,7 +539,7 @@ const MockupsLibrary = () => {
                 console.log('⏭️ No sample mockups to generate previews for');
                 return;
             }
-            
+
             const hasDesignImages = Object.keys(designImagesByView).length > 0;
             if (!hasDesignImages) {
                 console.log('⏭️ No design images found to composite onto mockups');
@@ -550,7 +551,7 @@ const MockupsLibrary = () => {
                 });
                 return;
             }
-            
+
             if (!catalogPhysicalDimensions) {
                 console.log('⏭️ Waiting for catalog physical dimensions...');
                 return;
@@ -616,8 +617,8 @@ const MockupsLibrary = () => {
                     });
 
                     const previewUrl = await generateMockupPreview(
-                        mockup.imageUrl, 
-                        designImageUrl, 
+                        mockup.imageUrl,
+                        designImageUrl,
                         placeholder,
                         catalogPhysicalDimensions
                     );
@@ -678,7 +679,7 @@ const MockupsLibrary = () => {
                     const formData = new FormData();
                     formData.append('image', blob, `mockup-preview-${mockupId}.png`);
 
-                    const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+                    const API_BASE_URL = RAW_API_URL;
                     const token = localStorage.getItem('token');
 
                     const headers: HeadersInit = {};
@@ -871,69 +872,69 @@ const MockupsLibrary = () => {
                         </Card>
 
                         <Card className="lg:col-span-2">
-  <CardHeader>
-    <CardTitle>Design previews</CardTitle>
-    <CardDescription>
-      Preview images per view (front, back, etc.) from stored preview URLs or image elements in <code>designData.elements</code>.
-    </CardDescription>
-  </CardHeader>
-  <CardContent>
-    {/* Check for preview images and render them in a grid layout */}
-    {Object.keys(previewImagesByView).length > 0 ? (
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 w-full">
-        {Object.entries(previewImagesByView).map(([viewKey, url]) => (
-          <div key={viewKey} className="space-y-3">
-            <div className="border rounded-lg overflow-hidden bg-muted">
-              <img
-                src={url}
-                alt={`${viewKey} preview`}
-                className="w-full h-auto max-h-[420px] object-contain"
-              />
-            </div>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" asChild>
-                <a href={url} target="_blank" rel="noreferrer">
-                  Open original
-                </a>
-              </Button>
-              <Button variant="outline" size="sm" asChild>
-                <a href={url} download target="_blank" rel="noreferrer">
-                  Download
-                </a>
-              </Button>
-            </div>
-          </div>
-        ))}
-      </div>
-    ) : imageElements.length > 0 ? (
-      // Displaying design elements in a grid layout
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 w-full">
-        {Object.entries(imagesByView).map(([viewKey, els]) => (
-          <div key={viewKey} className="space-y-4">
-            <div className="grid grid-cols-1 gap-4">
-              {els.map((el: any, idx: number) => (
-                <div key={`${viewKey}-${idx}`} className="border rounded-lg bg-muted overflow-hidden">
-                  <img
-                    src={el.imageUrl}
-                    alt={`${viewKey} design element ${idx + 1}`}
-                    className="w-full h-auto max-h-[260px] object-contain bg-background"
-                  />
-                  
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-    ) : (
-      <div className="border rounded-lg bg-muted/40 p-8 text-center text-muted-foreground">
-        <ImageIcon className="h-8 w-8 mx-auto mb-2 opacity-50" />
-        <p className="text-sm mb-1">No preview images or image elements found for this design.</p>
-        <p className="text-xs">Create image elements in the design editor, then save/publish the design.</p>
-      </div>
-    )}
-  </CardContent>
-</Card>
+                            <CardHeader>
+                                <CardTitle>Design previews</CardTitle>
+                                <CardDescription>
+                                    Preview images per view (front, back, etc.) from stored preview URLs or image elements in <code>designData.elements</code>.
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                {/* Check for preview images and render them in a grid layout */}
+                                {Object.keys(previewImagesByView).length > 0 ? (
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 w-full">
+                                        {Object.entries(previewImagesByView).map(([viewKey, url]) => (
+                                            <div key={viewKey} className="space-y-3">
+                                                <div className="border rounded-lg overflow-hidden bg-muted">
+                                                    <img
+                                                        src={url}
+                                                        alt={`${viewKey} preview`}
+                                                        className="w-full h-auto max-h-[420px] object-contain"
+                                                    />
+                                                </div>
+                                                <div className="flex gap-2">
+                                                    <Button variant="outline" size="sm" asChild>
+                                                        <a href={url} target="_blank" rel="noreferrer">
+                                                            Open original
+                                                        </a>
+                                                    </Button>
+                                                    <Button variant="outline" size="sm" asChild>
+                                                        <a href={url} download target="_blank" rel="noreferrer">
+                                                            Download
+                                                        </a>
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : imageElements.length > 0 ? (
+                                    // Displaying design elements in a grid layout
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 w-full">
+                                        {Object.entries(imagesByView).map(([viewKey, els]) => (
+                                            <div key={viewKey} className="space-y-4">
+                                                <div className="grid grid-cols-1 gap-4">
+                                                    {els.map((el: any, idx: number) => (
+                                                        <div key={`${viewKey}-${idx}`} className="border rounded-lg bg-muted overflow-hidden">
+                                                            <img
+                                                                src={el.imageUrl}
+                                                                alt={`${viewKey} design element ${idx + 1}`}
+                                                                className="w-full h-auto max-h-[260px] object-contain bg-background"
+                                                            />
+
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="border rounded-lg bg-muted/40 p-8 text-center text-muted-foreground">
+                                        <ImageIcon className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                                        <p className="text-sm mb-1">No preview images or image elements found for this design.</p>
+                                        <p className="text-xs">Create image elements in the design editor, then save/publish the design.</p>
+                                    </div>
+                                )}
+                            </CardContent>
+                        </Card>
 
                     </div>
                 )}
@@ -965,8 +966,8 @@ const MockupsLibrary = () => {
                                                     onClick={() => setCurrentPreviewColor(color)}
                                                     className={`
                                                         flex items-center gap-2 px-4 py-2 rounded-lg border-2 transition-all
-                                                        ${isSelected 
-                                                            ? 'border-primary bg-primary/10 shadow-md' 
+                                                        ${isSelected
+                                                            ? 'border-primary bg-primary/10 shadow-md'
                                                             : 'border-muted hover:border-primary/50 bg-background'
                                                         }
                                                     `}
@@ -1045,7 +1046,7 @@ const MockupsLibrary = () => {
                                                 <span>sample mockup(s) with realistic WebGL preview</span>
                                             </div>
                                         </div>
-                                        
+
                                         <div className="grid grid-cols-1 xl:grid-cols-4 lg:grid-cols-3 gap-3">
                                             {sampleMockups.map((mockup: any, index: number) => {
                                                 const viewKey = (mockup.viewKey || 'front').toLowerCase();
@@ -1055,7 +1056,7 @@ const MockupsLibrary = () => {
                                                 const isSaved = !!savedMockupUrls[mockup.id];
                                                 const mockupDisplacement: DisplacementSettings =
                                                     mockup.displacementSettings || displacementSettings || defaultDisplacementSettings;
-                                                
+
                                                 // Build designUrlsByPlaceholder for this mockup's view
                                                 const mockupDesignUrls: Record<string, string> = {};
                                                 if (hasDesignForView && hasPlaceholder) {
@@ -1065,7 +1066,7 @@ const MockupsLibrary = () => {
                                                         }
                                                     });
                                                 }
-                                                
+
                                                 return (
                                                     <div key={mockup.id || index} className="border rounded-lg bg-background overflow-hidden">
                                                         {/* Header */}
@@ -1098,10 +1099,10 @@ const MockupsLibrary = () => {
                                                                 {isSaving ? 'Saving...' : isSaved ? 'Saved' : 'Save'}
                                                             </Button>
                                                         </div>
-                                                        
+
                                                         {/* WebGL Preview */}
                                                         {mockup.imageUrl && hasDesignForView && hasPlaceholder && catalogPhysicalDimensions ? (
-                                                            <div 
+                                                            <div
                                                                 ref={(el) => { webglContainerRefs.current[mockup.id] = el; }}
                                                                 className=" \relative bg-white flex justify-center items-center"
                                                                 style={{ minHeight: 400 }}
@@ -1159,7 +1160,7 @@ const MockupsLibrary = () => {
                                                                 <p className="text-sm text-muted-foreground">No mockup image</p>
                                                             </div>
                                                         )}
-                                                        
+
                                                         {/* Footer info */}
                                                         <div className="px-4 py-2 border-t bg-muted/20 text-xs text-muted-foreground">
                                                             <span className="font-mono">{mockup.id?.slice(0, 20)}...</span>
@@ -1187,7 +1188,7 @@ const MockupsLibrary = () => {
                                 )}
                             </CardContent>
                         </Card>
-                        
+
                         {/* Continue to Listing Editor */}
                         {sampleMockups.length > 0 && Object.keys(savedMockupUrls).length > 0 && (
                             <div className="flex justify-end">

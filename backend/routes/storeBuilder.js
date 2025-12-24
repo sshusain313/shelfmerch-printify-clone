@@ -410,3 +410,4 @@ router.patch('/:id/builder/toggle', protect, authorize('merchant', 'superadmin')
 
 module.exports = router;
 
+

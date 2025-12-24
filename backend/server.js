@@ -287,7 +287,7 @@ const startServer = async () => {
   try {
     await connectDB();
 
-    const server = app.listen(PORT, 'localhost', () => {
+    const server = app.listen(PORT, '0.0.0.0', () => {
       const address = server.address();
       console.log(`✅ Server running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
       console.log(`✅ Health check: http://localhost:${PORT}/health`);

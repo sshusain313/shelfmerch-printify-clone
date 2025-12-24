@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { toast } from 'sonner';
+import { API_BASE_URL } from '@/config';
 
 interface StoreCustomer {
     id: string;
@@ -24,7 +25,7 @@ export const StoreAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const [customer, setCustomer] = useState<StoreCustomer | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
-    const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+    const API_BASE = API_BASE_URL;
 
     const checkAuth = async (subdomain: string) => {
         // Check for existing token in localStorage for this specific store (or global if shared)

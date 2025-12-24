@@ -1,5 +1,4 @@
-const STORE_BASE_URL =
-  import.meta.env.VITE_STORE_BASE_URL || 'http://localhost:8080';
+import { STORE_BASE_URL } from '@/config';
 
 export const getStoreUrl = (subdomain: string) => {
   // Localhost → route-based store

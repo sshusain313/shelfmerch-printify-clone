@@ -28,6 +28,7 @@ import { RealisticWebGLPreview } from '@/components/admin/RealisticWebGLPreview'
 import { UploadPanel } from '@/components/designer/UploadPanel';
 import { DisplacementSettingsPanel } from '@/components/designer/DisplacementSettingsPanel';
 import type { DisplacementSettings } from '@/types/product';
+import { API_BASE_URL, RAW_API_URL } from '@/config';
 
 // Types
 interface CanvasElement {
@@ -198,9 +199,8 @@ const DesignEditor: React.FC = () => {
   const fetchUserPreviews = useCallback(async () => {
     try {
       if (!id) return;
-      const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
       const token = localStorage.getItem('token');
-      const resp = await fetch(`${API_BASE_URL}/api/auth/me/previews/${id}`, {
+      const resp = await fetch(`${RAW_API_URL}/api/auth/me/previews/${id}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -1573,7 +1573,7 @@ const DesignEditor: React.FC = () => {
       const catalogProductId = product._id || product.id;
       const sellingPrice = product.catalogue?.basePrice || 0;
       const galleryImages = product.galleryImages || [];
-      
+
       // Build design payload with current design state
       const designPayload = {
         views: product.design?.views || [],

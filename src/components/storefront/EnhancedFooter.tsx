@@ -121,3 +121,4 @@ const EnhancedFooter = ({ storeName, description }: EnhancedFooterProps) => {
 
 export default EnhancedFooter;
 
+
