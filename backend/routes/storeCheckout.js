@@ -2,6 +2,7 @@ const express = require('express');
 const jwt = require('jsonwebtoken');
 const Razorpay = require('razorpay');
 const crypto = require('crypto');
+const mongoose = require('mongoose');
 const router = express.Router();
 const Store = require('../models/Store');
 const StoreCustomer = require('../models/StoreCustomer');
@@ -9,6 +10,7 @@ const StoreOrder = require('../models/StoreOrder');
 const StoreProduct = require('../models/StoreProduct');
 const CatalogProduct = require('../models/CatalogProduct');
 const FulfillmentInvoice = require('../models/FulfillmentInvoice');
+const walletService = require('../services/walletService');
 
 // Initialize Razorpay instance
 const getRazorpayInstance = () => {
@@ -49,13 +51,17 @@ const verifyStoreToken = (req, res, next) => {
 
 /**
  * Helper to generate Fulfillment Invoice for the Merchant
+ * Automatically deducts from merchant's wallet if sufficient balance
  */
 const generateFulfillmentInvoice = async (order) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
     console.log(`[Invoice] Generating fulfillment invoice for order ${order._id}`);
 
     // 1. Get Store information (to get merchant reference)
-    const store = await Store.findById(order.storeId);
+    const store = await Store.findById(order.storeId).session(session);
     if (!store) throw new Error('Store not found for invoice generation');
 
     const invoiceItems = [];
@@ -63,13 +69,13 @@ const generateFulfillmentInvoice = async (order) => {
 
     // 2. Map order items to production costs
     for (const item of order.items) {
-      const storeProduct = await StoreProduct.findById(item.storeProductId);
+      const storeProduct = await StoreProduct.findById(item.storeProductId).session(session);
       if (!storeProduct) {
         console.warn(`[Invoice] StoreProduct ${item.storeProductId} not found, skipping item cost`);
         continue;
       }
 
-      const catalogProduct = await CatalogProduct.findById(storeProduct.catalogProductId);
+      const catalogProduct = await CatalogProduct.findById(storeProduct.catalogProductId).session(session);
       if (!catalogProduct) {
         console.warn(`[Invoice] CatalogProduct ${storeProduct.catalogProductId} not found, skipping item cost`);
         continue;
@@ -86,14 +92,122 @@ const generateFulfillmentInvoice = async (order) => {
       });
     }
 
-    // 3. Create FulfillmentInvoice
+    // 3. Calculate invoice total
     // Merchant's shipping cost (ShelfMerch might charge differently than what merchant charges customer)
     // For now, let's say merchant pays same shipping or a base warehouse fee
     const merchantShippingCost = order.shipping * 0.8; // Example: merchant pays 80% of what customer paid for shipping as raw cost
     const tax = totalProductionCost * 0.12; // Example tax rate
     const grandTotal = totalProductionCost + merchantShippingCost + tax;
+    const invoiceAmountPaise = Math.round(grandTotal * 100);
 
-    const invoice = await FulfillmentInvoice.create({
+    // 4. Credit merchant's wallet with profit FIRST (customer payment - production cost)
+    // Profit is credited regardless because customer payment is already received
+    // This ensures merchant gets their earnings even if they don't have enough balance for production cost
+    let profitCreditedPaise = 0;
+    if (order.total && order.total > 0) {
+      try {
+        const customerPaymentPaise = Math.round(order.total * 100);
+        const profitPaise = customerPaymentPaise - invoiceAmountPaise;
+
+        if (profitPaise > 0) {
+          const profitIdempotencyKey = `order_profit_${order._id}_${Date.now()}`;
+          await walletService.creditWallet(
+            order.merchantId.toString(),
+            profitPaise,
+            {
+              type: 'CREDIT',
+              source: 'ORDER',
+              referenceType: 'ORDER',
+              referenceId: order._id.toString(),
+              idempotencyKey: profitIdempotencyKey,
+              description: `Profit from order ${order._id} (Customer paid: ₹${order.total.toFixed(2)}, Production cost: ₹${grandTotal.toFixed(2)})`,
+              orderId: order._id,
+              meta: {
+                customerPaymentPaise,
+                productionCostPaise: invoiceAmountPaise,
+                profitPaise,
+                orderTotal: order.total,
+              },
+            },
+            session
+          );
+
+          profitCreditedPaise = profitPaise;
+          console.log(`[Invoice] ✓ Credited ${profitPaise} paise profit to merchant wallet (Order: ₹${order.total.toFixed(2)}, Cost: ₹${grandTotal.toFixed(2)})`);
+        } else {
+          console.log(`[Invoice] ⚠ No profit to credit (Order total: ₹${order.total.toFixed(2)}, Production cost: ₹${grandTotal.toFixed(2)})`);
+        }
+      } catch (profitError) {
+        // Log error but continue - we still need to create the invoice
+        console.error(`[Invoice] ⚠ Failed to credit profit to merchant wallet: ${profitError.message}`);
+      }
+    }
+
+    // 5. Try to auto-deduct production cost from merchant's wallet
+    // Now that profit is credited, merchant may have sufficient balance
+    let invoiceStatus = 'pending';
+    let walletDebitedPaise = 0;
+    let paymentDetails = {};
+
+    try {
+      // Get wallet balance (after profit credit) - use getOrCreateWallet with session to see updated balance
+      const wallet = await walletService.getOrCreateWallet(order.merchantId.toString(), session);
+      const availableBalancePaise = wallet.balancePaise;
+
+      if (availableBalancePaise >= invoiceAmountPaise) {
+        // Sufficient balance - auto-deduct production cost
+        const idempotencyKey = `invoice_auto_${order._id}_${Date.now()}`;
+        await walletService.debitWallet(
+          order.merchantId.toString(),
+          invoiceAmountPaise,
+          {
+            type: 'DEBIT',
+            source: 'ORDER',
+            referenceType: 'INVOICE',
+            referenceId: order._id.toString(),
+            idempotencyKey,
+            description: `Auto-payment for fulfillment invoice (Order ${order._id})`,
+            invoiceId: order._id,
+          },
+          session
+        );
+
+        walletDebitedPaise = invoiceAmountPaise;
+        invoiceStatus = 'paid';
+        paymentDetails = {
+          method: 'wallet',
+          walletAmountPaise: walletDebitedPaise,
+          walletAmountRupees: (walletDebitedPaise / 100).toFixed(2),
+          autoPaid: true,
+          profitCreditedPaise: profitCreditedPaise,
+        };
+
+        console.log(`[Invoice] ✓ Auto-debited ${walletDebitedPaise} paise from merchant wallet for invoice`);
+      } else {
+        // Insufficient balance - mark as insufficient_funds
+        invoiceStatus = 'insufficient_funds';
+        paymentDetails = {
+          method: 'wallet',
+          requiredAmountPaise: invoiceAmountPaise,
+          availableBalancePaise: availableBalancePaise,
+          shortfallPaise: invoiceAmountPaise - availableBalancePaise,
+          profitCreditedPaise: profitCreditedPaise,
+        };
+
+        console.log(`[Invoice] ⚠ Insufficient wallet balance. Required: ${invoiceAmountPaise} paise, Available: ${availableBalancePaise} paise`);
+      }
+    } catch (walletError) {
+      // If wallet deduction fails, still create invoice but mark as pending
+      console.error(`[Invoice] ⚠ Wallet deduction failed: ${walletError.message}`);
+      invoiceStatus = 'pending';
+      paymentDetails = {
+        error: walletError.message,
+        profitCreditedPaise: profitCreditedPaise,
+      };
+    }
+
+    // 5. Create FulfillmentInvoice
+    const invoice = await FulfillmentInvoice.create([{
       merchantId: order.merchantId,
       storeId: order.storeId,
       orderId: order._id,
@@ -102,14 +216,35 @@ const generateFulfillmentInvoice = async (order) => {
       shippingCost: merchantShippingCost,
       tax: tax,
       totalAmount: grandTotal,
-      status: 'pending'
-    });
+      status: invoiceStatus,
+      paymentDetails: paymentDetails,
+      ...(invoiceStatus === 'paid' ? { paidAt: new Date() } : {}),
+    }], { session });
 
-    console.log(`[Invoice] ✓ Fulfillment invoice ${invoice.invoiceNumber} created`);
-    return invoice;
+    // 6. Update order fulfillment payment status if invoice was paid
+    if (invoiceStatus === 'paid') {
+      await StoreOrder.findByIdAndUpdate(
+        order._id,
+        {
+          'fulfillmentPayment.status': 'PAID',
+          'fulfillmentPayment.walletAppliedPaise': walletDebitedPaise,
+          'fulfillmentPayment.totalAmountPaise': invoiceAmountPaise,
+        },
+        { session }
+      );
+    }
+
+
+    await session.commitTransaction();
+    console.log(`[Invoice] ✓ Fulfillment invoice ${invoice[0].invoiceNumber} created with status: ${invoiceStatus}`);
+    return invoice[0];
   } catch (err) {
+    await session.abortTransaction();
     console.error('[Invoice] ✗ Error generating fulfillment invoice:', err);
     // Don't throw, we don't want to break the checkout if invoice generation fails
+    return null;
+  } finally {
+    session.endSession();
   }
 };
 

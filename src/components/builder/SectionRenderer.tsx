@@ -635,18 +635,157 @@ const SectionRenderer: React.FC<SectionRendererProps> = ({
       );
     }
 
-    case 'video':
+    case 'video': {
+      const videoUrl = section.settings.videoUrl || '';
+      const provider = section.settings.provider || 'youtube';
+      const autoplay = section.settings.autoplay ?? false;
+      const controls = section.settings.controls ?? true;
+      const aspectRatio = section.settings.aspectRatio || '16:9';
+
+      // Parse aspect ratio (e.g., "16:9" -> 16/9)
+      const [widthRatio, heightRatio] = aspectRatio.split(':').map(Number);
+      const aspectRatioValue = widthRatio && heightRatio ? widthRatio / heightRatio : 16 / 9;
+
+      // Helper function to extract video ID from YouTube URL
+      const getYouTubeVideoId = (url: string): string | null => {
+        const patterns = [
+          /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/,
+          /youtube\.com\/watch\?.*v=([^&\n?#]+)/,
+        ];
+        for (const pattern of patterns) {
+          const match = url.match(pattern);
+          if (match) return match[1];
+        }
+        return null;
+      };
+
+      // Helper function to extract video ID from Vimeo URL
+      const getVimeoVideoId = (url: string): string | null => {
+        const patterns = [
+          /(?:vimeo\.com\/)(\d+)/,
+          /(?:player\.vimeo\.com\/video\/)(\d+)/,
+        ];
+        for (const pattern of patterns) {
+          const match = url.match(pattern);
+          if (match) return match[1];
+        }
+        return null;
+      };
+
+      // Render video based on provider
+      const renderVideo = () => {
+        if (!videoUrl) {
+          return (
+            <div className="aspect-video rounded-xl border border-dashed border-muted-foreground/40 bg-muted flex flex-col items-center justify-center gap-3 text-muted-foreground">
+              <Package className="h-10 w-10" />
+              <p className="text-sm">No video URL provided</p>
+              <p className="text-xs">Add a video URL in the settings panel</p>
+            </div>
+          );
+        }
+
+        // Check if it's a direct video file URL (mp4, webm, etc.)
+        const isDirectVideo = /\.(mp4|webm|ogg|mov)(\?.*)?$/i.test(videoUrl);
+
+        if (provider === 'custom' || isDirectVideo) {
+          return (
+            <div
+              className="rounded-xl overflow-hidden bg-black"
+              style={{ aspectRatio: aspectRatioValue }}
+            >
+              <video
+                src={videoUrl}
+                controls={controls}
+                autoPlay={autoplay}
+                muted={autoplay} // Muted is required for autoplay in most browsers
+                loop
+                className="w-full h-full object-contain"
+                style={{ aspectRatio: aspectRatioValue }}
+              >
+                Your browser does not support the video tag.
+              </video>
+            </div>
+          );
+        }
+
+        if (provider === 'youtube') {
+          const videoId = getYouTubeVideoId(videoUrl);
+          if (!videoId) {
+            return (
+              <div className="aspect-video rounded-xl border border-dashed border-muted-foreground/40 bg-muted flex flex-col items-center justify-center gap-3 text-muted-foreground">
+                <Package className="h-10 w-10" />
+                <p className="text-sm">Invalid YouTube URL</p>
+                <p className="text-xs">Please provide a valid YouTube URL</p>
+              </div>
+            );
+          }
+
+          const embedUrl = `https://www.youtube.com/embed/${videoId}${autoplay ? '?autoplay=1&mute=1' : ''}${controls ? '' : '&controls=0'}`;
+
+          return (
+            <div
+              className="rounded-xl overflow-hidden bg-black"
+              style={{ aspectRatio: aspectRatioValue }}
+            >
+              <iframe
+                src={embedUrl}
+                className="w-full h-full"
+                frameBorder="0"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+                style={{ aspectRatio: aspectRatioValue }}
+              />
+            </div>
+          );
+        }
+
+        if (provider === 'vimeo') {
+          const videoId = getVimeoVideoId(videoUrl);
+          if (!videoId) {
+            return (
+              <div className="aspect-video rounded-xl border border-dashed border-muted-foreground/40 bg-muted flex flex-col items-center justify-center gap-3 text-muted-foreground">
+                <Package className="h-10 w-10" />
+                <p className="text-sm">Invalid Vimeo URL</p>
+                <p className="text-xs">Please provide a valid Vimeo URL</p>
+              </div>
+            );
+          }
+
+          const embedUrl = `https://player.vimeo.com/video/${videoId}${autoplay ? '?autoplay=1&muted=1' : ''}${controls ? '' : '&controls=0'}`;
+
+          return (
+            <div
+              className="rounded-xl overflow-hidden bg-black"
+              style={{ aspectRatio: aspectRatioValue }}
+            >
+              <iframe
+                src={embedUrl}
+                className="w-full h-full"
+                frameBorder="0"
+                allow="autoplay; fullscreen; picture-in-picture"
+                allowFullScreen
+                style={{ aspectRatio: aspectRatioValue }}
+              />
+            </div>
+          );
+        }
+
+        return (
+          <div className="aspect-video rounded-xl border border-dashed border-muted-foreground/40 bg-muted flex flex-col items-center justify-center gap-3 text-muted-foreground">
+            <Package className="h-10 w-10" />
+            <p className="text-sm">Unsupported video provider</p>
+          </div>
+        );
+      };
+
       return (
         <div style={sectionStyle}>
           <div className="container mx-auto" style={innerStyle}>
-            <div className="aspect-video rounded-xl border border-dashed border-muted-foreground/40 bg-muted flex flex-col items-center justify-center gap-3 text-muted-foreground">
-              <Package className="h-10 w-10" />
-              <p className="text-sm">Video embed placeholder</p>
-              <p className="text-xs">Supports YouTube, Vimeo, or custom sources.</p>
-            </div>
+            {renderVideo()}
           </div>
         </div>
       );
+    }
 
     case 'newsletter':
       return (

@@ -137,24 +137,24 @@ export const componentLibrary: ComponentDefinition[] = [
       padding: { top: 32, right: 32, bottom: 32, left: 32 },
     },
   },
-  {
-    type: 'video',
-    name: 'Video Embed',
-    description: 'Embed YouTube, Vimeo, or custom video',
-    icon: 'Video',
-    category: 'content',
-    defaultSettings: {
-      videoUrl: '',
-      provider: 'youtube',
-      autoplay: false,
-      controls: true,
-      aspectRatio: '16:9',
-    },
-    defaultStyles: {
-      backgroundColor: '#000000',
-      padding: { top: 48, right: 32, bottom: 48, left: 32 },
-    },
-  },
+  // {
+  //   type: 'video',
+  //   name: 'Video Embed',
+  //   description: 'Embed YouTube, Vimeo, or custom video',
+  //   icon: 'Video',
+  //   category: 'content',
+  //   defaultSettings: {
+  //     videoUrl: '',
+  //     provider: 'youtube',
+  //     autoplay: false,
+  //     controls: true,
+  //     aspectRatio: '16:9',
+  //   },
+  //   defaultStyles: {
+  //     backgroundColor: '#000000',
+  //     padding: { top: 48, right: 32, bottom: 48, left: 32 },
+  //   },
+  // },
   {
     type: 'newsletter',
     name: 'Newsletter Signup',

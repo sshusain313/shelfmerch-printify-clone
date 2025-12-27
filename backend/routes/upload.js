@@ -20,6 +20,22 @@ const upload = multer({
   },
 });
 
+// Configure multer for video uploads
+const uploadVideo = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 100 * 1024 * 1024, // 100MB limit for videos
+  },
+  fileFilter: (req, file, cb) => {
+    // Accept video files
+    if (file.mimetype.startsWith('video/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only video files are allowed'), false);
+    }
+  },
+});
+
 // @route   POST /api/upload/image
 // @desc    Upload an image file to S3
 // @access  Private (merchant, superadmin)
@@ -120,6 +136,45 @@ router.post('/batch', protect, authorize('superadmin'), upload.array('images', 1
     res.status(500).json({
       success: false,
       message: error.message || 'Failed to upload images'
+    });
+  }
+});
+
+// @route   POST /api/upload/video
+// @desc    Upload a video file to S3
+// @access  Private (merchant, superadmin)
+router.post('/video', protect, authorize('merchant', 'superadmin'), uploadVideo.single('video'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'No video file provided'
+      });
+    }
+
+    // Validate that it's actually a video file
+    if (!req.file.mimetype.startsWith('video/')) {
+      return res.status(400).json({
+        success: false,
+        message: 'File must be a video'
+      });
+    }
+
+    const folder = req.body.folder || 'videos';
+    console.log(`📤 Uploading video to S3 folder: ${folder}`);
+    
+    const s3Url = await uploadToS3(req.file.buffer, req.file.originalname, folder);
+
+    res.json({
+      success: true,
+      url: s3Url,
+      message: 'Video uploaded successfully'
+    });
+  } catch (error) {
+    console.error('❌ Error uploading video:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to upload video'
     });
   }
 });

@@ -599,6 +599,197 @@ export const adminWalletApi = {
   },
 };
 
+// ============================================
+// Merchant Withdrawals API
+// ============================================
+export const withdrawalApi = {
+  // Get wallet summary with pending withdrawals
+  getWalletSummary: async () => {
+    return apiRequest<{
+      balancePaise: number;
+      balanceRupees: string;
+      currency: string;
+      status: string;
+      pendingWithdrawalsPaise: number;
+      pendingWithdrawalsRupees: string;
+      availableForWithdrawalPaise: number;
+      availableForWithdrawalRupees: string;
+    }>('/merchant/wallet/summary');
+  },
+
+  // List merchant's withdrawal requests
+  list: async (params?: { status?: string; limit?: number; skip?: number }) => {
+    const queryParams = new URLSearchParams();
+    if (params?.status) queryParams.append('status', params.status);
+    if (params?.limit) queryParams.append('limit', params.limit.toString());
+    if (params?.skip) queryParams.append('skip', params.skip.toString());
+    const query = queryParams.toString();
+
+    return apiRequest<{
+      data: Array<{
+        id: string;
+        amountPaise: number;
+        amountRupees: string;
+        currency: string;
+        upiId: string;
+        status: string;
+        requestedAt: string;
+        reviewedAt?: string;
+        paidAt?: string;
+        rejectionReason?: string;
+        payoutMethod: string;
+        payoutReference?: string;
+      }>;
+      pagination: {
+        total: number;
+        limit: number;
+        skip: number;
+      };
+    }>(`/merchant/withdrawals${query ? `?${query}` : ''}`);
+  },
+
+  // Create a new withdrawal request
+  create: async (data: { amountPaise: number; upiId: string }) => {
+    return apiRequest<{
+      id: string;
+      amountPaise: number;
+      amountRupees: string;
+      upiId: string;
+      status: string;
+      requestedAt: string;
+    }>('/merchant/withdrawals', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+};
+
+// ============================================
+// Admin Withdrawals API
+// ============================================
+export const adminWithdrawalsApi = {
+  // Get withdrawal statistics
+  getStats: async () => {
+    return apiRequest<{
+      byStatus: Record<string, {
+        count: number;
+        totalPaise: number;
+        totalRupees: string;
+      }>;
+      todayApproved: {
+        count: number;
+        totalPaise: number;
+        totalRupees: string;
+      };
+      todayPaid: {
+        count: number;
+        totalPaise: number;
+        totalRupees: string;
+      };
+    }>('/admin/withdrawals/stats');
+  },
+
+  // List all withdrawal requests with filters
+  list: async (params?: { status?: string; merchantId?: string; limit?: number; skip?: number }) => {
+    const queryParams = new URLSearchParams();
+    if (params?.status) queryParams.append('status', params.status);
+    if (params?.merchantId) queryParams.append('merchantId', params.merchantId);
+    if (params?.limit) queryParams.append('limit', params.limit.toString());
+    if (params?.skip) queryParams.append('skip', params.skip.toString());
+    const query = queryParams.toString();
+
+    return apiRequest<{
+      data: Array<{
+        id: string;
+        merchantId: string;
+        merchantEmail?: string;
+        merchantName?: string;
+        amountPaise: number;
+        amountRupees: string;
+        currency: string;
+        upiId: string;
+        status: string;
+        requestedAt: string;
+        reviewedAt?: string;
+        reviewedBy?: string;
+        paidAt?: string;
+        rejectionReason?: string;
+        payoutMethod: string;
+        payoutReference?: string;
+        payoutNotes?: string;
+      }>;
+      pagination: {
+        total: number;
+        limit: number;
+        skip: number;
+      };
+    }>(`/admin/withdrawals${query ? `?${query}` : ''}`);
+  },
+
+  // Get single withdrawal details
+  getById: async (id: string) => {
+    return apiRequest<{
+      id: string;
+      merchantId: string;
+      merchantEmail?: string;
+      merchantName?: string;
+      amountPaise: number;
+      amountRupees: string;
+      currency: string;
+      upiId: string;
+      status: string;
+      requestedAt: string;
+      reviewedAt?: string;
+      reviewedBy?: string;
+      paidAt?: string;
+      rejectionReason?: string;
+      payoutMethod: string;
+      payoutReference?: string;
+      payoutNotes?: string;
+      balanceBeforeRequestPaise?: number;
+      transactionId?: string;
+    }>(`/admin/withdrawals/${encodeURIComponent(id)}`);
+  },
+
+  // Approve a withdrawal request
+  approve: async (id: string) => {
+    return apiRequest<{
+      id: string;
+      status: string;
+      amountPaise: number;
+      amountRupees: string;
+      transactionId: string;
+    }>(`/admin/withdrawals/${encodeURIComponent(id)}/approve`, {
+      method: 'POST',
+    });
+  },
+
+  // Reject a withdrawal request
+  reject: async (id: string, reason: string) => {
+    return apiRequest<{
+      id: string;
+      status: string;
+      rejectionReason: string;
+    }>(`/admin/withdrawals/${encodeURIComponent(id)}/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
+  },
+
+  // Mark withdrawal as paid
+  markPaid: async (id: string, data: { payoutReference: string; notes?: string }) => {
+    return apiRequest<{
+      id: string;
+      status: string;
+      payoutReference: string;
+      paidAt: string;
+    }>(`/admin/withdrawals/${encodeURIComponent(id)}/mark-paid`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+};
+
 // Get refresh token from localStorage
 const getRefreshToken = (): string | null => {
   return localStorage.getItem('refreshToken');
@@ -1787,6 +1978,66 @@ export const uploadApi = {
       const errorData = await response.json().catch(() => ({}));
       throw new ApiError(
         errorData.message || 'Failed to upload image',
+        response.status
+      );
+    }
+
+    const data = await response.json();
+    return data.url;
+  },
+
+  /**
+   * Upload a video file to S3
+   * @param file - Video file object to upload
+   * @param folder - Folder path in S3 (e.g., 'videos')
+   * @returns Promise with the S3 URL
+   */
+  uploadVideo: async (file: File, folder: string = 'videos'): Promise<string> => {
+    const token = getToken();
+    const formData = new FormData();
+    formData.append('video', file);
+    formData.append('folder', folder);
+
+    const response = await fetch(`${API_BASE_URL}/upload/video`, {
+      method: 'POST',
+      headers: {
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+      },
+      credentials: 'include',
+      body: formData,
+    });
+
+    // Handle 401 with token refresh
+    if (response.status === 401 && token) {
+      const newToken = await refreshAccessToken();
+      if (newToken) {
+        const retryResponse = await fetch(`${API_BASE_URL}/upload/video`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${newToken}`,
+          },
+          credentials: 'include',
+          body: formData,
+        });
+        if (!retryResponse.ok) {
+          const errorData = await retryResponse.json().catch(() => ({}));
+          throw new ApiError(
+            errorData.message || 'Failed to upload video',
+            retryResponse.status
+          );
+        }
+        const data = await retryResponse.json();
+        return data.url;
+      } else {
+        removeTokens();
+        throw new ApiError('Session expired. Please login again.', 401);
+      }
+    }
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new ApiError(
+        errorData.message || 'Failed to upload video',
         response.status
       );
     }

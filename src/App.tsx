@@ -47,6 +47,8 @@ import MerchantInvoices from "./pages/MerchantInvoices";
 import AdminInvoices from "./pages/AdminInvoices";
 import WalletTopUp from "./pages/WalletTopUp";
 import WalletTransactions from "./pages/WalletTransactions";
+import MerchantWallet from "./pages/MerchantWallet";
+import AdminWithdrawals from "./pages/AdminWithdrawals";
 
 const queryClient = new QueryClient();
 
@@ -264,6 +266,22 @@ const App = () => (
                   element={
                     <ProtectedRoute requireAdmin>
                       <AdminAssets />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/wallet"
+                  element={
+                    <ProtectedRoute>
+                      <MerchantWallet />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/admin/withdrawals"
+                  element={
+                    <ProtectedRoute requireAdmin>
+                      <AdminWithdrawals />
                     </ProtectedRoute>
                   }
                 />

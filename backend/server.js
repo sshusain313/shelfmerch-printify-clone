@@ -40,6 +40,8 @@ const invoiceRoutes = require('./routes/invoices');
 const walletRoutes = require('./routes/wallet');
 const adminWalletRoutes = require('./routes/adminWallet');
 const razorpayWebhookRoutes = require('./routes/razorpayWebhook');
+const merchantWithdrawalsRoutes = require('./routes/merchantWithdrawals');
+const adminWithdrawalsRoutes = require('./routes/adminWithdrawals');
 
 // Initialize Express app
 const app = express();
@@ -176,6 +178,8 @@ app.use('/api/shipping-quote', shippingQuoteRoutes);
 app.use('/api/invoices', invoiceRoutes);
 app.use('/api/wallet', walletRoutes);
 app.use('/api/admin/wallet', adminWalletRoutes);
+app.use('/api/merchant', merchantWithdrawalsRoutes);
+app.use('/api/admin/withdrawals', adminWithdrawalsRoutes);
 
 // 404 handler
 app.use((req, res) => {

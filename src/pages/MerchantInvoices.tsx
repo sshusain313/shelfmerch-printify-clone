@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import {
-    CreditCard,
     CheckCircle2,
     Clock,
     ExternalLink,
@@ -13,21 +12,13 @@ import {
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { invoiceApi, walletApi } from '@/lib/api';
-import { toast } from 'sonner';
 import DashboardLayout from '@/components/layout/DashboardLayout';
-
-declare global {
-    interface Window {
-        Razorpay: any;
-    }
-}
 
 const MerchantInvoices = () => {
     const [invoices, setInvoices] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [walletBalance, setWalletBalance] = useState<{ balancePaise: number; balanceRupees: string } | null>(null);
-    const [payingInvoiceId, setPayingInvoiceId] = useState<string | null>(null);
+    const [walletBalance, setWalletBalance] = useState<{ balancePaise: number; balanceRupees: string; currency: string } | null>(null);
 
     useEffect(() => {
         loadData();
@@ -38,13 +29,19 @@ const MerchantInvoices = () => {
             setIsLoading(true);
 
             // Load invoices and wallet balance in parallel
-            const [invoicesData, balanceData] = await Promise.all([
+            const [invoicesData, balanceResponse] = await Promise.all([
                 invoiceApi.listForMerchant(),
                 walletApi.getBalance()
             ]);
 
             setInvoices(invoicesData || []);
-            setWalletBalance(balanceData);
+            // walletApi.getBalance returns { success: true, data: { balancePaise, balanceRupees, currency } }
+            if (balanceResponse && balanceResponse.success && balanceResponse.data) {
+                setWalletBalance(balanceResponse.data);
+            } else if (balanceResponse && balanceResponse.balancePaise !== undefined) {
+                // Fallback: if apiRequest unwrapped it
+                setWalletBalance(balanceResponse as any);
+            }
         } catch (err: any) {
             setError(err?.message || 'Failed to load data');
         } finally {
@@ -52,89 +49,23 @@ const MerchantInvoices = () => {
         }
     };
 
-    const handlePayWithWallet = async (invoiceId: string) => {
-        try {
-            setPayingInvoiceId(invoiceId);
-
-            const response = await invoiceApi.payWithWallet(invoiceId, true);
-
-            if (response.status === 'paid') {
-                // Fully paid with wallet
-                toast.success(`Invoice paid successfully! ₹${response.walletDebitedRupees} debited from wallet.`);
-
-                // Update invoice in list
-                setInvoices(prev => prev.map(inv =>
-                    inv._id === invoiceId ? { ...inv, status: 'paid', paidAt: new Date() } : inv
-                ));
-
-                // Refresh wallet balance
-                const newBalance = await walletApi.getBalance();
-                setWalletBalance(newBalance);
-            } else if (response.status === 'pending_razorpay') {
-                // Need to complete with Razorpay
-                toast.info(`₹${response.walletDebitedRupees} applied from wallet. Complete remaining ₹${response.remainingRupees} payment.`);
-
-                // Open Razorpay checkout for remainder
-                openRazorpayCheckout(
-                    response.razorpayOrderId!,
-                    response.razorpayKeyId!,
-                    response.razorpayAmount!,
-                    response.razorpayCurrency!,
-                    invoiceId
-                );
-
-                // Refresh wallet balance (wallet already debited)
-                const newBalance = await walletApi.getBalance();
-                setWalletBalance(newBalance);
-            }
-        } catch (err: any) {
-            toast.error(err?.message || 'Payment failed');
-        } finally {
-            setPayingInvoiceId(null);
-        }
-    };
-
-    const openRazorpayCheckout = (
-        orderId: string,
-        keyId: string,
-        amount: number,
-        currency: string,
-        invoiceId: string
-    ) => {
-        const options = {
-            key: keyId,
-            amount: amount,
-            currency: currency,
-            name: 'ShelfMerch',
-            description: 'Fulfillment Invoice Payment',
-            order_id: orderId,
-            handler: function (response: any) {
-                // Payment completed - webhook will mark invoice as paid
-                toast.success('Payment successful! Invoice will be marked as paid shortly.');
-                // Reload data after a short delay to let webhook process
-                setTimeout(() => loadData(), 2000);
-            },
-            prefill: {},
-            theme: {
-                color: '#6366f1'
-            },
-            modal: {
-                ondismiss: function () {
-                    toast.info('Payment cancelled. You can try again later.');
-                }
-            }
-        };
-
-        const razorpay = new window.Razorpay(options);
-        razorpay.open();
-    };
-
     const getStatusColor = (status: string) => {
         switch (status) {
             case 'paid': return 'bg-green-500/10 text-green-500';
             case 'pending': return 'bg-yellow-500/10 text-yellow-500';
+            case 'insufficient_funds': return 'bg-orange-500/10 text-orange-500';
             case 'cancelled': return 'bg-red-500/10 text-red-500';
             default: return 'bg-muted text-muted-foreground';
+        }
+    };
+
+    const getStatusLabel = (status: string) => {
+        switch (status) {
+            case 'paid': return 'Paid';
+            case 'pending': return 'Pending';
+            case 'insufficient_funds': return 'Insufficient Funds';
+            case 'cancelled': return 'Cancelled';
+            default: return status;
         }
     };
 
@@ -220,32 +151,31 @@ const MerchantInvoices = () => {
                                             <td className="px-6 py-4">
                                                 <Badge variant="outline" className={`capitalize ${getStatusColor(inv.status)}`}>
                                                     {inv.status === 'paid' ? <CheckCircle2 className="h-3 w-3 mr-1" /> : <Clock className="h-3 w-3 mr-1" />}
-                                                    {inv.status}
+                                                    {getStatusLabel(inv.status)}
                                                 </Badge>
+                                                {inv.status === 'insufficient_funds' && inv.paymentDetails?.shortfallPaise && (
+                                                    <p className="text-xs text-orange-500 mt-1">
+                                                        Shortfall: ₹{((inv.paymentDetails.shortfallPaise || 0) / 100).toFixed(2)}
+                                                    </p>
+                                                )}
                                             </td>
                                             <td className="px-6 py-4">
                                                 <span className="text-sm font-bold text-foreground">₹{inv.totalAmount?.toFixed(2)}</span>
                                             </td>
                                             <td className="px-6 py-4 text-right">
-                                                {inv.status === 'pending' ? (
-                                                    <Button
-                                                        size="sm"
-                                                        onClick={() => handlePayWithWallet(inv._id)}
-                                                        className="font-semibold shadow-sm"
-                                                        disabled={payingInvoiceId === inv._id}
-                                                    >
-                                                        {payingInvoiceId === inv._id ? (
-                                                            'Processing...'
-                                                        ) : (
-                                                            <>
-                                                                <CreditCard className="h-3 w-3 mr-1" />
-                                                                Pay Now
-                                                            </>
-                                                        )}
-                                                    </Button>
-                                                ) : (
+                                                {inv.status === 'paid' ? (
                                                     <Button variant="outline" size="sm" className="font-medium">
                                                         Download PDF
+                                                    </Button>
+                                                ) : inv.status === 'insufficient_funds' ? (
+                                                    <Button variant="outline" size="sm" className="font-medium" asChild>
+                                                        <Link to="/wallet/top-up">
+                                                            Top Up Wallet
+                                                        </Link>
+                                                    </Button>
+                                                ) : (
+                                                    <Button variant="outline" size="sm" className="font-medium" disabled>
+                                                        Processing...
                                                     </Button>
                                                 )}
                                             </td>

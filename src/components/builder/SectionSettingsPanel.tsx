@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useRef } from 'react';
 import { BuilderSection } from '@/types/builder';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -8,6 +8,10 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
+import { uploadApi } from '@/lib/api';
+import { toast } from 'sonner';
+import { Upload, X } from 'lucide-react';
+import { CATEGORIES, CategoryId, getSubcategories } from '@/config/productCategories';
 
 interface SectionSettingsPanelProps {
   section: BuilderSection | null;
@@ -204,12 +208,80 @@ const SectionSettingsPanel: React.FC<SectionSettingsPanelProps> = ({
             </div>
             <div className="space-y-2">
               <Label htmlFor="hero-background-image">Background Image URL</Label>
-              <Input
-                id="hero-background-image"
-                value={section.styles.backgroundImage || ''}
-                onChange={(e) => handleStyleChange('backgroundImage', e.target.value)}
-                placeholder="https://example.com/hero.jpg"
-              />
+              <div className="flex gap-2">
+                <Input
+                  id="hero-background-image"
+                  value={section.styles.backgroundImage || ''}
+                  onChange={(e) => handleStyleChange('backgroundImage', e.target.value)}
+                  placeholder="https://example.com/hero.jpg or upload an image"
+                  className="flex-1"
+                />
+                {section.styles.backgroundImage && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={() => handleStyleChange('backgroundImage', '')}
+                    title="Remove image"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+              <div className="space-y-2">
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+
+                    // Validate file type
+                    if (!file.type.startsWith('image/')) {
+                      toast.error('Invalid file type', {
+                        description: 'Please upload a valid image file',
+                      });
+                      return;
+                    }
+
+                    // Validate file size (max 10MB)
+                    const maxSize = 10 * 1024 * 1024; // 10MB
+                    if (file.size > maxSize) {
+                      toast.error('File too large', {
+                        description: 'Image file must be less than 10MB',
+                      });
+                      return;
+                    }
+
+                    try {
+                      const imageUrl = await uploadApi.uploadImage(file, 'gallery');
+                      handleStyleChange('backgroundImage', imageUrl);
+                      toast.success('Image uploaded successfully', {
+                        description: 'Background image has been uploaded',
+                      });
+                    } catch (error) {
+                      console.error('Error uploading image:', error);
+                      toast.error('Upload failed', {
+                        description: error instanceof Error ? error.message : 'Failed to upload image. Please try again.',
+                      });
+                    } finally {
+                      // Reset file input
+                      e.target.value = '';
+                    }
+                  }}
+                  className="hidden"
+                  id="hero-background-image-upload"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => document.getElementById('hero-background-image-upload')?.click()}
+                  className="w-full"
+                >
+                  <Upload className="h-4 w-4 mr-2" />
+                  Upload Background Image
+                </Button>
+              </div>
               <p className="text-xs text-muted-foreground">
                 Leave blank to use a solid background color.
               </p>
@@ -380,7 +452,29 @@ const SectionSettingsPanel: React.FC<SectionSettingsPanelProps> = ({
 
         const updateCollection = (index: number, field: string, value: string) => {
           const updated = [...collections];
-          updated[index] = { ...updated[index], [field]: value };
+          const currentCollection = updated[index] || { name: '', subcategoryId: '', categoryId: '', imageUrl: '' };
+          
+          // If category is being updated, validate and clear subcategory if invalid
+          if (field === 'categoryId') {
+            const newCategoryId = value as CategoryId;
+            const currentSubcategory = currentCollection.subcategoryId || '';
+            
+            // If there's a subcategory, check if it's still valid for the new category
+            if (currentSubcategory && newCategoryId) {
+              const validSubcategories = getSubcategories(newCategoryId);
+              if (!validSubcategories.includes(currentSubcategory)) {
+                // Clear invalid subcategory
+                updated[index] = { ...currentCollection, categoryId: value, subcategoryId: '' };
+              } else {
+                updated[index] = { ...currentCollection, categoryId: value };
+              }
+            } else {
+              updated[index] = { ...currentCollection, categoryId: value };
+            }
+          } else {
+            updated[index] = { ...currentCollection, [field]: value };
+          }
+          
           handleSettingChange('collections', updated);
         };
 
@@ -494,19 +588,81 @@ const SectionSettingsPanel: React.FC<SectionSettingsPanelProps> = ({
                         className="text-sm"
                       />
                       {section.settings.filterBy === 'subcategory' ? (
-                        <Input
-                          value={collection.subcategoryId || ''}
-                          onChange={(e) => updateCollection(index, 'subcategoryId', e.target.value)}
-                          placeholder="Subcategory ID"
-                          className="text-sm"
-                        />
+                        <div className="space-y-2">
+                          <Label className="text-xs">Category</Label>
+                          <Select
+                            value={collection.categoryId || ''}
+                            onValueChange={(value) => {
+                              // Update category and clear subcategory if it becomes invalid
+                              const updated = [...collections];
+                              const currentCollection = updated[index] || { name: '', subcategoryId: '', categoryId: '', imageUrl: '' };
+                              const currentSubcategory = currentCollection.subcategoryId || '';
+                              
+                              // Check if current subcategory is valid for new category
+                              if (currentSubcategory && value) {
+                                const validSubcategories = getSubcategories(value as CategoryId);
+                                if (!validSubcategories.includes(currentSubcategory)) {
+                                  updated[index] = { ...currentCollection, categoryId: value, subcategoryId: '' };
+                                } else {
+                                  updated[index] = { ...currentCollection, categoryId: value };
+                                }
+                              } else {
+                                updated[index] = { ...currentCollection, categoryId: value };
+                              }
+                              handleSettingChange('collections', updated);
+                            }}
+                          >
+                            <SelectTrigger className="text-sm">
+                              <SelectValue placeholder="Select category" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {Object.values(CATEGORIES).map((cat) => (
+                                <SelectItem key={cat.id} value={cat.id}>
+                                  {cat.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {collection.categoryId && (
+                            <>
+                              <Label className="text-xs">Subcategory</Label>
+                              <Select
+                                value={collection.subcategoryId || ''}
+                                onValueChange={(value) => updateCollection(index, 'subcategoryId', value)}
+                              >
+                                <SelectTrigger className="text-sm">
+                                  <SelectValue placeholder="Select subcategory" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {getSubcategories(collection.categoryId as CategoryId).map((sub) => (
+                                    <SelectItem key={sub} value={sub}>
+                                      {sub}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </>
+                          )}
+                        </div>
                       ) : (
-                        <Input
-                          value={collection.categoryId || ''}
-                          onChange={(e) => updateCollection(index, 'categoryId', e.target.value)}
-                          placeholder="Category ID"
-                          className="text-sm"
-                        />
+                        <div className="space-y-2">
+                          <Label className="text-xs">Category</Label>
+                          <Select
+                            value={collection.categoryId || ''}
+                            onValueChange={(value) => updateCollection(index, 'categoryId', value)}
+                          >
+                            <SelectTrigger className="text-sm">
+                              <SelectValue placeholder="Select category" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {Object.values(CATEGORIES).map((cat) => (
+                                <SelectItem key={cat.id} value={cat.id}>
+                                  {cat.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
                       )}
                       <Input
                         value={collection.imageUrl || ''}
@@ -548,6 +704,38 @@ const SectionSettingsPanel: React.FC<SectionSettingsPanelProps> = ({
           }
           updated[index] = { ...updated[index], [field]: value };
           handleSettingChange('images', updated);
+        };
+
+        const handleImageUpload = async (index: number, file: File) => {
+          // Validate file type
+          if (!file.type.startsWith('image/')) {
+            toast.error('Invalid file type', {
+              description: 'Please upload a valid image file',
+            });
+            return;
+          }
+
+          // Validate file size (max 10MB)
+          const maxSize = 10 * 1024 * 1024; // 10MB
+          if (file.size > maxSize) {
+            toast.error('File too large', {
+              description: 'Image file must be less than 10MB',
+            });
+            return;
+          }
+
+          try {
+            const imageUrl = await uploadApi.uploadImage(file, 'gallery');
+            handleImageChange(index, 'url', imageUrl);
+            toast.success('Image uploaded successfully', {
+              description: `Image ${index + 1} has been uploaded`,
+            });
+          } catch (error) {
+            console.error('Error uploading image:', error);
+            toast.error('Upload failed', {
+              description: error instanceof Error ? error.message : 'Failed to upload image. Please try again.',
+            });
+          }
         };
 
         const addImage = () => {
@@ -603,12 +791,50 @@ const SectionSettingsPanel: React.FC<SectionSettingsPanelProps> = ({
               <div className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="image-url">Image URL</Label>
-                  <Input
-                    id="image-url"
-                    value={images[0]?.url || ''}
-                    onChange={(e) => handleImageChange(0, 'url', e.target.value)}
-                    placeholder="https://example.com/featured.jpg"
+                  <div className="flex gap-2">
+                    <Input
+                      id="image-url"
+                      value={images[0]?.url || ''}
+                      onChange={(e) => handleImageChange(0, 'url', e.target.value)}
+                      placeholder="https://example.com/featured.jpg or upload an image"
+                      className="flex-1"
+                    />
+                    {images[0]?.url && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        onClick={() => handleImageChange(0, 'url', '')}
+                        title="Remove image"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      await handleImageUpload(0, file);
+                      // Reset file input
+                      e.target.value = '';
+                    }}
+                    className="hidden"
+                    id="single-image-upload"
                   />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => document.getElementById('single-image-upload')?.click()}
+                    className="w-full"
+                  >
+                    <Upload className="h-4 w-4 mr-2" />
+                    Upload Image
+                  </Button>
                 </div>
                 <div className="space-y-2">
                   <Label>Caption</Label>
@@ -670,12 +896,49 @@ const SectionSettingsPanel: React.FC<SectionSettingsPanelProps> = ({
                             </Button>
                           </div>
                         </div>
-                        <Input
-                          value={img.url}
-                          onChange={(e) => handleImageChange(index, 'url', e.target.value)}
-                          placeholder="Image URL"
-                          className="text-sm"
-                        />
+                        <div className="flex gap-2">
+                          <Input
+                            value={img.url}
+                            onChange={(e) => handleImageChange(index, 'url', e.target.value)}
+                            placeholder="Image URL or upload"
+                            className="text-sm flex-1"
+                          />
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={async (e) => {
+                              const file = e.target.files?.[0];
+                              if (!file) return;
+                              await handleImageUpload(index, file);
+                              // Reset file input
+                              e.target.value = '';
+                            }}
+                            className="hidden"
+                            id={`image-upload-${index}`}
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            onClick={() => document.getElementById(`image-upload-${index}`)?.click()}
+                            title="Upload image"
+                            className="flex-shrink-0"
+                          >
+                            <Upload className="h-4 w-4" />
+                          </Button>
+                          {img.url && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              onClick={() => handleImageChange(index, 'url', '')}
+                              title="Remove image"
+                              className="flex-shrink-0"
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
                         <Input
                           value={img.caption || ''}
                           onChange={(e) => handleImageChange(index, 'caption', e.target.value)}
@@ -692,62 +955,163 @@ const SectionSettingsPanel: React.FC<SectionSettingsPanelProps> = ({
         );
       }
 
-    case 'video':
-      return (
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="video-url">Video URL</Label>
-            <Input
-              id="video-url"
-              value={section.settings.videoUrl || ''}
-              onChange={(e) => handleSettingChange('videoUrl', e.target.value)}
-              placeholder="https://www.youtube.com/watch?v=..."
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Provider</Label>
-              <Select
-                value={section.settings.provider || 'youtube'}
-                onValueChange={(value) => handleSettingChange('provider', value)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select provider" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="youtube">YouTube</SelectItem>
-                  <SelectItem value="vimeo">Vimeo</SelectItem>
-                  <SelectItem value="custom">Custom</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Autoplay</Label>
-              <Switch
-                checked={section.settings.autoplay ?? false}
-                onCheckedChange={(checked) => handleSettingChange('autoplay', checked)}
-              />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Controls</Label>
-              <Switch
-                checked={section.settings.controls ?? true}
-                onCheckedChange={(checked) => handleSettingChange('controls', checked)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="video-aspect">Aspect ratio</Label>
-              <Input
-                id="video-aspect"
-                value={section.settings.aspectRatio || '16:9'}
-                onChange={(e) => handleSettingChange('aspectRatio', e.target.value)}
-              />
-            </div>
-          </div>
-        </div>
-      );
+    // case 'video': {
+    //   const [uploading, setUploading] = useState(false);
+    //   const fileInputRef = useRef<HTMLInputElement>(null);
+
+    //   const handleVideoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    //     const file = event.target.files?.[0];
+    //     if (!file) return;
+
+    //     // Validate file type
+    //     const validVideoTypes = ['video/mp4', 'video/webm', 'video/ogg', 'video/quicktime', 'video/x-msvideo'];
+    //     if (!validVideoTypes.includes(file.type)) {
+    //       toast.error('Invalid file type', {
+    //         description: 'Please upload a valid video file (MP4, WebM, OGG, MOV, or AVI)',
+    //       });
+    //       return;
+    //     }
+
+    //     // Validate file size (max 100MB)
+    //     const maxSize = 100 * 1024 * 1024; // 100MB
+    //     if (file.size > maxSize) {
+    //       toast.error('File too large', {
+    //         description: 'Video file must be less than 100MB',
+    //       });
+    //       return;
+    //     }
+
+    //     setUploading(true);
+    //     try {
+    //       const videoUrl = await uploadApi.uploadVideo(file, 'videos');
+    //       handleSettingChange('videoUrl', videoUrl);
+    //       handleSettingChange('provider', 'custom');
+    //       toast.success('Video uploaded successfully', {
+    //         description: 'Your video has been uploaded and is ready to use',
+    //       });
+    //     } catch (error) {
+    //       console.error('Error uploading video:', error);
+    //       toast.error('Upload failed', {
+    //         description: error instanceof Error ? error.message : 'Failed to upload video. Please try again.',
+    //       });
+    //     } finally {
+    //       setUploading(false);
+    //       // Reset file input
+    //       if (fileInputRef.current) {
+    //         fileInputRef.current.value = '';
+    //       }
+    //     }
+    //   };
+
+    //   const handleRemoveVideo = () => {
+    //     handleSettingChange('videoUrl', '');
+    //     if (fileInputRef.current) {
+    //       fileInputRef.current.value = '';
+    //     }
+    //   };
+
+    //   return (
+    //     <div className="space-y-4">
+    //       <div className="space-y-2">
+    //         <Label htmlFor="video-url">Video URL</Label>
+    //         <div className="flex gap-2">
+    //           <Input
+    //             id="video-url"
+    //             value={section.settings.videoUrl || ''}
+    //             onChange={(e) => handleSettingChange('videoUrl', e.target.value)}
+    //             placeholder="https://www.youtube.com/watch?v=... or upload a video file"
+    //             className="flex-1"
+    //           />
+    //           {section.settings.videoUrl && (
+    //             <Button
+    //               type="button"
+    //               variant="outline"
+    //               size="icon"
+    //               onClick={handleRemoveVideo}
+    //               title="Remove video"
+    //             >
+    //               <X className="h-4 w-4" />
+    //             </Button>
+    //           )}
+    //         </div>
+    //       </div>
+
+    //       <div className="space-y-2">
+    //         <Label>Upload Video from Device</Label>
+    //         <div className="flex flex-col gap-2">
+    //           <input
+    //             ref={fileInputRef}
+    //             type="file"
+    //             accept="video/mp4,video/webm,video/ogg,video/quicktime,video/x-msvideo"
+    //             onChange={handleVideoUpload}
+    //             className="hidden"
+    //             id="video-file-input"
+    //             disabled={uploading}
+    //           />
+    //           <Button
+    //             type="button"
+    //             variant="outline"
+    //             onClick={() => fileInputRef.current?.click()}
+    //             disabled={uploading}
+    //             className="w-full"
+    //           >
+    //             <Upload className="h-4 w-4 mr-2" />
+    //             {uploading ? 'Uploading...' : 'Choose Video File'}
+    //           </Button>
+    //           <p className="text-xs text-muted-foreground">
+    //             Supported formats: MP4, WebM, OGG, MOV, AVI (max 100MB)
+    //           </p>
+    //         </div>
+    //       </div>
+
+    //       <Separator />
+
+    //       <div className="grid grid-cols-2 gap-4">
+    //         <div className="space-y-2">
+    //           <Label>Provider</Label>
+    //           <Select
+    //             value={section.settings.provider || 'youtube'}
+    //             onValueChange={(value) => handleSettingChange('provider', value)}
+    //           >
+    //             <SelectTrigger>
+    //               <SelectValue placeholder="Select provider" />
+    //             </SelectTrigger>
+    //             <SelectContent>
+    //               <SelectItem value="youtube">YouTube</SelectItem>
+    //               <SelectItem value="vimeo">Vimeo</SelectItem>
+    //               <SelectItem value="custom">Custom / Uploaded</SelectItem>
+    //             </SelectContent>
+    //           </Select>
+    //         </div>
+    //         <div className="space-y-2">
+    //           <Label>Autoplay</Label>
+    //           <Switch
+    //             checked={section.settings.autoplay ?? false}
+    //             onCheckedChange={(checked) => handleSettingChange('autoplay', checked)}
+    //           />
+    //         </div>
+    //       </div>
+    //       <div className="grid grid-cols-2 gap-4">
+    //         <div className="space-y-2">
+    //           <Label>Controls</Label>
+    //           <Switch
+    //             checked={section.settings.controls ?? true}
+    //             onCheckedChange={(checked) => handleSettingChange('controls', checked)}
+    //           />
+    //         </div>
+    //         <div className="space-y-2">
+    //           <Label htmlFor="video-aspect">Aspect ratio</Label>
+    //           <Input
+    //             id="video-aspect"
+    //             value={section.settings.aspectRatio || '16:9'}
+    //             onChange={(e) => handleSettingChange('aspectRatio', e.target.value)}
+    //             placeholder="16:9"
+    //           />
+    //         </div>
+    //       </div>
+    //     </div>
+    //   );
+    // }
 
     case 'product-details': {
         const trustBadges: Array<{ icon?: string; title?: string; text?: string }> = Array.isArray(
