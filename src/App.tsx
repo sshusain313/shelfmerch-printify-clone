@@ -8,7 +8,7 @@ import { StoreAuthProvider } from "./contexts/StoreAuthContext";
 import { StoreProvider } from "./contexts/StoreContext";
 import { DataProvider } from "./contexts/DataContext";
 import { ProtectedRoute } from "./components/ProtectedRoute";
-import Index from "./pages/Index";
+import Index from "./Index";
 import Products from "./pages/Products";
 import AllCategories from "./pages/AllCategories";
 import CategoryProducts from "./pages/CategoryProducts";
