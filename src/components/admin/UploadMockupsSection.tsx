@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { ViewTabs } from './ViewTabs';
 import { CanvasMockup } from './CanvasMockup';
 import { PlaceholderControls } from './PlaceholderControls';
@@ -8,7 +8,8 @@ import {
     ViewKey,
     Placeholder,
     SampleMockupImage,
-    DisplacementSettings
+    DisplacementSettings,
+    ProductVariant
 } from '@/types/product';
 import { uploadApi } from '@/lib/api'; // Ensure this exists or use appropriate upload function
 import { useToast } from '@/hooks/use-toast';
@@ -24,19 +25,28 @@ import {
 interface UploadMockupsSectionProps {
     sampleMockups: SampleMockupImage[];
     onSampleMockupsChange: (mockups: SampleMockupImage[]) => void;
+    availableColors?: string[];
+    selectedColorKey?: string;
+    onColorChange?: (colorKey: string) => void;
     physicalWidth?: number;
     physicalHeight?: number;
     physicalLength?: number;
     unit?: 'in' | 'cm';
+    variants?: ProductVariant[];
 }
 
 export const UploadMockupsSection = ({
     sampleMockups,
     onSampleMockupsChange,
+    availableColors = [],
+    selectedColorKey,
+    onColorChange,
     physicalWidth = 20,
     physicalHeight = 24,
     physicalLength = 18,
+
     unit = 'in',
+    variants = [],
 }: UploadMockupsSectionProps) => {
     const [activeView, setActiveView] = useState<ViewKey>('front');
     const [activeMockupId, setActiveMockupId] = useState<string | null>(null);
@@ -44,8 +54,12 @@ export const UploadMockupsSection = ({
     const [uploadingViews, setUploadingViews] = useState<Set<ViewKey>>(new Set());
     const { toast } = useToast();
 
-    // Filter mockups for the current view
-    const currentViewMockups = sampleMockups.filter(m => m.viewKey === activeView);
+    // Filter mockups for the current view AND color
+    const currentViewMockups = sampleMockups.filter(m =>
+        m.viewKey === activeView &&
+        // If colorKey is set on mockup, it must match. If not set (legacy), show for all or 'default'.
+        (!m.colorKey || m.colorKey === selectedColorKey)
+    );
 
     // Set active mockup if none selected but mockups exist
     if (!activeMockupId && currentViewMockups.length > 0) {
@@ -74,6 +88,7 @@ export const UploadMockupsSection = ({
             const newMockup: SampleMockupImage = {
                 id: `mockup-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                 viewKey: view,
+                colorKey: selectedColorKey, // Tag with selected color
                 imageUrl: s3Url,
                 placeholders: [], // Start with empty placeholders
                 metadata: {
@@ -236,13 +251,58 @@ export const UploadMockupsSection = ({
         right: sampleMockups.filter(m => m.viewKey === 'right').length,
     };
 
-    // We show the *first* mockup image as the preview in the tabs if available
+    // Filter mockups for current color (or generic) to show in tabs status
+    const currentColorMockups = sampleMockups.filter(m =>
+        (!m.colorKey || m.colorKey === selectedColorKey)
+    );
+
+    // Show checkmarks in tabs if an image exists for the current color selection
     const viewImages: Record<ViewKey, string | null> = {
-        front: sampleMockups.find(m => m.viewKey === 'front')?.imageUrl || null,
-        back: sampleMockups.find(m => m.viewKey === 'back')?.imageUrl || null,
-        left: sampleMockups.find(m => m.viewKey === 'left')?.imageUrl || null,
-        right: sampleMockups.find(m => m.viewKey === 'right')?.imageUrl || null,
+        front: currentColorMockups.find(m => m.viewKey === 'front')?.imageUrl || null,
+        back: currentColorMockups.find(m => m.viewKey === 'back')?.imageUrl || null,
+        left: currentColorMockups.find(m => m.viewKey === 'left')?.imageUrl || null,
+        right: currentColorMockups.find(m => m.viewKey === 'right')?.imageUrl || null,
     };
+
+    // Auto-sync variant view images to sample mockups
+    useEffect(() => {
+        if (!selectedColorKey || !variants.length) return;
+
+        const variant = variants.find(v => v.color === selectedColorKey);
+        if (!variant || !variant.viewImages) return;
+
+        const views: ViewKey[] = ['front', 'back', 'left', 'right'];
+        const newMockups: SampleMockupImage[] = [];
+
+        views.forEach(view => {
+            const url = variant.viewImages?.[view];
+            if (!url) return;
+
+            // Avoid duplicates: check if this view for this color already exists
+            const exists = sampleMockups.some(m => m.viewKey === view && m.colorKey === selectedColorKey);
+            if (exists) return;
+
+            newMockups.push({
+                id: `mockup-${Date.now()}-${view}-${Math.random().toString(36).substr(2, 5)}`,
+                viewKey: view,
+                colorKey: selectedColorKey,
+                imageUrl: url,
+                placeholders: [],
+                metadata: {
+                    imageType: 'other',
+                    caption: `Variant Image (${selectedColorKey})`,
+                    order: sampleMockups.length + newMockups.length
+                }
+            });
+        });
+
+        if (newMockups.length > 0) {
+            onSampleMockupsChange([...sampleMockups, ...newMockups]);
+            if (!activeMockupId) {
+                setActiveMockupId(newMockups[0].id);
+            }
+        }
+    }, [selectedColorKey, variants, sampleMockups, onSampleMockupsChange, activeMockupId]);
 
     return (
         <div className="space-y-4">
@@ -251,6 +311,36 @@ export const UploadMockupsSection = ({
          Note: ViewTabs logic assumes one image per view for onImageRemove. 
          We'll interpret onImageRemove as "clear all for this view" 
       */}
+
+            {/* Color Selector Pills */}
+            {availableColors.length > 0 && (
+                <div className="flex flex-wrap gap-2 mb-4">
+                    {availableColors.map((color) => {
+                        const count = sampleMockups.filter(m => m.colorKey === color).length;
+                        const isSelected = selectedColorKey === color;
+
+                        return (
+                            <Button
+                                key={color}
+                                variant={isSelected ? "default" : "outline"}
+                                size="sm"
+                                onClick={() => onColorChange?.(color)}
+                                className={`gap-2 ${isSelected ? 'ring-2 ring-primary ring-offset-1' : ''}`}
+                            >
+                                <span className={`w-3 h-3 rounded-full border ${color.toLowerCase() === 'white' ? 'border-gray-200' : 'border-transparent'}`}
+                                    style={{ backgroundColor: color.toLowerCase() }} />
+                                {color}
+                                {count > 0 && (
+                                    <span className={`ml-1 text-[10px] px-1.5 py-0.5 rounded-full ${isSelected ? 'bg-primary-foreground text-primary' : 'bg-muted text-muted-foreground'}`}>
+                                        {count}
+                                    </span>
+                                )}
+                            </Button>
+                        );
+                    })}
+                </div>
+            )}
+
             <ViewTabs
                 views={['front', 'back', 'left', 'right']}
                 activeView={activeView}
@@ -261,6 +351,8 @@ export const UploadMockupsSection = ({
                 onImageRemove={handleViewClear}
                 uploadingViews={uploadingViews}
             />
+
+
 
             {/* Mockup Selection List (Horizontal Scroll or Grid) */}
             {currentViewMockups.length > 0 && (

@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { storeProductsApi, productApi } from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -30,6 +30,7 @@ const MockupsLibrary = () => {
     const [error, setError] = useState<string | null>(null);
     const [storeProduct, setStoreProduct] = useState<any | null>(null);
     const [sampleMockups, setSampleMockups] = useState<any[]>([]);
+    const [variants, setVariants] = useState<any[]>([]); // Store full variants data
     const [isLoadingMockups, setIsLoadingMockups] = useState(false);
     const [catalogPhysicalDimensions, setCatalogPhysicalDimensions] = useState<{ width: number; height: number } | null>(null);
 
@@ -317,6 +318,11 @@ const MockupsLibrary = () => {
                         setAvailableColors(catalogProduct.availableColors);
                     }
 
+                    // Store variants for per-view base images
+                    if (Array.isArray(catalogProduct.variants)) {
+                        setVariants(catalogProduct.variants);
+                    }
+
                     // Extract sampleMockups from product design
                     const productDesign = catalogProduct.design || {};
                     const mockups = productDesign.sampleMockups || [];
@@ -472,6 +478,91 @@ const MockupsLibrary = () => {
 
     // Colors to display in selector (use selectedColors if available, otherwise availableColors)
     const colorsToDisplay = selectedColors.length > 0 ? selectedColors : availableColors;
+
+    // Filter mockups based on selected color - MEMOIZED for use in effects/callbacks
+    const filteredMockups = useMemo(() => {
+        let result = sampleMockups.filter((m: any) =>
+            !m.colorKey || // Show generic mockups for all colors
+            (currentPreviewColor && m.colorKey === currentPreviewColor) // Show specific color mockups
+        );
+
+        // Augment with variant-specific base images if no mockup exists for a view
+        if (currentPreviewColor && variants.length > 0) {
+            const activeVariant = variants.find((v: any) => v.color === currentPreviewColor);
+            if (activeVariant && activeVariant.viewImages) {
+                (['front', 'back', 'left', 'right'] as const).forEach((view) => {
+                    const variantImageUrl = activeVariant.viewImages[view];
+                    if (!variantImageUrl) return;
+
+                    // Check if we already have a mockup for this view
+                    const hasMockup = result.some((m: any) => m.viewKey === view);
+
+                    // If no mockup exists for this view, add the variant image as a "flat" mockup
+                    if (!hasMockup) {
+                        // Find master placeholders for this view from designData
+                        const masterView = designData?.views?.find((v: any) => v.key === view);
+                        const masterPlaceholders = masterView?.placeholders || [];
+
+                        result.push({
+                            id: `variant-${activeVariant.id}-${view}`,
+                            viewKey: view,
+                            colorKey: currentPreviewColor,
+                            imageUrl: variantImageUrl,
+                            placeholders: masterPlaceholders,
+                            displacementSettings: null, // Will use default
+                            isVariantFallback: true // Flag for UI distinction if needed
+                        });
+                    }
+                });
+            }
+        }
+        return result;
+    }, [sampleMockups, currentPreviewColor, variants, designData]);
+
+    // Helper to get mockups for a specific color
+    const getMockupsForColor = useCallback((color: string) => {
+        let result = sampleMockups.filter((m: any) =>
+            !m.colorKey || // Show generic mockups for all colors
+            m.colorKey === color // Show specific color mockups
+        );
+
+        // Augment with variant-specific base images if no mockup exists for a view
+        if (variants.length > 0) {
+            const activeVariant = variants.find((v: any) => v.color === color);
+            if (activeVariant && activeVariant.viewImages) {
+                (['front', 'back', 'left', 'right'] as const).forEach((view) => {
+                    const variantImageUrl = activeVariant.viewImages[view];
+                    if (!variantImageUrl) return;
+
+                    const hasMockup = result.some((m: any) => m.viewKey === view);
+                    if (!hasMockup) {
+                        const masterView = designData?.views?.find((v: any) => v.key === view);
+                        const masterPlaceholders = masterView?.placeholders || [];
+                        result.push({
+                            id: `variant-${activeVariant._id || activeVariant.id}-${view}-${color.replace(/\s+/g, '-')}`,
+                            viewKey: view,
+                            colorKey: color,
+                            imageUrl: variantImageUrl,
+                            placeholders: masterPlaceholders,
+                            displacementSettings: null,
+                            isVariantFallback: true
+                        });
+                    }
+                });
+            }
+        }
+        return result;
+    }, [sampleMockups, variants, designData]);
+
+    // Generate mockups grouped by ALL colors for row-wise display
+    const allColorMockups = useMemo(() => {
+        const colors = colorsToDisplay.length > 0 ? colorsToDisplay : [];
+        return colors.map(color => ({
+            color,
+            colorHex: getColorHex(color),
+            mockups: getMockupsForColor(color)
+        }));
+    }, [colorsToDisplay, getMockupsForColor, getColorHex]);
 
     // Extract design images per view from elements array
     // The design is stored in designData.elements, each element has a `view` property and `imageUrl`
@@ -726,7 +817,7 @@ const MockupsLibrary = () => {
             }
 
             // Find the mockup to get its viewKey
-            const mockup = sampleMockups.find(m => m.id === mockupId);
+            const mockup = filteredMockups.find((m: any) => m.id === mockupId);
             const viewKey = mockup?.viewKey || 'front';
 
             // Save to storeproducts database
@@ -743,12 +834,27 @@ const MockupsLibrary = () => {
         } finally {
             setSavingMockups(prev => ({ ...prev, [mockupId]: false }));
         }
-    }, [storeProductId, captureWebGLPreview, sampleMockups]);
+    }, [storeProductId, captureWebGLPreview, filteredMockups]);
 
-    // Save all mockup previews
+    // Save all mockup previews for ALL colors × ALL views
     const saveAllMockupPreviews = useCallback(async () => {
         if (!storeProductId) {
             toast.error('No store product ID available');
+            return;
+        }
+
+        // Collect ALL mockups from all colors
+        const allMockupsToSave: Array<{ color: string; mockup: any }> = [];
+        for (const { color, mockups } of allColorMockups) {
+            for (const mockup of mockups) {
+                if (mockup.id) {
+                    allMockupsToSave.push({ color, mockup });
+                }
+            }
+        }
+
+        if (allMockupsToSave.length === 0) {
+            toast.warning('No mockups to save');
             return;
         }
 
@@ -756,45 +862,44 @@ const MockupsLibrary = () => {
         const savedUrls: Record<string, string> = {};
         let successCount = 0;
 
-        toast.info(`Saving ${sampleMockups.length} mockup previews...`);
+        toast.info(`Saving ${allMockupsToSave.length} mockup previews across ${allColorMockups.length} color(s)...`);
 
-        for (const mockup of sampleMockups) {
-            if (!mockup.id) continue;
-
-            setSavingMockups(prev => ({ ...prev, [mockup.id]: true }));
+        for (const { color, mockup } of allMockupsToSave) {
+            const mockupKey = `${color}:${mockup.id}`;
+            setSavingMockups(prev => ({ ...prev, [mockupKey]: true }));
 
             try {
                 // Wait a bit between captures to let WebGL settle
                 await new Promise(resolve => setTimeout(resolve, 500));
 
-                const previewUrl = await captureWebGLPreview(mockup.id);
+                const previewUrl = await captureWebGLPreview(mockupKey);
                 if (previewUrl) {
-                    savedUrls[mockup.id] = previewUrl;
+                    savedUrls[mockupKey] = previewUrl;
                     successCount++;
 
-                    // Save to storeproducts
+                    // Save to storeproducts with color in viewKey
                     await storeProductsApi.updateDesignPreview(storeProductId, {
-                        viewKey: `mockup-${mockup.id}`,
+                        viewKey: `mockup-${color.replace(/\\s+/g, '-')}-${mockup.viewKey || 'front'}`,
                         previewUrl,
                     });
                 }
             } catch (error) {
-                console.error(`Failed to save mockup ${mockup.id}:`, error);
+                console.error(`Failed to save mockup ${mockupKey}:`, error);
             } finally {
-                setSavingMockups(prev => ({ ...prev, [mockup.id]: false }));
+                setSavingMockups(prev => ({ ...prev, [mockupKey]: false }));
             }
         }
 
         setSavedMockupUrls(prev => ({ ...prev, ...savedUrls }));
-        setAllSaved(successCount === sampleMockups.length);
+        setAllSaved(successCount === allMockupsToSave.length);
         setIsSavingAll(false);
 
-        if (successCount === sampleMockups.length) {
-            toast.success(`All ${successCount} mockup previews saved!`);
+        if (successCount === allMockupsToSave.length) {
+            toast.success(`All ${successCount} mockup previews saved for ${allColorMockups.length} color(s)!`);
         } else {
-            toast.warning(`Saved ${successCount} of ${sampleMockups.length} previews`);
+            toast.warning(`Saved ${successCount} of ${allMockupsToSave.length} previews`);
         }
-    }, [storeProductId, sampleMockups, captureWebGLPreview]);
+    }, [storeProductId, allColorMockups, captureWebGLPreview]);
 
     // Mark WebGL as ready for a mockup
     const handleWebGLReady = useCallback((mockupId: string) => {
@@ -814,6 +919,8 @@ const MockupsLibrary = () => {
         acc[viewKey].push(el);
         return acc;
     }, {} as Record<string, any[]>);
+
+
 
     return (
         <div className="min-h-screen bg-background">
@@ -943,49 +1050,33 @@ const MockupsLibrary = () => {
                     <p className="text-sm text-muted-foreground">No store product loaded.</p>
                 )}
 
-                {/* Realistic WebGL Sample Mockups */}
+                {/* Realistic WebGL Sample Mockups - ALL COLORS ROW-WISE */}
                 {storeProduct && (
                     <div className="mt-8 space-y-6">
-                        {/* Color Selector */}
+                        {/* Color Legend / Quick Info */}
                         {colorsToDisplay.length > 0 && (
                             <Card>
                                 <CardHeader>
-                                    <CardTitle>Select Color</CardTitle>
+                                    <CardTitle>Choose a color to preview on the mockups</CardTitle>
                                     <CardDescription>
-                                        Choose a color to preview on the mockups
+                                        Previews will be generated for all colors below. Click "Save All Previews" to save.
                                     </CardDescription>
                                 </CardHeader>
                                 <CardContent>
                                     <div className="flex flex-wrap gap-3">
                                         {colorsToDisplay.map((color) => {
                                             const colorHex = getColorHex(color);
-                                            const isSelected = currentPreviewColor === color;
                                             return (
-                                                <button
+                                                <div
                                                     key={color}
-                                                    onClick={() => setCurrentPreviewColor(color)}
-                                                    className={`
-                                                        flex items-center gap-2 px-4 py-2 rounded-lg border-2 transition-all
-                                                        ${isSelected
-                                                            ? 'border-primary bg-primary/10 shadow-md'
-                                                            : 'border-muted hover:border-primary/50 bg-background'
-                                                        }
-                                                    `}
-                                                    style={{
-                                                        borderColor: isSelected ? colorHex : undefined,
-                                                    }}
+                                                    className="flex items-center gap-2 px-3 py-1.5 rounded-md border bg-background"
                                                 >
                                                     <div
-                                                        className="w-6 h-6 rounded-full border-2 border-white shadow-sm"
+                                                        className="w-5 h-5 rounded-full border-2 border-white shadow-sm"
                                                         style={{ backgroundColor: colorHex }}
                                                     />
-                                                    <span className={`text-sm font-medium capitalize ${isSelected ? 'text-primary' : 'text-foreground'}`}>
-                                                        {color}
-                                                    </span>
-                                                    {isSelected && (
-                                                        <Check className="h-4 w-4 text-primary" />
-                                                    )}
-                                                </button>
+                                                    <span className="text-sm font-medium capitalize">{color}</span>
+                                                </div>
                                             );
                                         })}
                                     </div>
@@ -993,19 +1084,17 @@ const MockupsLibrary = () => {
                             </Card>
                         )}
 
-                        {/* Sample Mockups with Realistic WebGL Preview */}
+                        {/* Sample Mockups - ALL COLORS in rows */}
                         <Card>
                             <CardHeader className="flex flex-row items-center justify-between">
                                 <div>
                                     <CardTitle>Realistic Mockup Previews</CardTitle>
                                     <CardDescription>
                                         WebGL-rendered realistic previews with displacement mapping
-                                        {currentPreviewColor && (
-                                            <span className="ml-2 capitalize">• {currentPreviewColor} color</span>
-                                        )}
+                                        <span className="ml-2">• {allColorMockups.length} color(s) × {sampleMockups.length} mockup(s)</span>
                                     </CardDescription>
                                 </div>
-                                {sampleMockups.length > 0 && Object.keys(designImagesByView).length > 0 && (
+                                {allColorMockups.length > 0 && Object.keys(designImagesByView).length > 0 && (
                                     <Button
                                         onClick={saveAllMockupPreviews}
                                         disabled={isSavingAll || allSaved}
@@ -1038,142 +1127,134 @@ const MockupsLibrary = () => {
                                             <p className="text-sm text-muted-foreground">Loading sample mockups...</p>
                                         </div>
                                     </div>
-                                ) : sampleMockups.length > 0 ? (
-                                    <div className="space-y-6">
-                                        <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                                <span className="font-medium text-foreground">{sampleMockups.length}</span>
-                                                <span>sample mockup(s) with realistic WebGL preview</span>
-                                            </div>
-                                        </div>
-
-                                        <div className="grid grid-cols-1 xl:grid-cols-4 lg:grid-cols-3 gap-3">
-                                            {sampleMockups.map((mockup: any, index: number) => {
-                                                const viewKey = (mockup.viewKey || 'front').toLowerCase();
-                                                const hasDesignForView = !!designImagesByView[viewKey];
-                                                const hasPlaceholder = Array.isArray(mockup.placeholders) && mockup.placeholders.length > 0;
-                                                const isSaving = savingMockups[mockup.id];
-                                                const isSaved = !!savedMockupUrls[mockup.id];
-                                                const mockupDisplacement: DisplacementSettings =
-                                                    mockup.displacementSettings || displacementSettings || defaultDisplacementSettings;
-
-                                                // Build designUrlsByPlaceholder for this mockup's view
-                                                const mockupDesignUrls: Record<string, string> = {};
-                                                if (hasDesignForView && hasPlaceholder) {
-                                                    mockup.placeholders.forEach((ph: any) => {
-                                                        if (ph.id && designImagesByView[viewKey]) {
-                                                            mockupDesignUrls[ph.id] = designImagesByView[viewKey];
-                                                        }
-                                                    });
-                                                }
-
-                                                return (
-                                                    <div key={mockup.id || index} className="border rounded-lg bg-background overflow-hidden">
-                                                        {/* Header */}
-                                                        <div className="px-4 py-3 border-b bg-muted/30 flex items-center justify-between">
-                                                            <div className="flex items-center gap-3">
-                                                                <span className="text-sm font-medium capitalize">{mockup.viewKey || 'front'}</span>
-                                                                {hasDesignForView ? (
-                                                                    <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded">✓ Design</span>
-                                                                ) : (
-                                                                    <span className="text-[10px] bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded">⚠️ No design</span>
-                                                                )}
-                                                                {isSaved && (
-                                                                    <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">💾 Saved</span>
-                                                                )}
-                                                            </div>
-                                                            <Button
-                                                                size="sm"
-                                                                variant="outline"
-                                                                onClick={() => saveMockupPreview(mockup.id)}
-                                                                disabled={isSaving || !hasDesignForView}
-                                                                className="gap-1"
-                                                            >
-                                                                {isSaving ? (
-                                                                    <Loader2 className="h-3 w-3 animate-spin" />
-                                                                ) : isSaved ? (
-                                                                    <Check className="h-3 w-3" />
-                                                                ) : (
-                                                                    <Save className="h-3 w-3" />
-                                                                )}
-                                                                {isSaving ? 'Saving...' : isSaved ? 'Saved' : 'Save'}
-                                                            </Button>
-                                                        </div>
-
-                                                        {/* WebGL Preview */}
-                                                        {mockup.imageUrl && hasDesignForView && hasPlaceholder && catalogPhysicalDimensions ? (
-                                                            <div
-                                                                ref={(el) => { webglContainerRefs.current[mockup.id] = el; }}
-                                                                className=" \relative bg-white flex justify-center items-center"
-                                                                style={{ minHeight: 400 }}
-                                                            >
-                                                                <RealisticWebGLPreview
-                                                                    key={`webgl-${mockup.id}-${designImagesByView[viewKey]?.slice(-20) || ''}-${currentPreviewColorHex || 'no-color'}`}
-                                                                    mockupImageUrl={mockup.imageUrl}
-                                                                    activePlaceholder={null}
-                                                                    placeholders={(mockup.placeholders || []).map((p: any) => ({
-                                                                        ...p,
-                                                                        rotationDeg: p.rotationDeg ?? 0,
-                                                                    }))}
-                                                                    physicalWidth={catalogPhysicalDimensions.width}
-                                                                    physicalHeight={catalogPhysicalDimensions.height}
-                                                                    settings={mockupDisplacement}
-                                                                    onSettingsChange={(settings) => {
-                                                                        // Update local state map for this mockup
-                                                                        setSavedMockupUrls((prev) => ({ ...prev }));
-                                                                        // Also persist in storeProduct.designData if desired in future
-                                                                        sampleMockups.forEach((m) => {
-                                                                            if (m.id === mockup.id) {
-                                                                                m.displacementSettings = settings;
-                                                                            }
-                                                                        });
-                                                                    }}
-                                                                    designUrlsByPlaceholder={mockupDesignUrls}
-                                                                    previewMode={true}
-                                                                    garmentTintHex={currentPreviewColorHex}
-                                                                    currentView={viewKey}
-                                                                    canvasPadding={40}
-                                                                    PX_PER_INCH={Math.min(720 / catalogPhysicalDimensions.width, 520 / catalogPhysicalDimensions.height)}
-                                                                />
-                                                            </div>
-                                                        ) : mockup.imageUrl ? (
-                                                            <div className=" relative bg-muted flex items-center justify-center" style={{ minHeight: 400 }}>
-                                                                <img
-                                                                    src={mockup.imageUrl}
-                                                                    alt={`Sample mockup ${index + 1}`}
-                                                                    className="max-w-full h-auto max-h-[400px] object-contain"
-                                                                    crossOrigin="anonymous"
-                                                                />
-                                                                {!hasDesignForView && (
-                                                                    <div className="absolute inset-0 bg-background/80 flex items-center justify-center">
-                                                                        <p className="text-sm text-muted-foreground">No design image for {viewKey} view</p>
-                                                                    </div>
-                                                                )}
-                                                                {!hasPlaceholder && (
-                                                                    <div className="absolute inset-0 bg-background/80 flex items-center justify-center">
-                                                                        <p className="text-sm text-muted-foreground">No placeholder configured</p>
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        ) : (
-                                                            <div className="h-[400px] flex items-center justify-center bg-muted">
-                                                                <p className="text-sm text-muted-foreground">No mockup image</p>
-                                                            </div>
-                                                        )}
-
-                                                        {/* Footer info */}
-                                                        <div className="px-4 py-2 border-t bg-muted/20 text-xs text-muted-foreground">
-                                                            <span className="font-mono">{mockup.id?.slice(0, 20)}...</span>
-                                                            {savedMockupUrls[mockup.id] && (
-                                                                <span className="ml-2 text-green-600">
-                                                                    ✓ Saved to AWS
-                                                                </span>
-                                                            )}
-                                                        </div>
+                                ) : allColorMockups.length > 0 ? (
+                                    <div className="space-y-8">
+                                        {allColorMockups.map(({ color, colorHex, mockups }) => {
+                                            const colorMockupKey = (mockupId: string) => `${color}:${mockupId}`;
+                                            return (
+                                                <div key={color} className="space-y-4">
+                                                    {/* Color Row Header */}
+                                                    <div className="flex items-center gap-3 pb-2 border-b">
+                                                        <div
+                                                            className="w-6 h-6 rounded-full border-2 border-white shadow-md"
+                                                            style={{ backgroundColor: colorHex }}
+                                                        />
+                                                        <span className="text-lg font-semibold capitalize">{color}</span>
+                                                        <span className="text-sm text-muted-foreground">
+                                                            ({mockups.length} mockup{mockups.length !== 1 ? 's' : ''})
+                                                        </span>
                                                     </div>
-                                                );
-                                            })}
-                                        </div>
+
+                                                    {/* Mockups Grid for this Color */}
+                                                    <div className="grid grid-cols-1 xl:grid-cols-4 lg:grid-cols-3 md:grid-cols-2 gap-4">
+                                                        {mockups.map((mockup: any, index: number) => {
+                                                            const viewKey = (mockup.viewKey || 'front').toLowerCase();
+                                                            const hasDesignForView = !!designImagesByView[viewKey];
+                                                            const hasPlaceholder = Array.isArray(mockup.placeholders) && mockup.placeholders.length > 0;
+                                                            const mockupKey = colorMockupKey(mockup.id);
+                                                            const isSaving = savingMockups[mockupKey];
+                                                            const isSaved = !!savedMockupUrls[mockupKey];
+                                                            const mockupDisplacement: DisplacementSettings =
+                                                                mockup.displacementSettings || displacementSettings || defaultDisplacementSettings;
+
+                                                            // Build designUrlsByPlaceholder for this mockup's view
+                                                            const mockupDesignUrls: Record<string, string> = {};
+                                                            if (hasDesignForView && hasPlaceholder) {
+                                                                mockup.placeholders.forEach((ph: any) => {
+                                                                    if (ph.id && designImagesByView[viewKey]) {
+                                                                        mockupDesignUrls[ph.id] = designImagesByView[viewKey];
+                                                                    }
+                                                                });
+                                                            }
+
+                                                            return (
+                                                                <div key={mockupKey || index} className="border rounded-lg bg-background overflow-hidden">
+                                                                    {/* Header */}
+                                                                    <div className="px-4 py-3 border-b bg-muted/30 flex items-center justify-between">
+                                                                        <div className="flex items-center gap-2">
+                                                                            <span className="text-sm font-medium capitalize">{mockup.viewKey || 'front'}</span>
+                                                                            {hasDesignForView ? (
+                                                                                <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded">✓ Design</span>
+                                                                            ) : (
+                                                                                <span className="text-[10px] bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded">⚠️ No design</span>
+                                                                            )}
+                                                                        </div>
+                                                                        <Button
+                                                                            size="sm"
+                                                                            variant="outline"
+                                                                            onClick={() => saveMockupPreview(mockup.id)}
+                                                                            disabled={isSaving || !hasDesignForView}
+                                                                            className="gap-1"
+                                                                        >
+                                                                            {isSaving ? (
+                                                                                <Loader2 className="h-3 w-3 animate-spin" />
+                                                                            ) : isSaved ? (
+                                                                                <Check className="h-3 w-3" />
+                                                                            ) : (
+                                                                                <Save className="h-3 w-3" />
+                                                                            )}
+                                                                            {isSaving ? '...' : isSaved ? '✓' : 'Save'}
+                                                                        </Button>
+                                                                    </div>
+
+                                                                    {/* WebGL Preview */}
+                                                                    {mockup.imageUrl && hasDesignForView && hasPlaceholder && catalogPhysicalDimensions ? (
+                                                                        <div
+                                                                            ref={(el) => { webglContainerRefs.current[mockupKey] = el; }}
+                                                                            className="relative bg-white flex justify-center items-center"
+                                                                            style={{ minHeight: 350 }}
+                                                                        >
+                                                                            <RealisticWebGLPreview
+                                                                                key={`webgl-${mockupKey}-${designImagesByView[viewKey]?.slice(-20) || ''}`}
+                                                                                mockupImageUrl={mockup.imageUrl}
+                                                                                activePlaceholder={null}
+                                                                                placeholders={(mockup.placeholders || []).map((p: any) => ({
+                                                                                    ...p,
+                                                                                    rotationDeg: p.rotationDeg ?? 0,
+                                                                                }))}
+                                                                                physicalWidth={catalogPhysicalDimensions.width}
+                                                                                physicalHeight={catalogPhysicalDimensions.height}
+                                                                                settings={mockupDisplacement}
+                                                                                onSettingsChange={(settings) => {
+                                                                                    sampleMockups.forEach((m) => {
+                                                                                        if (m.id === mockup.id) {
+                                                                                            m.displacementSettings = settings;
+                                                                                        }
+                                                                                    });
+                                                                                }}
+                                                                                designUrlsByPlaceholder={mockupDesignUrls}
+                                                                                previewMode={true}
+                                                                                currentView={viewKey}
+                                                                                canvasPadding={40}
+                                                                                PX_PER_INCH={Math.min(720 / catalogPhysicalDimensions.width, 520 / catalogPhysicalDimensions.height)}
+                                                                            />
+                                                                        </div>
+                                                                    ) : mockup.imageUrl ? (
+                                                                        <div className="relative bg-muted flex items-center justify-center" style={{ minHeight: 350 }}>
+                                                                            <img
+                                                                                src={mockup.imageUrl}
+                                                                                alt={`${color} ${mockup.viewKey || 'front'} mockup`}
+                                                                                className="max-w-full h-auto max-h-[350px] object-contain"
+                                                                                crossOrigin="anonymous"
+                                                                            />
+                                                                            {!hasDesignForView && (
+                                                                                <div className="absolute inset-0 bg-background/80 flex items-center justify-center">
+                                                                                    <p className="text-sm text-muted-foreground">No design for {viewKey}</p>
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    ) : (
+                                                                        <div className="h-[350px] flex items-center justify-center bg-muted">
+                                                                            <p className="text-sm text-muted-foreground">No mockup image</p>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
                                     </div>
                                 ) : storeProduct.catalogProductId ? (
                                     <div className="border rounded-lg bg-muted/40 p-8 text-center text-muted-foreground">
@@ -1190,7 +1271,7 @@ const MockupsLibrary = () => {
                         </Card>
 
                         {/* Continue to Listing Editor */}
-                        {sampleMockups.length > 0 && Object.keys(savedMockupUrls).length > 0 && (
+                        {allColorMockups.length > 0 && Object.keys(savedMockupUrls).length > 0 && (
                             <div className="flex justify-end">
                                 <Button
                                     size="lg"
@@ -1209,9 +1290,10 @@ const MockupsLibrary = () => {
                             </div>
                         )}
                     </div>
-                )}
-            </main>
-        </div>
+                )
+                }
+            </main >
+        </div >
     );
 };
 

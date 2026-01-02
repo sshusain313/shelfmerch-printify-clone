@@ -44,6 +44,13 @@ export interface ProductVariant {
   sku: string;
   price?: number; // Optional price for this variant
   isActive: boolean;
+  // Per-view base images for this variant
+  viewImages?: {
+    front?: string;
+    back?: string;
+    left?: string;
+    right?: string;
+  };
 }
 
 // SECTION A: Product Catalogue Info (Store Data)
@@ -62,6 +69,7 @@ export interface ProductCatalogueData {
 export interface SampleMockupImage {
   id: string;
   viewKey: ViewKey;
+  colorKey?: string; // Color this mockup is for (e.g., "Olive")
   imageUrl: string; // Uploaded to S3
   placeholders: Placeholder[]; // Same Placeholder type as Design Section
   // Optional per-mockup displacement settings for WebGL previews.

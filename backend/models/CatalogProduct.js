@@ -39,8 +39,15 @@ const SampleMockupImageSchema = new mongoose.Schema({
     required: true,
     enum: ['front', 'back', 'left', 'right']
   },
+  colorKey: { type: String, default: '' }, // Color this mockup is for (e.g., "Olive")
   imageUrl: { type: String, required: true }, // Store URL, not base64!
   placeholders: { type: [PlaceholderSchema], default: [] },
+  // Per-mockup displacement settings for WebGL previews
+  displacementSettings: {
+    scaleX: { type: Number, default: 20 },
+    scaleY: { type: Number, default: 20 },
+    contrastBoost: { type: Number, default: 1.5 }
+  },
   metadata: {
     imageType: {
       type: String,

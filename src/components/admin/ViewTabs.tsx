@@ -1,8 +1,8 @@
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Upload, X, Loader2 } from 'lucide-react';
-import { ViewKey, Placeholder } from '@/types/product';
+import { X } from 'lucide-react';
+import { ViewKey } from '@/types/product';
 
 interface ViewTabsProps {
   views: ViewKey[];
@@ -23,14 +23,8 @@ export const ViewTabs = ({
   onViewChange,
   onImageUpload,
   onImageRemove,
-  uploadingViews = new Set(),
+  uploadingViews,
 }: ViewTabsProps) => {
-  const handleFileChange = (view: ViewKey, e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      onImageUpload(view, file);
-    }
-  };
 
   const getViewLabel = (view: ViewKey) => {
     const labels: Record<ViewKey, string> = {
@@ -46,7 +40,10 @@ export const ViewTabs = ({
     <div className="grid grid-cols-4 gap-2">
       {views.map((view) => {
         const isActive = activeView === view;
-        const isUploading = uploadingViews.has(view);
+        const hasImage = !!viewImages[view];
+        const isUploading = uploadingViews?.has(view);
+        const inputId = `view-upload-${view}`;
+
         return (
           <div key={view} className="space-y-2">
             <div className="flex items-center justify-between">
@@ -60,7 +57,7 @@ export const ViewTabs = ({
                   </Badge>
                 )}
               </div>
-              {viewImages[view] && !isUploading && (
+              {hasImage && (
                 <Button
                   variant="ghost"
                   size="icon"
@@ -71,50 +68,52 @@ export const ViewTabs = ({
                 </Button>
               )}
             </div>
-            <input
-              type="file"
-              accept="image/*"
-              onChange={(e) => handleFileChange(view, e)}
-              className="hidden"
-              id={`file-input-${view}`}
-              disabled={isUploading}
-            />
+
             <Button
               variant={isActive ? 'default' : 'outline'}
               size="sm"
-              className={`w-full transition-all ${
-                isActive 
-                  ? 'font-bold shadow-md bg-primary text-primary-foreground' 
+              className={`w-full transition-all ${isActive
+                  ? 'font-bold shadow-md bg-primary text-primary-foreground'
                   : 'bg-background hover:bg-muted'
-              }`}
+                }`}
               onClick={() => {
-                onViewChange(view);
-                if (!viewImages[view] && !isUploading) {
-                  document.getElementById(`file-input-${view}`)?.click();
+                if (hasImage) {
+                  onViewChange(view);
+                } else {
+                  const input = document.getElementById(inputId) as HTMLInputElement | null;
+                  if (input && !isUploading) {
+                    input.click();
+                  }
                 }
               }}
-              disabled={isUploading}
             >
-              {isUploading ? (
-                <>
-                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                  <span className="text-xs">Uploading...</span>
-                </>
-              ) : viewImages[view] ? (
+              {hasImage ? (
                 <span className={`text-xs ${isActive ? 'font-bold' : ''}`}>
                   ✓ {getViewLabel(view)}
                 </span>
               ) : (
-                <>
-                  <Upload className="h-3 w-3 mr-1" />
-                  Upload {getViewLabel(view)}
-                </>
+                <span className="text-xs text-muted-foreground">
+                  {isUploading ? 'Uploading…' : getViewLabel(view)}
+                </span>
               )}
             </Button>
+
+            <input
+              id={inputId}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (!file) return;
+                onImageUpload(view, file);
+                onViewChange(view);
+                event.target.value = '';
+              }}
+            />
           </div>
         );
       })}
     </div>
   );
 };
-

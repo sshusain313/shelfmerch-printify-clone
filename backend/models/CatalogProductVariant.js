@@ -32,6 +32,13 @@ const CatalogProductVariantSchema = new mongoose.Schema({
   isActive: {
     type: Boolean,
     default: true
+  },
+  // Per-view base images for this variant
+  viewImages: {
+    front: { type: String, default: '' },
+    back: { type: String, default: '' },
+    left: { type: String, default: '' },
+    right: { type: String, default: '' }
   }
 }, {
   timestamps: true

@@ -5,6 +5,7 @@ const { protect, authorize } = require('../middleware/auth');
 const Store = require('../models/Store');
 const StoreProduct = require('../models/StoreProduct');
 const StoreProductVariant = require('../models/StoreProductVariant');
+const CatalogProductVariant = require('../models/CatalogProductVariant');
 
 // @route   POST /api/store-products
 // @desc    Create or update a store product with design data, and optional variants
@@ -109,18 +110,20 @@ router.post('/', protect, authorize('merchant', 'superadmin'), async (req, res) 
       select: 'size color colorHex basePrice skuTemplate',
     });
 
-    storeProduct.variantsSummary = allVariants.map((v) => {
-      const cv = v.catalogProductVariantId || {};
-      return {
-        catalogProductVariantId: cv._id || v.catalogProductVariantId,
-        size: cv.size,
-        color: cv.color,
-        colorHex: cv.colorHex,
-        sku: v.sku || cv.skuTemplate,
-        sellingPrice: typeof v.sellingPrice === 'number' ? v.sellingPrice : undefined,
-        basePrice: typeof cv.basePrice === 'number' ? cv.basePrice : undefined,
-      };
-    });
+    storeProduct.variantsSummary = allVariants
+      .filter(v => v.catalogProductVariantId) // Filter out orphaned variants
+      .map((v) => {
+        const cv = v.catalogProductVariantId;
+        return {
+          catalogProductVariantId: cv._id,
+          size: cv.size,
+          color: cv.color,
+          colorHex: cv.colorHex,
+          sku: v.sku || cv.skuTemplate,
+          sellingPrice: typeof v.sellingPrice === 'number' ? v.sellingPrice : undefined,
+          basePrice: typeof cv.basePrice === 'number' ? cv.basePrice : undefined,
+        };
+      });
 
     await storeProduct.save();
 
@@ -188,7 +191,7 @@ router.get('/public/:storeId/:productId', async (req, res) => {
     })
       .populate({
         path: 'catalogProductId',
-        select: 'name description categoryId subcategoryIds productTypeCode',
+        select: '_id name description categoryId subcategoryIds productTypeCode',
         lean: true
       })
       .lean();
@@ -198,12 +201,89 @@ router.get('/public/:storeId/:productId', async (req, res) => {
     }
 
     // Fetch variants for this product and populate catalog variant details (size/color)
-    const variants = await StoreProductVariant.find({
+    let variants = await StoreProductVariant.find({
       storeProductId: storeProduct._id,
       isActive: true,
     })
       .populate({ path: 'catalogProductVariantId', select: 'size color colorHex skuTemplate basePrice' })
       .lean();
+
+    // If no store-specific variants exist, fall back to catalog product variants
+    // This handles default stores that haven't customized their variants
+    if (!variants || variants.length === 0) {
+      // Handle both populated object and direct ObjectId/string
+      const catalogProductId = storeProduct.catalogProductId?._id
+        ? storeProduct.catalogProductId._id
+        : storeProduct.catalogProductId;
+
+      if (catalogProductId) {
+        console.log('[StoreProducts] Falling back to catalog variants for product:', productId, 'catalogProductId:', catalogProductId);
+
+        // Check if designData has selected colors/sizes to filter variants
+        const selectedColors = storeProduct.designData?.selectedColors;
+        const selectedSizes = storeProduct.designData?.selectedSizes;
+        const hasSelectedColors = Array.isArray(selectedColors) && selectedColors.length > 0;
+        const hasSelectedSizes = Array.isArray(selectedSizes) && selectedSizes.length > 0;
+
+        console.log('[StoreProducts] Filter criteria:', {
+          hasSelectedColors,
+          selectedColors,
+          hasSelectedSizes,
+          selectedSizes,
+        });
+
+        // Build query - filter by selected colors/sizes if they exist
+        const variantQuery = {
+          catalogProductId: catalogProductId,
+          isActive: true,
+        };
+
+        if (hasSelectedColors) {
+          variantQuery.color = { $in: selectedColors };
+        }
+
+        if (hasSelectedSizes) {
+          variantQuery.size = { $in: selectedSizes };
+        }
+
+        const catalogVariants = await CatalogProductVariant.find(variantQuery)
+          .select('_id size color colorHex skuTemplate basePrice')
+          .lean();
+
+        console.log('[StoreProducts] Found catalog variants:', catalogVariants.length, catalogVariants.map(cv => ({ size: cv.size, color: cv.color })));
+
+        if (catalogVariants && catalogVariants.length > 0) {
+          // Transform catalog variants to match StoreProductVariant format
+          // Use store product's sellingPrice as the base price for variants
+          const basePrice = storeProduct.sellingPrice || storeProduct.price || 0;
+
+          variants = catalogVariants.map((cv) => ({
+            catalogProductVariantId: {
+              _id: cv._id,
+              size: cv.size,
+              color: cv.color,
+              colorHex: cv.colorHex,
+              skuTemplate: cv.skuTemplate,
+              basePrice: cv.basePrice,
+            },
+            size: cv.size,
+            color: cv.color,
+            colorHex: cv.colorHex,
+            sku: cv.skuTemplate,
+            sellingPrice: basePrice, // Use store product's selling price
+            isActive: true,
+          }));
+
+          console.log('[StoreProducts] Mapped variants:', variants.length, variants.map(v => ({ size: v.size, color: v.color })));
+        } else {
+          console.log('[StoreProducts] No catalog variants found for catalogProductId:', catalogProductId, 'with filters:', { hasSelectedColors, hasSelectedSizes });
+        }
+      } else {
+        console.log('[StoreProducts] No catalogProductId found for product:', productId, 'storeProduct.catalogProductId:', storeProduct.catalogProductId);
+      }
+    } else {
+      console.log('[StoreProducts] Using store-specific variants:', variants.length);
+    }
 
     return res.json({
       success: true,
@@ -343,8 +423,8 @@ router.patch('/:id/design-preview', protect, authorize('merchant', 'superadmin')
     sp.markModified('designData');
     await sp.save();
 
-    return res.json({ 
-      success: true, 
+    return res.json({
+      success: true,
       message: `Preview saved for ${viewKey} view`,
       data: {
         viewKey,
@@ -390,6 +470,21 @@ router.patch('/:id', protect, authorize('merchant', 'superadmin'), async (req, r
     if (updates.sellingPrice !== undefined) sp.sellingPrice = updates.sellingPrice;
     if (updates.compareAtPrice !== undefined) sp.compareAtPrice = updates.compareAtPrice;
     if (Array.isArray(updates.tags)) sp.tags = updates.tags;
+
+    // Handle storeId update (reassign product to different store)
+    if (updates.storeId && String(updates.storeId) !== String(sp.storeId)) {
+      // Validate the new store exists and belongs to this user
+      const newStore = await Store.findById(updates.storeId);
+      if (!newStore) {
+        return res.status(404).json({ success: false, message: 'Target store not found' });
+      }
+      if (req.user.role !== 'superadmin' && String(newStore.merchant) !== String(req.user._id)) {
+        return res.status(403).json({ success: false, message: 'Not authorized to publish to this store' });
+      }
+
+      console.log('[StoreProducts] Reassigning product from store', sp.storeId, 'to', updates.storeId);
+      sp.storeId = updates.storeId;
+    }
 
     // Handle designData updates
     if (updates.designData !== undefined) {
@@ -442,18 +537,20 @@ router.patch('/:id', protect, authorize('merchant', 'superadmin'), async (req, r
       select: 'size color colorHex basePrice skuTemplate',
     });
 
-    sp.variantsSummary = allVariants.map((v) => {
-      const cv = v.catalogProductVariantId || {};
-      return {
-        catalogProductVariantId: cv._id || v.catalogProductVariantId,
-        size: cv.size,
-        color: cv.color,
-        colorHex: cv.colorHex,
-        sku: v.sku || cv.skuTemplate,
-        sellingPrice: typeof v.sellingPrice === 'number' ? v.sellingPrice : undefined,
-        basePrice: typeof cv.basePrice === 'number' ? cv.basePrice : undefined,
-      };
-    });
+    sp.variantsSummary = allVariants
+      .filter(v => v.catalogProductVariantId) // Filter out orphaned variants
+      .map((v) => {
+        const cv = v.catalogProductVariantId;
+        return {
+          catalogProductVariantId: cv._id,
+          size: cv.size,
+          color: cv.color,
+          colorHex: cv.colorHex,
+          sku: v.sku || cv.skuTemplate,
+          sellingPrice: typeof v.sellingPrice === 'number' ? v.sellingPrice : undefined,
+          basePrice: typeof cv.basePrice === 'number' ? cv.basePrice : undefined,
+        };
+      });
 
     await sp.save();
 

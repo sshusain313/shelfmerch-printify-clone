@@ -63,6 +63,16 @@ const AdminProductCreation = () => {
   const [availableColors, setAvailableColors] = useState<string[]>([]);
   const [variants, setVariants] = useState<ProductVariant[]>([]);
 
+  // State for mockups color selection
+  const [selectedColorForMockups, setSelectedColorForMockups] = useState<string>('');
+
+  // Auto-select first color for mockups when availableColors defaults
+  useEffect(() => {
+    if (availableColors.length > 0 && !selectedColorForMockups) {
+      setSelectedColorForMockups(availableColors[0]);
+    }
+  }, [availableColors, selectedColorForMockups]);
+
   // SECTION D: Design Data (Mockup + Print Areas)
   // Default physical dimensions in inches – this should match what we use in the configurator
   const DEFAULT_PHYSICAL_WIDTH = 20;
@@ -646,10 +656,14 @@ const AdminProductCreation = () => {
                       sampleMockups,
                     }))
                   }
+                  availableColors={availableColors}
+                  selectedColorKey={selectedColorForMockups}
+                  onColorChange={setSelectedColorForMockups}
                   physicalWidth={designData.physicalDimensions?.width ?? DEFAULT_PHYSICAL_WIDTH}
                   physicalHeight={designData.physicalDimensions?.height ?? DEFAULT_PHYSICAL_HEIGHT}
                   physicalLength={designData.physicalDimensions?.length ?? DEFAULT_PHYSICAL_LENGTH}
                   unit="in"
+                  variants={variants}
                 />
                 <div className="flex justify-between pt-4">
                   <Button

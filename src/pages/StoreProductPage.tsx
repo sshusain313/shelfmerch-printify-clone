@@ -100,6 +100,10 @@ const StoreProductPage = () => {
 
   const [variantPriceMap, setVariantPriceMap] = useState<Record<string, Record<string, number>>>({});
   const [colorHexMap, setColorHexMap] = useState<Record<string, string>>({});
+  // Track which sizes are available for each color
+  const [colorToSizesMap, setColorToSizesMap] = useState<Record<string, Set<string>>>({});
+  // Track which colors are available for each size
+  const [sizeToColorsMap, setSizeToColorsMap] = useState<Record<string, Set<string>>>({});
 
   const theme = store ? getTheme(store.theme) : getTheme('modern');
 
@@ -241,37 +245,49 @@ const StoreProductPage = () => {
             (Array.isArray(sp.previewImagesUrl) && sp.previewImagesUrl[0]?.url) ||
             undefined;
 
-          // Prefer embedded variantsSummary from StoreProduct (storeproducts collection)
-          // and fall back to populated StoreProductVariant docs if needed.
-          const summaryDocs: any[] = Array.isArray(sp.variantsSummary) ? sp.variantsSummary : [];
-          const variantDocs: any[] = summaryDocs.length
-            ? summaryDocs
-            : Array.isArray(sp.variants)
-              ? sp.variants
+          // Read variants from API response
+          // Backend returns populated StoreProductVariant documents in sp.variants array
+          // Each variant has: { catalogProductVariantId: { size, color, colorHex, ... }, sellingPrice, sku, ... }
+          // Only active variants (isActive: true) are returned by the backend
+          const variantDocs: any[] = Array.isArray(sp.variants) 
+            ? sp.variants 
+            : Array.isArray(sp.variantsSummary)
+              ? sp.variantsSummary
               : [];
+          
           const colorSet = new Set<string>();
           const sizeSet = new Set<string>();
           const priceMap: Record<string, Record<string, number>> = {};
           const hexMap: Record<string, string> = {};
+          // Track which color/size combinations are available
+          const availabilityMap: Record<string, Set<string>> = {}; // color -> Set of sizes
+          const sizeToColorsMap: Record<string, Set<string>> = {}; // size -> Set of colors
 
           variantDocs.forEach((v) => {
+            // Handle populated StoreProductVariant structure
+            // v.catalogProductVariantId is populated with { size, color, colorHex, ... }
             const cv = v.catalogProductVariantId || {};
 
-            // Support both shapes:
-            // - variantsSummary: { size, color, colorHex, sellingPrice, basePrice, ... }
-            // - populated StoreProductVariant: { catalogProductVariantId: { size, color, colorHex, ... }, sellingPrice }
+            // Extract color: from populated catalogProductVariantId or direct field
             const color = typeof v.color === 'string'
               ? v.color
               : typeof cv.color === 'string'
                 ? cv.color
                 : undefined;
+            
+            // Extract size: from populated catalogProductVariantId or direct field
             const size = typeof v.size === 'string'
               ? v.size
               : typeof cv.size === 'string'
                 ? cv.size
                 : undefined;
-            if (!color || !size) return;
+            
+            if (!color || !size) {
+              console.warn('Variant missing color or size:', v);
+              return;
+            }
 
+            // Extract colorHex: from populated catalogProductVariantId or direct field
             const colorHex = typeof v.colorHex === 'string'
               ? v.colorHex
               : typeof cv.colorHex === 'string'
@@ -282,20 +298,31 @@ const StoreProductPage = () => {
               hexMap[color] = colorHex;
             }
 
+            // Extract sellingPrice: prefer variant-specific price, fallback to base price
             const variantPrice: number =
-              typeof v.sellingPrice === 'number'
+              typeof v.sellingPrice === 'number' && v.sellingPrice > 0
                 ? v.sellingPrice
                 : basePrice;
 
+            // Track available combinations
             colorSet.add(color);
             sizeSet.add(size);
+            
+            if (!availabilityMap[color]) availabilityMap[color] = new Set();
+            availabilityMap[color].add(size);
+            
+            if (!sizeToColorsMap[size]) sizeToColorsMap[size] = new Set();
+            sizeToColorsMap[size].add(color);
 
             if (!priceMap[color]) priceMap[color] = {};
             priceMap[color][size] = variantPrice;
           });
 
           setColorHexMap(hexMap);
+          setColorToSizesMap(availabilityMap);
+          setSizeToColorsMap(sizeToColorsMap);
 
+          // Only include colors and sizes that have at least one available variant
           const colors = Array.from(colorSet.values());
           const sizes = Array.from(sizeSet.values());
 
@@ -374,25 +401,61 @@ const StoreProductPage = () => {
     return typeof specific === 'number' ? specific : product.price;
   }, [product, variantPriceMap, selectedColor, selectedSize]);
 
+  // Get available sizes for the selected color (based on actual variants in database)
   const availableSizes = useMemo(() => {
-    if (!product || !selectedColor) return [];
-    const sizesForColor = variantPriceMap[selectedColor] ? Object.keys(variantPriceMap[selectedColor]) : [];
-    return product.variants.sizes.filter(size => sizesForColor.includes(size));
-  }, [product, selectedColor, variantPriceMap]);
+    if (!selectedColor) return [];
+    const sizesForColor = colorToSizesMap[selectedColor];
+    if (!sizesForColor || sizesForColor.size === 0) return [];
+    return Array.from(sizesForColor).sort();
+  }, [selectedColor, colorToSizesMap]);
 
+  // Get available colors for the selected size (based on actual variants in database)
+  const availableColors = useMemo(() => {
+    if (!selectedSize) return product?.variants.colors || [];
+    const colorsForSize = sizeToColorsMap[selectedSize];
+    if (!colorsForSize || colorsForSize.size === 0) return product?.variants.colors || [];
+    return Array.from(colorsForSize).sort();
+  }, [selectedSize, sizeToColorsMap, product]);
+
+  // Update selected size when color changes (ensure size is available for new color)
   useEffect(() => {
     if (!selectedColor) return;
-    const sizesForColor = variantPriceMap[selectedColor] ? Object.keys(variantPriceMap[selectedColor]) : [];
-    if (selectedSize && !sizesForColor.includes(selectedSize)) {
-      if (sizesForColor.length > 0) {
-        setSelectedSize(sizesForColor[0]);
-      } else {
-        setSelectedSize('');
-      }
-    } else if (!selectedSize && sizesForColor.length > 0) {
-      setSelectedSize(sizesForColor[0]);
+    const sizesForColor = colorToSizesMap[selectedColor];
+    if (!sizesForColor || sizesForColor.size === 0) {
+      setSelectedSize('');
+      return;
     }
-  }, [selectedColor, variantPriceMap]);
+    const availableSizesArray = Array.from(sizesForColor);
+    if (selectedSize && sizesForColor.has(selectedSize)) {
+      // Current size is still available for this color, keep it
+      return;
+    }
+    // Current size is not available for this color, select first available
+    if (availableSizesArray.length > 0) {
+      setSelectedSize(availableSizesArray[0]);
+    } else {
+      setSelectedSize('');
+    }
+  }, [selectedColor, colorToSizesMap, selectedSize]);
+
+  // Update selected color when size changes (ensure color is available for new size)
+  useEffect(() => {
+    if (!selectedSize) return;
+    const colorsForSize = sizeToColorsMap[selectedSize];
+    if (!colorsForSize || colorsForSize.size === 0) {
+      // If no colors available for this size, don't change color (let user choose)
+      return;
+    }
+    const availableColorsArray = Array.from(colorsForSize);
+    if (selectedColor && colorsForSize.has(selectedColor)) {
+      // Current color is still available for this size, keep it
+      return;
+    }
+    // Current color is not available for this size, select first available
+    if (availableColorsArray.length > 0) {
+      setSelectedColor(availableColorsArray[0]);
+    }
+  }, [selectedSize, sizeToColorsMap, selectedColor]);
 
   const handleAddToCart = useCallback(() => {
     if (!product) return;
@@ -763,19 +826,32 @@ const StoreProductPage = () => {
               {product.variants.colors.map((color) => {
                 const hex = getColorHex(color);
                 const isSelected = selectedColor === color;
+                // Check if this color is available for the selected size (or any size if no size selected)
+                const isAvailable = selectedSize 
+                  ? sizeToColorsMap[selectedSize]?.has(color) ?? false
+                  : colorToSizesMap[color]?.size > 0;
+                const isDisabled = !isAvailable;
+                
                 return (
                   <button
                     key={color}
-                    onClick={() => setSelectedColor(color)}
+                    onClick={() => {
+                      if (isAvailable) {
+                        setSelectedColor(color);
+                      }
+                    }}
+                    disabled={isDisabled}
                     className={cn(
-                      "relative w-10 h-10 rounded-full border-2 transition-all hover:scale-110",
-                      isSelected
-                        ? 'border-primary ring-2 ring-primary/30'
-                        : 'border-border hover:border-primary/50'
+                      "relative w-10 h-10 rounded-full border-2 transition-all",
+                      isDisabled
+                        ? 'opacity-40 cursor-not-allowed grayscale'
+                        : isSelected
+                          ? 'border-primary ring-2 ring-primary/30 hover:scale-110'
+                          : 'border-border hover:border-primary/50 hover:scale-110'
                     )}
                     style={{ backgroundColor: hex }}
-                    title={color}
-                    aria-label={`Select ${color} color`}
+                    title={isDisabled ? `${color} - Not available for selected size` : color}
+                    aria-label={isDisabled ? `${color} color (not available)` : `Select ${color} color`}
                   >
                     {isSelected && (
                       <Check
@@ -785,6 +861,11 @@ const StoreProductPage = () => {
                         )}
                         strokeWidth={3}
                       />
+                    )}
+                    {isDisabled && (
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <span className="text-xs text-muted-foreground">×</span>
+                      </div>
                     )}
                   </button>
                 );
@@ -820,6 +901,8 @@ const StoreProductPage = () => {
                           ? "border-primary bg-primary text-primary-foreground shadow-sm"
                           : "border-border hover:border-primary/50 hover:bg-accent"
                       )}
+                      title={size}
+                      aria-label={`Select ${size} size`}
                     >
                       {size}
                     </button>
@@ -827,7 +910,11 @@ const StoreProductPage = () => {
                 })}
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground italic">No sizes available for this color</p>
+              <p className="text-sm text-muted-foreground italic">
+                {selectedColor 
+                  ? `No sizes available for ${selectedColor}`
+                  : 'No sizes available'}
+              </p>
             )}
           </div>
         </div>

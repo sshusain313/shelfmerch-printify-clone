@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Application, Assets, Container, DisplacementFilter, Graphics, Rectangle, Sprite } from 'pixi.js';
+import { Application, Assets, ColorMatrixFilter, Container, DisplacementFilter, Graphics, Rectangle, Sprite } from 'pixi.js';
 import type { DisplacementSettings, Placeholder } from '@/types/product';
 import { createDisplacementTextureFromGarment } from '@/lib/displacementMap';
 // Removed UI imports - this component is now a pure canvas renderer
@@ -51,6 +51,9 @@ interface RealisticWebGLPreviewProps {
   currentView?: string;
   canvasPadding?: number;
   PX_PER_INCH?: number;
+  // Enable garment tint (default: false) - only set to true if you want to apply color tint
+  // When false, real per-color view images from variant.viewImages are used as-is
+  enableGarmentTint?: boolean;
 }
 
 /**
@@ -81,6 +84,7 @@ export const RealisticWebGLPreview: React.FC<RealisticWebGLPreviewProps> = ({
   currentView = 'front',
   canvasPadding = 40,
   PX_PER_INCH = 72,
+  enableGarmentTint = false, // Default: disabled - use real variant images as-is
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const appRef = useRef<Application | null>(null);
@@ -132,7 +136,7 @@ export const RealisticWebGLPreview: React.FC<RealisticWebGLPreviewProps> = ({
 
   // Debug logging flag (set to true to enable)
   const DEBUG_LOGGING = true;
-  
+
   // Token to trigger canvas elements reload after garment/containers are ready
   const [containersReady, setContainersReady] = useState(0);
 
@@ -176,6 +180,32 @@ export const RealisticWebGLPreview: React.FC<RealisticWebGLPreviewProps> = ({
     } catch {
       return false; // Default to light color if calculation fails
     }
+  };
+
+  // ========================================
+  // REALISM TUNING PARAMETERS
+  // ========================================
+  // Adjust these values to balance between color preservation and fabric realism:
+  // Higher values (0.95-1.0) = more color preservation, less fabric texture
+  // Lower values (0.80-0.90) = more fabric texture, more color desaturation
+  const REALISM_ALPHA = 0.92; // Trade-off: 0.92 gives subtle fabric texture with minimal color loss
+
+  /**
+   * Safely determine blend mode based on garment background.
+   * CRITICAL: Multiply/screen blend modes require a background to work properly.
+   * Without a background, multiply causes black/invisible designs.
+   * Returns 'normal' if no garment background exists.
+   */
+  const getSafeBlendMode = (garmentHex: string | null | undefined, hasGarmentBg: boolean): string => {
+    // Safety check: if no garment background, use normal blend to prevent black designs
+    if (!hasGarmentBg) {
+      return 'normal';
+    }
+    // With background, use appropriate blend mode
+    if (garmentHex) {
+      return isDarkHex(garmentHex) ? 'screen' : 'multiply';
+    }
+    return 'multiply'; // Default for light/untinted garments
   };
 
   // Initialize Pixi Application (v8 async init)
@@ -348,11 +378,16 @@ export const RealisticWebGLPreview: React.FC<RealisticWebGLPreviewProps> = ({
         garmentSprite.x = CANVAS_PADDING + (maxWidth - width) / 2;
         garmentSprite.y = CANVAS_PADDING + (maxHeight - height) / 2;
 
-        if (garmentTintHex) {
+        // Only apply garment tint if explicitly enabled
+        // By default, use real per-color view images as-is without tinting
+        if (enableGarmentTint && garmentTintHex) {
           const tint = hexToTint(garmentTintHex);
           if (tint !== null) {
             (garmentSprite as any).tint = tint;
           }
+        } else {
+          // Ensure neutral tint (white = no color modification)
+          (garmentSprite as any).tint = 0xffffff;
         }
 
         // Background container to catch clicks on empty space
@@ -385,19 +420,19 @@ export const RealisticWebGLPreview: React.FC<RealisticWebGLPreviewProps> = ({
         // Root container for all design layers
         const designContainer = new Container();
         designContainer.sortableChildren = true;
-        
+
         // Separate layers for placeholder designs and canvas elements
         const placeholderDesignLayer = new Container();
         placeholderDesignLayer.sortableChildren = true;
         placeholderDesignLayer.zIndex = 0; // Below canvas elements
-        
+
         const canvasElementsLayer = new Container();
         canvasElementsLayer.sortableChildren = true;
         canvasElementsLayer.zIndex = 1; // Above placeholder designs
-        
+
         designContainer.addChild(placeholderDesignLayer);
         designContainer.addChild(canvasElementsLayer);
-        
+
         // Container for placeholders overlays (selection outlines)
         const placeholderContainer = new Container();
 
@@ -410,10 +445,10 @@ export const RealisticWebGLPreview: React.FC<RealisticWebGLPreviewProps> = ({
         sceneRef.current.placeholderContainer = placeholderContainer;
         sceneRef.current.pxPerInch = pxPerInch;
         prevMockupUrlRef.current = currentUrl;
-        
+
         // Signal that containers are ready so canvas elements effect can load
         setContainersReady(prev => prev + 1);
-        
+
         if (DEBUG_LOGGING) {
           console.log('[RealisticWebGLPreview] Garment loaded, containers ready:', {
             currentView,
@@ -449,19 +484,22 @@ export const RealisticWebGLPreview: React.FC<RealisticWebGLPreviewProps> = ({
     };
   }, [appReady, mockupImageUrl, physicalWidth, physicalHeight]);
 
+  // Apply garment tint only if explicitly enabled
   useEffect(() => {
     if (!appReady || !sceneRef.current.garmentSprite) return;
     const sprite = sceneRef.current.garmentSprite as any;
-    if (garmentTintHex) {
+
+    // Only apply tint if enableGarmentTint is true
+    if (enableGarmentTint && garmentTintHex) {
       const tint = hexToTint(garmentTintHex);
       if (tint !== null) {
         sprite.tint = tint;
       }
     } else {
-      // Reset tint to default (white = no tint)
+      // Reset tint to neutral (white = no color modification)
       sprite.tint = 0xffffff;
     }
-  }, [garmentTintHex, appReady]);
+  }, [enableGarmentTint, garmentTintHex, appReady]);
 
   // Generate / update displacement map when garment or contrast changes
   useEffect(() => {
@@ -570,7 +608,7 @@ export const RealisticWebGLPreview: React.FC<RealisticWebGLPreviewProps> = ({
   useEffect(() => {
     const filter = sceneRef.current.displacementFilter;
     if (!filter) return;
-    
+
     // Helper to apply filter to all sprites in both layers
     const applyFilterToLayers = () => {
       if (sceneRef.current.placeholderDesignLayer) {
@@ -730,10 +768,10 @@ export const RealisticWebGLPreview: React.FC<RealisticWebGLPreviewProps> = ({
 
     const loadDesigns = async () => {
       const container = sceneRef.current.placeholderDesignLayer!;
-      
+
       // Clear only placeholder design layer (never touch canvas elements layer)
       container.removeChildren();
-      
+
       if (DEBUG_LOGGING) {
         console.log('[RealisticWebGLPreview] Loading placeholder designs:', {
           currentView,
@@ -754,13 +792,13 @@ export const RealisticWebGLPreview: React.FC<RealisticWebGLPreviewProps> = ({
 
       for (const placeholder of placeholders) {
         if (cancelled) return;
-        
+
         const designUrl = currentDesignUrls[placeholder.id];
         if (!designUrl) continue;
 
         const designTex = await Assets.load(designUrl);
         if (cancelled) return;
-        
+
         const designSprite = new Sprite(designTex);
 
         // Determine placeholder bounds in screen pixels.
@@ -808,20 +846,12 @@ export const RealisticWebGLPreview: React.FC<RealisticWebGLPreviewProps> = ({
         designSprite.x = phScreenX + phScreenW / 2;
         designSprite.y = phScreenY + phScreenH / 2;
 
-        // Dynamic blend mode based on garment color luminance
-        // For dark garments: use 'screen' blend mode with full opacity to brighten the design
-        // For light garments: use 'multiply' blend mode to integrate naturally with garment color
-        // This is ESSENTIAL for realistic mockups - makes designs pick up fabric texture
-        if (garmentTintHex) {
-          const isDark = isDarkHex(garmentTintHex);
-          designSprite.blendMode = isDark ? 'screen' : 'multiply';
-          designSprite.alpha = isDark ? 1.0 : 0.85; // Full opacity for dark garments, slightly reduced for light
-        } else {
-          // Default: use multiply for untinted garments (assumed light/white)
-          // This makes the design blend naturally with the fabric texture
-          designSprite.blendMode = 'multiply';
-          designSprite.alpha = 0.85;
-        }
+        // SAFE blend mode: checks if garment background exists to prevent black designs
+        // Without background, multiply/screen causes black/invisible rendering
+        const hasGarmentBackground = !!sceneRef.current.garmentSprite;
+        const safeBlendMode = getSafeBlendMode(garmentTintHex, hasGarmentBackground);
+        designSprite.blendMode = safeBlendMode as any;
+        designSprite.alpha = hasGarmentBackground ? REALISM_ALPHA : 1.0; // Full alpha if no background
 
         // Build mask matching placeholder shape.
         const mask = new Graphics();
@@ -840,15 +870,13 @@ export const RealisticWebGLPreview: React.FC<RealisticWebGLPreviewProps> = ({
           mask.fill({ color: 0xffffff });
         }
 
-        // Add to placeholder design layer (not canvas elements layer)
+        // Add to placeholder design layer
         container.addChild(mask);
         container.addChild(designSprite);
         designSprite.mask = mask;
-        
-        // Set zIndex for proper sorting
         designSprite.zIndex = 0;
 
-        // Apply displacement if available.
+        // Apply displacement filter for fabric warping effect
         if (sceneRef.current.displacementFilter) {
           designSprite.filters = [sceneRef.current.displacementFilter];
         }
@@ -959,14 +987,14 @@ export const RealisticWebGLPreview: React.FC<RealisticWebGLPreviewProps> = ({
           (designSprite as any).cursor = 'default';
         }
       }
-      
+
       // Sort placeholder designs by zIndex (though they typically all have zIndex 0)
       container.children.sort((a, b) => {
         const aZ = (a as any).zIndex || 0;
         const bZ = (b as any).zIndex || 0;
         return aZ - bZ;
       });
-      
+
       if (DEBUG_LOGGING) {
         console.log('[RealisticWebGLPreview] Placeholder designs loaded:', {
           currentView,
@@ -978,47 +1006,20 @@ export const RealisticWebGLPreview: React.FC<RealisticWebGLPreviewProps> = ({
     };
 
     loadDesigns();
-    
+
     return () => {
       cancelled = true;
     };
   }, [appReady, externalDesignUrls, placeholders, mockupImageUrl, activePlaceholder, filterToken, onSelectPlaceholder, previewMode, garmentTintHex, currentView]);
 
-  // Update blend mode and opacity of existing design sprites when garment color changes
-  useEffect(() => {
-    if (!appReady) return;
-
-    // Helper to update blend mode for all sprites in both layers
-    const updateBlendModes = () => {
-      const updateSprite = (child: any) => {
-        if (!(child instanceof Sprite)) return;
-        if (child === sceneRef.current.displacementSprite) return;
-
-        if (garmentTintHex) {
-          const isDark = isDarkHex(garmentTintHex);
-          child.blendMode = isDark ? 'screen' : 'multiply';
-          child.alpha = isDark ? 1.0 : 0.9;
-        } else {
-          child.blendMode = 'multiply';
-          child.alpha = 0.9;
-        }
-      };
-
-      if (sceneRef.current.placeholderDesignLayer) {
-        sceneRef.current.placeholderDesignLayer.children.forEach(updateSprite);
-      }
-      if (sceneRef.current.canvasElementsLayer) {
-        sceneRef.current.canvasElementsLayer.children.forEach(updateSprite);
-      }
-    };
-    
-    updateBlendModes();
-  }, [appReady, garmentTintHex]);
+  // Garment tint changes are already handled by the design loading effect
+  // No additional blend mode updates needed with soft-light approach
+  // (The effect was needed for the two-layer system which is now removed)
 
   // Toggle interaction mode on existing design sprites when previewMode changes
   useEffect(() => {
     if (!appReady) return;
-    
+
     const updateInteractions = (c: any) => {
       if (previewMode) {
         c.eventMode = 'none';
@@ -1031,7 +1032,7 @@ export const RealisticWebGLPreview: React.FC<RealisticWebGLPreviewProps> = ({
         try { c.cursor = 'move'; } catch { }
       }
     };
-    
+
     // Only update placeholder design sprites (canvas elements don't need interaction)
     if (sceneRef.current.placeholderDesignLayer) {
       sceneRef.current.placeholderDesignLayer.children.forEach(updateInteractions);
@@ -1058,7 +1059,7 @@ export const RealisticWebGLPreview: React.FC<RealisticWebGLPreviewProps> = ({
         }, {} as Record<string, number>),
       });
     }
-    
+
     if (
       !appReady ||
       !appRef.current ||
@@ -1077,15 +1078,15 @@ export const RealisticWebGLPreview: React.FC<RealisticWebGLPreviewProps> = ({
     const loadCanvasElements = async () => {
       // Normalize view matching: case-insensitive and handle !el.view as "all views"
       const normalizedCurrentView = currentView?.toLowerCase() || '';
-      
+
       // Filter canvas elements for current view and visible image elements
       const imageElements = canvasElements.filter(
         (el) => {
           if (el.type !== 'image' || !el.imageUrl || el.visible === false) return false;
-          
+
           // Normalize element view for comparison
           const elView = el.view?.toLowerCase() || '';
-          
+
           // Match if: no view (appears on all), or view matches (case-insensitive)
           return !el.view || elView === normalizedCurrentView;
         }
@@ -1093,7 +1094,7 @@ export const RealisticWebGLPreview: React.FC<RealisticWebGLPreviewProps> = ({
 
       const container = sceneRef.current.canvasElementsLayer!;
       const canvasSprites = sceneRef.current.canvasElementSprites;
-      
+
       if (DEBUG_LOGGING) {
         console.log('[RealisticWebGLPreview] Loading canvas elements:', {
           currentView,
@@ -1180,7 +1181,7 @@ export const RealisticWebGLPreview: React.FC<RealisticWebGLPreviewProps> = ({
         try {
           const texture = await Assets.load(element.imageUrl);
           if (cancelled) return;
-          
+
           const sprite = new Sprite(texture);
 
           // Set size first (needed for anchor calculation)
@@ -1218,24 +1219,24 @@ export const RealisticWebGLPreview: React.FC<RealisticWebGLPreviewProps> = ({
           } else {
             sprite.scale.y = Math.abs(sprite.scale.y);
           }
+          // SAFE blend mode for canvas elements - same logic as placeholder designs
+          const hasGarmentBackground = !!sceneRef.current.garmentSprite;
 
-          // Apply opacity
-          sprite.alpha = element.opacity !== undefined ? element.opacity : 1;
-
-          // Apply blend mode
+          // Apply opacity with appropriate alpha
           if (element.blendMode) {
+            // Explicit blend mode - use full alpha
             sprite.blendMode = element.blendMode as any;
-          } else if (garmentTintHex) {
-            // Use same logic as placeholder designs
-            const isDark = isDarkHex(garmentTintHex);
-            sprite.blendMode = isDark ? 'screen' : 'multiply';
-            sprite.alpha = isDark ? 1.0 : 0.9;
+            sprite.alpha = element.opacity !== undefined ? element.opacity : 1;
           } else {
-            sprite.blendMode = 'multiply';
-            sprite.alpha = 0.9;
+            // Auto blend mode - use safe blend with realism alpha
+            const safeBlendMode = getSafeBlendMode(garmentTintHex, hasGarmentBackground);
+            sprite.blendMode = safeBlendMode as any;
+            sprite.alpha = hasGarmentBackground
+              ? (element.opacity !== undefined ? element.opacity * REALISM_ALPHA : REALISM_ALPHA)
+              : (element.opacity !== undefined ? element.opacity : 1);
           }
 
-          // Apply displacement filter if available
+          // Apply displacement filter for fabric warping effect
           if (sceneRef.current.displacementFilter) {
             sprite.filters = [sceneRef.current.displacementFilter];
           }
@@ -1259,7 +1260,7 @@ export const RealisticWebGLPreview: React.FC<RealisticWebGLPreviewProps> = ({
         const bZ = (b as any).zIndex || 0;
         return aZ - bZ;
       });
-      
+
       if (DEBUG_LOGGING) {
         console.log('[RealisticWebGLPreview] Canvas elements loaded:', {
           currentView,

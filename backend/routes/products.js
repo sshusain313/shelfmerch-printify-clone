@@ -179,7 +179,8 @@ router.post('/', protect, authorize('superadmin'), async (req, res) => {
         colorHex: v.colorHex,
         skuTemplate: v.sku || `${catalogue.productTypeCode}-${v.size}-${v.color}`,
         basePrice: v.price !== undefined ? v.price : undefined,
-        isActive: v.isActive !== false
+        isActive: v.isActive !== false,
+        viewImages: v.viewImages || { front: '', back: '', left: '', right: '' }
       }));
 
       try {
@@ -680,7 +681,8 @@ router.put('/:id', protect, authorize('superadmin'), async (req, res) => {
           colorHex: v.colorHex,
           skuTemplate: v.sku || `${product.productTypeCode}-${v.size}-${v.color}`,
           basePrice: v.price !== undefined ? v.price : undefined,
-          isActive: v.isActive !== false
+          isActive: v.isActive !== false,
+          viewImages: v.viewImages || { front: '', back: '', left: '', right: '' }
         }));
 
         try {

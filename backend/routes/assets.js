@@ -18,7 +18,7 @@ const { validateSVG, extractSVGDimensions } = require('../utils/svgSanitizer');
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 100 * 1024 * 1024 // 100MB
+    fileSize: 300 * 1024 * 1024 // 100MB
   },
   fileFilter: (req, file, cb) => {
     const allowedMimes = [

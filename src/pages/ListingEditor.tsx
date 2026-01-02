@@ -95,7 +95,7 @@ const ListingEditor = () => {
 
   // Get productId from state or draftData
   const productId = state?.productId || draftData?.catalogProductId;
-  
+
   // Initialize title and description from draft or state
   const [title, setTitle] = useState(() => {
     return draftData?.title || state?.title || 'wyz Logo Circle Graphic T-Shirt | Minimal Branding Tee';
@@ -122,12 +122,46 @@ const ListingEditor = () => {
   // Ref to track user-entered retail prices so they don't reset when cost map loads
   const retailPriceRef = useRef<Record<string, number>>({});
 
+  // --- STORE SELECTION STATE ---
+  interface ConnectedStore {
+    _id: string;
+    id?: string;
+    name: string;
+    subdomain?: string;
+    status?: string;
+  }
+  const [connectedStores, setConnectedStores] = useState<ConnectedStore[]>([]);
+  const [selectedStoreIds, setSelectedStoreIds] = useState<Set<string>>(new Set());
+  const [isLoadingStores, setIsLoadingStores] = useState(false);
+
+  // Fetch connected stores on mount
+  useEffect(() => {
+    const fetchStores = async () => {
+      setIsLoadingStores(true);
+      try {
+        const response = await storeApi.listMyStores();
+        if (response.success && Array.isArray(response.data)) {
+          setConnectedStores(response.data);
+          // Pre-select all stores by default
+          const allIds = new Set(response.data.map((s: any) => s._id || s.id));
+          setSelectedStoreIds(allIds);
+        }
+      } catch (error) {
+        console.error('Failed to fetch stores:', error);
+        toast.error('Failed to load connected stores');
+      } finally {
+        setIsLoadingStores(false);
+      }
+    };
+    fetchStores();
+  }, []);
+
   // Load catalog variant costs (production basePrice) and SKU template
   // for the specific catalog product backing this design.
   useEffect(() => {
     // Get productId from state OR draftData (draft may load later)
     const currentProductId = state?.productId || draftData?.catalogProductId;
-    
+
     console.log('[ListingEditor] Fetch catalog variants:', {
       productId: currentProductId,
       fromState: state?.productId,
@@ -145,7 +179,7 @@ const ListingEditor = () => {
       try {
         console.log('[ListingEditor] Calling catalogVariantsApi.listByProduct:', currentProductId);
         const resp = await catalogVariantsApi.listByProduct(currentProductId);
-        
+
         console.log('[ListingEditor] Raw API response:', {
           resp,
           respType: typeof resp,
@@ -182,19 +216,19 @@ const ListingEditor = () => {
           const normalizedSize = norm(v.size || '');
           const normalizedColor = norm(v.color || '');
           const key = `${normalizedSize}__${normalizedColor}`;
-          
+
           // Production cost: prefer basePrice (DB field), fallback to price (transformed)
           // Requirement: productionCost MUST come from basePrice
-          const basePrice = typeof v.basePrice === 'number' && Number.isFinite(v.basePrice) 
-            ? v.basePrice 
+          const basePrice = typeof v.basePrice === 'number' && Number.isFinite(v.basePrice)
+            ? v.basePrice
             : undefined;
-          const price = typeof v.price === 'number' && Number.isFinite(v.price) 
-            ? v.price 
+          const price = typeof v.price === 'number' && Number.isFinite(v.price)
+            ? v.price
             : undefined;
-          
+
           // Use basePrice if available (DB field), otherwise use price (if backend transformed it)
           const cost = basePrice !== undefined ? basePrice : (price !== undefined ? price : 0);
-          
+
           // SKU: backend may transform skuTemplate -> sku, but check both
           const sku = v.sku || v.skuTemplate || '';
 
@@ -239,7 +273,7 @@ const ListingEditor = () => {
   // Preserve user-entered retailPrice using ref
   useEffect(() => {
     const incoming = state?.variants || [];
-    
+
     console.log('[ListingEditor] Recompute variantRows:', {
       incomingCount: incoming.length,
       variantCostMapKeys: Object.keys(variantCostMap).length,
@@ -285,7 +319,7 @@ const ListingEditor = () => {
       // Retail price: preserve user-entered value if exists, otherwise use default
       const rowKey = `${v.size}__${v.color}`;
       const preservedRetailPrice = retailPriceRef.current[rowKey];
-      
+
       let defaultRetail = 0;
       if (preservedRetailPrice !== undefined && Number.isFinite(preservedRetailPrice)) {
         // User has entered a price, preserve it
@@ -303,7 +337,9 @@ const ListingEditor = () => {
       }
 
       const row: VariantRow = {
-        id: v.id || mapped?.id,
+        // Prefer mapped?.id (catalogProductVariantId from cost map) over v.id
+        // mapped?.id is guaranteed to be a CatalogProductVariant ID
+        id: mapped?.id || v.id,
         size: v.size,
         color: v.color,
         // SKU from catalog variant, or fallback
@@ -393,6 +429,12 @@ const ListingEditor = () => {
         return;
       }
 
+      // Validate store selection
+      if (selectedStoreIds.size === 0) {
+        toast.error('Please select at least one store to publish to.');
+        return;
+      }
+
       setIsPublishing(true);
 
       try {
@@ -412,57 +454,122 @@ const ListingEditor = () => {
           ),
         );
 
-        // Build update payload - only include fields that should be updated
-        const updates: any = {
-          status: 'published', // Change status from 'draft' to 'published'
-        };
-
-        // Update designData with selected colors & sizes
+        // Build base update payload
         const currentDesignData = draftData?.designData || state?.designData || {};
-        updates.designData = {
-          ...currentDesignData,
-          ...(colors.length ? { selectedColors: colors } : {}),
-          ...(sizes.length ? { selectedSizes: sizes } : {}),
+        const basePayload: any = {
+          status: 'published',
+          designData: {
+            ...currentDesignData,
+            ...(colors.length ? { selectedColors: colors } : {}),
+            ...(sizes.length ? { selectedSizes: sizes } : {}),
+          },
         };
 
-        if (syncTitle) updates.title = title;
-        if (syncDescription) updates.description = description;
-        if (Array.isArray(state?.galleryImages)) updates.galleryImages = state.galleryImages;
+        if (syncTitle) basePayload.title = title;
+        if (syncDescription) basePayload.description = description;
+        if (Array.isArray(state?.galleryImages)) basePayload.galleryImages = state.galleryImages;
 
-        // Update selling price if available
+        // Set selling price
         if (state?.baseSellingPrice) {
-          updates.sellingPrice = state.baseSellingPrice;
+          basePayload.sellingPrice = state.baseSellingPrice;
         } else if (variantRows[0]?.retailPrice) {
-          updates.sellingPrice = variantRows[0].retailPrice;
+          basePayload.sellingPrice = variantRows[0].retailPrice;
         }
 
-        // Update variants if provided
+        // Build variants array
         if (variantRows && variantRows.length > 0) {
-          updates.variants = variantRows.map((v) => ({
-            catalogProductVariantId: v.id,
-            sku: v.sku,
-            sellingPrice: v.retailPrice,
-            isActive: true,
-          }));
+          basePayload.variants = variantRows
+            .filter((v) => v.id)
+            .map((v) => ({
+              catalogProductVariantId: v.id,
+              sku: v.sku || '',
+              sellingPrice: v.retailPrice,
+              isActive: true,
+            }));
         }
 
-        // PATCH the existing draft instead of creating new
-        const resp = await storeProductsApi.update(storeProductId, updates);
-        if (resp && resp.success) {
-          toast.success('Product published to your store');
-          // Pass along updated store product and navigate to Stores for channel selection
-          navigate('/stores', { 
-            state: { 
-              ...state, 
-              storeProductId,
-              title, 
-              description, 
-              variantRows, 
-              storeProduct: resp.data 
-            } 
-          });
+        const selectedStoreIdsArray = Array.from(selectedStoreIds);
+        console.log('[ListingEditor] Publishing to stores:', selectedStoreIdsArray);
+
+        // Track success/failure
+        let successCount = 0;
+        const errors: string[] = [];
+
+        // 1. Update the existing draft for the FIRST selected store
+        if (selectedStoreIdsArray.length > 0) {
+          const firstStoreId = selectedStoreIdsArray[0];
+          try {
+            const updates = { ...basePayload, storeId: firstStoreId };
+            const resp = await storeProductsApi.update(storeProductId, updates);
+            if (resp && resp.success) {
+              successCount++;
+              console.log('[ListingEditor] Updated existing draft for store:', firstStoreId);
+            } else {
+              errors.push(`Failed to update for first store`);
+            }
+          } catch (err: any) {
+            errors.push(err?.message || 'Failed to update first store');
+          }
+        }
+
+        // 2. CREATE new StoreProducts for remaining selected stores
+        if (selectedStoreIdsArray.length > 1) {
+          const catalogProductId = draftData?.catalogProductId || state?.productId;
+          if (!catalogProductId) {
+            console.warn('[ListingEditor] No catalogProductId available for creating copies');
+          } else {
+            for (let i = 1; i < selectedStoreIdsArray.length; i++) {
+              const storeId = selectedStoreIdsArray[i];
+              try {
+                // Create a new StoreProduct for this store
+                const createPayload = {
+                  storeId,
+                  catalogProductId,
+                  sellingPrice: basePayload.sellingPrice || 0,
+                  title: basePayload.title,
+                  description: basePayload.description,
+                  designData: basePayload.designData,
+                  galleryImages: basePayload.galleryImages,
+                  variants: basePayload.variants,
+                  status: 'published' as const,
+                };
+
+                console.log('[ListingEditor] Creating new StoreProduct for store:', storeId);
+                const resp = await storeProductsApi.create(createPayload);
+                if (resp && resp.success) {
+                  successCount++;
+                  console.log('[ListingEditor] Created product for store:', storeId);
+                } else {
+                  errors.push(`Failed to create for store ${storeId}`);
+                }
+              } catch (err: any) {
+                console.error('[ListingEditor] Error creating for store', storeId, err);
+                errors.push(err?.message || `Failed for store ${storeId}`);
+              }
+            }
+          }
+        }
+
+        // Report results
+        if (successCount === selectedStoreIdsArray.length) {
+          toast.success(`Product published to ${successCount} store${successCount > 1 ? 's' : ''}!`);
+        } else if (successCount > 0) {
+          toast.warning(`Published to ${successCount}/${selectedStoreIdsArray.length} stores. ${errors.join(', ')}`);
         } else {
-          toast.error('Failed to publish product: Unknown error');
+          toast.error('Failed to publish: ' + errors.join(', '));
+        }
+
+        // Navigate if at least one succeeded
+        if (successCount > 0) {
+          navigate('/stores', {
+            state: {
+              ...state,
+              storeProductId,
+              title,
+              description,
+              variantRows,
+            }
+          });
         }
       } catch (err: any) {
         console.error('Publish failed', err);
@@ -683,18 +790,18 @@ const ListingEditor = () => {
                                   const value = event.target.value.replace(/[^0-9.]/g, '');
                                   const parsed = parseFloat(value);
                                   const newRetailPrice = Number.isNaN(parsed) ? 0 : parseFloat(parsed.toFixed(2));
-                                  
+
                                   // Update ref to preserve user entry
                                   const rowKey = `${variant.size}__${variant.color}`;
                                   retailPriceRef.current[rowKey] = newRetailPrice;
-                                  
+
                                   setVariantRows((rows) =>
                                     rows.map((row) =>
                                       row === variant
                                         ? {
-                                            ...row,
-                                            retailPrice: newRetailPrice,
-                                          }
+                                          ...row,
+                                          retailPrice: newRetailPrice,
+                                        }
                                         : row,
                                     ),
                                   );
@@ -719,6 +826,73 @@ const ListingEditor = () => {
               </Table>
             </TabsContent>
           </Tabs>
+        </Card>
+
+        {/* Publishing destination - Store Selection */}
+        <Card className="p-6 space-y-4">
+          <div className="space-y-1">
+            <h2 className="text-lg font-semibold">Publishing destination</h2>
+            <p className="text-sm text-muted-foreground">
+              Select which stores to publish this product to.
+            </p>
+          </div>
+
+          {isLoadingStores ? (
+            <div className="flex items-center gap-2 py-2">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
+              <span className="text-sm text-muted-foreground">Loading stores...</span>
+            </div>
+          ) : connectedStores.length > 0 ? (
+            <div className="space-y-3">
+              {connectedStores.map((store) => {
+                const storeId = store._id || store.id || '';
+                const isSelected = selectedStoreIds.has(storeId);
+                return (
+                  <label
+                    key={storeId}
+                    className="flex items-center gap-3 p-3 border rounded-lg hover:bg-muted/30 transition-colors cursor-pointer"
+                  >
+                    <Checkbox
+                      checked={isSelected}
+                      onCheckedChange={(checked) => {
+                        const newSelectedIds = new Set(selectedStoreIds);
+                        if (checked) {
+                          newSelectedIds.add(storeId);
+                        } else {
+                          newSelectedIds.delete(storeId);
+                        }
+                        setSelectedStoreIds(newSelectedIds);
+                      }}
+                    />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium">{store.name}</p>
+                      {store.subdomain && (
+                        <p className="text-xs text-muted-foreground">{store.subdomain}</p>
+                      )}
+                    </div>
+                    <span className={`text-[10px] px-2 py-0.5 rounded ${store.status === 'active'
+                      ? 'bg-green-100 text-green-700'
+                      : 'bg-yellow-100 text-yellow-700'
+                      }`}>
+                      {store.status === 'active' ? 'Connected' : store.status || 'Draft'}
+                    </span>
+                  </label>
+                );
+              })}
+              {selectedStoreIds.size === 0 && (
+                <p className="text-sm text-amber-600 bg-amber-50 p-2 rounded">
+                  ⚠️ Please select at least one store to publish to.
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="text-center py-4 border rounded-lg bg-muted/20">
+              <p className="text-sm text-muted-foreground">No stores connected yet.</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Go to Stores page to create or connect a store.
+              </p>
+            </div>
+          )}
         </Card>
 
         {/* Publishing settings */}

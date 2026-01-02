@@ -2057,6 +2057,7 @@ const DesignEditor: React.FC = () => {
                     }}
                     previewMode={previewMode}
                     garmentTintHex={primaryColorHex}
+                    enableGarmentTint={true}
                     canvasElements={elements}
                     currentView={currentView}
                     canvasPadding={canvasPadding}

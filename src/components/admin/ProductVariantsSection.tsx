@@ -8,11 +8,18 @@ import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
 import { ProductVariant } from '@/types/product';
-import { X, RefreshCw, Info } from 'lucide-react';
+import { X, RefreshCw, Info, Camera } from 'lucide-react';
 import { CategoryId } from '@/config/productCategories';
 import { getVariantOptions, getColorHex } from '@/config/productVariantOptions';
 import { variantOptionsApi } from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
+import { VariantImagesModal } from './VariantImagesModal';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 
 interface ProductVariantsSectionProps {
   availableSizes: string[];
@@ -46,6 +53,9 @@ export const ProductVariantsSection = ({
   const [colorHexMap, setColorHexMap] = useState<Record<string, string>>({});
   const [isLoadingOptions, setIsLoadingOptions] = useState(false);
 
+  // State for variant images modal
+  const [selectedVariantForImages, setSelectedVariantForImages] = useState<ProductVariant | null>(null);
+
   // Get variant options based on category and subcategory
   const staticVariantOptions = useMemo(() => {
     if (!categoryId) {
@@ -69,7 +79,7 @@ export const ProductVariantsSection = ({
       setColorHexMap({});
       return;
     }
-    
+
     setIsLoadingOptions(true);
     try {
       const response = await variantOptionsApi.getAll({
@@ -92,11 +102,11 @@ export const ProductVariantsSection = ({
           .filter((opt: any) => opt.optionType === 'size')
           .map((opt: any) => opt.value as string);
         const sizes: string[] = Array.from(new Set(sizeValues));
-        
+
         const colorOptions = optionsArray.filter((opt: any) => opt.optionType === 'color');
         const colorValues = colorOptions.map((opt: any) => opt.value as string);
         const colors: string[] = Array.from(new Set(colorValues));
-        
+
         // Build a map of color names to hex values (prefer subcategory-specific hex if available)
         const hexMap: Record<string, string> = {};
         colorOptions.forEach((opt: any) => {
@@ -156,7 +166,7 @@ export const ProductVariantsSection = ({
         const existingVariant = variants.find(
           v => v.size === size && v.color === color
         );
-        
+
         if (existingVariant) {
           newVariants.push(existingVariant);
         } else {
@@ -181,7 +191,9 @@ export const ProductVariantsSection = ({
       availableSizes.includes(v.size) && availableColors.includes(v.color)
     );
 
+    console.log('[ProductVariantsSection] variant auto-gen effect triggered', { availableSizes, availableColors, existingVariantsCount: variants.length });
     onVariantsChange(validVariants);
+    console.log('[ProductVariantsSection] after onVariantsChange', { validVariantsWithImages: validVariants.filter(v => v.viewImages && Object.values(v.viewImages).some(url => url)).length });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [availableSizes, availableColors, baseSku]);
 
@@ -204,7 +216,7 @@ export const ProductVariantsSection = ({
   const handleAddCustomSize = async () => {
     const trimmedValue = customSizeInput.trim();
     if (!trimmedValue) return;
-    
+
     // Check if already exists
     if (availableSizes.includes(trimmedValue)) {
       toast({
@@ -214,11 +226,11 @@ export const ProductVariantsSection = ({
       });
       return;
     }
-    
+
     // Add to current product
     onSizesChange([...availableSizes, trimmedValue]);
     setCustomSizeInput('');
-    
+
     // Try to save globally if category is selected
     if (categoryId) {
       try {
@@ -230,10 +242,10 @@ export const ProductVariantsSection = ({
         });
         // Optimistically append to DB-backed list so it appears immediately
         setSizesFromDB(prev => Array.from(new Set([...(prev || []), trimmedValue])));
-        
+
         // Refresh options from DB to ensure consistency
         await fetchOptionsFromDB();
-        
+
         toast({
           title: 'Success',
           description: 'Custom size added globally. It will now appear as a checkbox for all future products.',
@@ -252,9 +264,9 @@ export const ProductVariantsSection = ({
   const handleAddCustomColor = async () => {
     const trimmedValue = customColorInput.trim();
     const trimmedHex = customColorHexInput.trim();
-    
+
     if (!trimmedValue) return;
-    
+
     // Validate hex color if provided
     if (trimmedHex && !/^#[0-9A-F]{6}$/i.test(trimmedHex)) {
       toast({
@@ -264,7 +276,7 @@ export const ProductVariantsSection = ({
       });
       return;
     }
-    
+
     // Check if already exists
     if (availableColors.includes(trimmedValue)) {
       toast({
@@ -274,17 +286,17 @@ export const ProductVariantsSection = ({
       });
       return;
     }
-    
+
     // IMMEDIATELY add hex to map (before adding to product)
     if (trimmedHex) {
       setColorHexMap(prev => ({ ...prev, [trimmedValue]: trimmedHex }));
     }
-    
+
     // Add to current product
     onColorsChange([...availableColors, trimmedValue]);
     setCustomColorInput('');
     setCustomColorHexInput('');
-    
+
     // Try to save globally if category is selected
     if (categoryId) {
       try {
@@ -297,10 +309,10 @@ export const ProductVariantsSection = ({
         });
         // Optimistically append to DB-backed list so it appears immediately
         setColorsFromDB(prev => Array.from(new Set([...(prev || []), trimmedValue])));
-        
+
         // Refresh options from DB to ensure consistency
         await fetchOptionsFromDB();
-        
+
         toast({
           title: 'Success',
           description: 'Custom color added globally. It will now appear as a checkbox for all future products.',
@@ -337,9 +349,10 @@ export const ProductVariantsSection = ({
   interface VariantRowProps {
     variant: ProductVariant;
     onUpdate: (id: string, patch: Partial<ProductVariant>) => void;
+    onClickImages: (variant: ProductVariant) => void;
   }
 
-  const VariantRow = memo(function VariantRow({ variant, onUpdate }: VariantRowProps) {
+  const VariantRow = memo(function VariantRow({ variant, onUpdate, onClickImages }: VariantRowProps) {
     const [sku, setSku] = useState<string>(variant.sku ?? '');
     const [priceStr, setPriceStr] = useState<string>(variant.price !== undefined ? String(variant.price) : '');
     const [active, setActive] = useState<boolean>(!!variant.isActive);
@@ -382,6 +395,11 @@ export const ProductVariantsSection = ({
       onUpdate(variant.id, { isActive: active });
     }, [onUpdate, variant.id, active]);
 
+    // Count how many view images are set
+    const imageCount = variant.viewImages
+      ? Object.values(variant.viewImages).filter((url) => url && url.trim() !== '').length
+      : 0;
+
     return (
       <Card className="p-3">
         <div className="flex items-center justify-between gap-4">
@@ -390,9 +408,18 @@ export const ProductVariantsSection = ({
               <Label className="text-xs text-muted-foreground">Size</Label>
               <p className="text-sm font-medium">{variant.size}</p>
             </div>
-            <div>
-              <Label className="text-xs text-muted-foreground">Color</Label>
-              <p className="text-sm font-medium">{variant.color}</p>
+            <div className="flex items-center gap-2">
+              <div
+                className="w-4 h-4 rounded-full border flex-shrink-0"
+                style={{
+                  backgroundColor: variant.colorHex || '#ccc',
+                  borderColor: variant.color?.toLowerCase() === 'white' ? '#E5E7EB' : 'transparent',
+                }}
+              />
+              <div>
+                <Label className="text-xs text-muted-foreground">Color</Label>
+                <p className="text-sm font-medium">{variant.color}</p>
+              </div>
             </div>
             <div>
               <Label className="text-xs text-muted-foreground">SKU</Label>
@@ -418,19 +445,46 @@ export const ProductVariantsSection = ({
               />
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Label className="text-xs">Active</Label>
-            <Switch
-              checked={active}
-              onCheckedChange={(checked) => handleActiveChange(checked as boolean)}
-              onBlur={commitActive}
-              onKeyDown={(e: React.KeyboardEvent) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  commitActive();
-                }
-              }}
-            />
+          <div className="flex items-center gap-3">
+            {/* Images Button */}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8 relative"
+                    onClick={() => onClickImages(variant)}
+                  >
+                    <Camera className="h-4 w-4" />
+                    {imageCount > 0 && (
+                      <span className="absolute -top-1 -right-1 bg-primary text-primary-foreground text-[10px] rounded-full w-4 h-4 flex items-center justify-center">
+                        {imageCount}
+                      </span>
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Manage variant images ({imageCount}/4)</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
+            {/* Active Toggle */}
+            <div className="flex items-center gap-2">
+              <Label className="text-xs">Active</Label>
+              <Switch
+                checked={active}
+                onCheckedChange={(checked) => handleActiveChange(checked as boolean)}
+                onBlur={commitActive}
+                onKeyDown={(e: React.KeyboardEvent) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    commitActive();
+                  }
+                }}
+              />
+            </div>
           </div>
         </div>
       </Card>
@@ -439,7 +493,8 @@ export const ProductVariantsSection = ({
     prev.variant.id === next.variant.id &&
     prev.variant.sku === next.variant.sku &&
     prev.variant.price === next.variant.price &&
-    prev.variant.isActive === next.variant.isActive
+    prev.variant.isActive === next.variant.isActive &&
+    prev.variant.viewImages === next.variant.viewImages
   ));
 
   return (
@@ -478,7 +533,7 @@ export const ProductVariantsSection = ({
             </div>
           ))}
         </div>
-        
+
         {/* Custom Size Input - Always available for admins */}
         {variantOptions.allowCustomSizes !== false && (
           <div className="mt-3 space-y-2">
@@ -500,7 +555,7 @@ export const ProductVariantsSection = ({
             </div>
           </div>
         )}
-        
+
       </div>
 
       <Separator />
@@ -532,7 +587,7 @@ export const ProductVariantsSection = ({
             </div>
           ))}
         </div>
-        
+
         {/* Custom Color Input - Always available for admins */}
         {variantOptions.allowCustomColors !== false && (
           <div className="mt-3 space-y-2">
@@ -549,20 +604,20 @@ export const ProductVariantsSection = ({
                 onKeyPress={(e) => e.key === 'Enter' && handleAddCustomColor()}
                 className="flex-1"
               />
-          <Input
+              <Input
                 placeholder="Hex (e.g., #1E40AF)"
                 value={customColorHexInput}
                 onChange={(e) => setCustomColorHexInput(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && handleAddCustomColor()}
+                onKeyPress={(e) => e.key === 'Enter' && handleAddCustomColor()}
                 className="w-32"
-          />
+              />
               <Button onClick={handleAddCustomColor} size="sm" variant="secondary">
                 Add Custom
-          </Button>
-        </div>
+              </Button>
+            </div>
           </div>
         )}
-        
+
       </div>
 
       <Separator />
@@ -584,10 +639,15 @@ export const ProductVariantsSection = ({
               Regenerate SKUs
             </Button>
           </div>
-          
+
           <div className="space-y-2 max-h-[400px] overflow-y-auto">
             {variants.map((variant) => (
-              <VariantRow key={variant.id} variant={variant} onUpdate={handleVariantUpdate} />
+              <VariantRow
+                key={variant.id}
+                variant={variant}
+                onUpdate={handleVariantUpdate}
+                onClickImages={setSelectedVariantForImages}
+              />
             ))}
           </div>
         </div>
@@ -597,6 +657,39 @@ export const ProductVariantsSection = ({
         <div className="text-center py-8 text-muted-foreground">
           <p className="text-sm">Select sizes and colors to generate variants</p>
         </div>
+      )}
+
+      {/* Variant Images Modal */}
+      {selectedVariantForImages && (
+        <VariantImagesModal
+          variant={selectedVariantForImages}
+          isOpen={!!selectedVariantForImages}
+          onClose={() => setSelectedVariantForImages(null)}
+          onSave={(variantId, viewImages) => {
+            console.log('[ProductVariantsSection] onSave called', { variantId, viewImages });
+            // Update all variants of the same color with these images
+            // IMPORTANT: MongoDB uses _id, frontend uses id - support both
+            const sourceVariant = variants.find(v => {
+              const vid = (v as any)._id || v.id;
+              return vid === variantId;
+            });
+            console.log('[ProductVariantsSection] sourceVariant', sourceVariant);
+            if (sourceVariant) {
+              const updatedVariants = variants.map(v =>
+                v.color === sourceVariant.color
+                  ? { ...v, viewImages: { ...viewImages } } // Create copy for each variant
+                  : v
+              );
+              console.log('[ProductVariantsSection] updatedVariants', updatedVariants.map(v => ({ id: (v as any)._id || v.id, color: v.color, viewImages: v.viewImages })));
+              onVariantsChange(updatedVariants);
+              toast({
+                title: 'Images Updated',
+                description: `Updated images for all ${sourceVariant.color} variants`,
+              });
+            }
+            setSelectedVariantForImages(null);
+          }}
+        />
       )}
     </div>
   );

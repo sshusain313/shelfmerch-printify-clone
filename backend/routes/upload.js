@@ -8,7 +8,7 @@ const { uploadToS3, base64ToBuffer, isBase64Url } = require('../utils/s3Upload')
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB limit
+    fileSize: 50 * 1024 * 1024, // 10MB limit
   },
   fileFilter: (req, file, cb) => {
     // Accept only image files
