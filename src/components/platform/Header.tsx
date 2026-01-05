@@ -57,7 +57,11 @@ const Header = () => {
 
         {/* Navigation */}
         <nav className="hidden md:flex items-center gap-8">
-          <Link to="/platform" className="flex items-center gap-1 transition-colors hover:text-primary">
+          <Link to="/platform" className={`flex items-center gap-1 transition-colors ${
+            location.pathname === '/platform'
+              ? 'text-primary font-medium'
+              : 'hover:text-primary'
+          }`}>
             <span className="text-l font-medium">Platform</span>
           </Link>
           <Link to="/products" className="flex items-center gap-1 transition-colors hover:text-primary">

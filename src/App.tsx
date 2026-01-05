@@ -15,6 +15,7 @@ import { ProtectedRoute } from "./components/ProtectedRoute";
 
 /* ---------- MARKETING / PUBLIC PAGES ---------- */
 import Index from "./Index";
+import PlatformPage from "./pages/PlatformPage";
 import PricingPage from "./pages/rem-pgs/PricingPage";
 import NotFound from "./pages/rem-pgs/NotFound";
 
@@ -108,6 +109,7 @@ const App = () => (
               <Routes>
                 {/* ---------- PUBLIC ---------- */}
                 <Route path="/" element={<Index />} />
+                <Route path="/platform" element={<PlatformPage />} />
                 <Route path="/pricing" element={<PricingPage />} />
 
                 {/* ---------- SOLUTIONS ---------- */}
