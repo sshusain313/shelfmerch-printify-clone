@@ -87,7 +87,7 @@ router.get('/admin/all', protect, async (req, res) => {
 
     const enhancedStores = await Promise.all(stores.map(async (store) => {
       const productCount = await StoreProduct.countDocuments({ storeId: store._id, isActive: true });
-      
+
       const frontendStore = mapStoreToFrontend(store);
       // Add extra admin-only fields
       frontendStore.productsCount = productCount;
@@ -95,7 +95,7 @@ router.get('/admin/all', protect, async (req, res) => {
         name: store.merchant?.name || 'Unknown',
         email: store.merchant?.email || 'No email'
       };
-      
+
       return frontendStore;
     }));
 
@@ -449,22 +449,31 @@ router.get('/:id', protect, async (req, res) => {
   }
 });
 
-// @route   GET /api/stores/by-subdomain/:slug
+// @route   GET /api/stores/by-subdomain/:slug?
 // @desc    Get public store data by subdomain (slug) - includes builder for rendering
 // @access  Public
-router.get('/by-subdomain/:slug', async (req, res) => {
+// NOTE: This route supports both subdomain-based (req.tenant) and path-based (:slug) resolution
+router.get(['/by-subdomain', '/by-subdomain/:slug'], async (req, res) => {
   try {
-    const { slug } = req.params;
+    let store = null;
 
-    const store = await Store.findOne({
-      slug,
-      isActive: true,
-    });
+    // Priority 1: Use tenant from middleware (subdomain-based)
+    if (req.tenant) {
+      store = req.tenant;
+    }
+    // Priority 2: Fallback to path parameter
+    else if (req.params.slug) {
+      store = await Store.findOne({
+        slug: req.params.slug,
+        isActive: true,
+      });
+    }
 
     if (!store) {
+      const identifier = req.tenantSlug || req.params.slug || 'unknown';
       return res.status(404).json({
         success: false,
-        message: 'Store not found',
+        message: `Store '${identifier}' not found or is inactive`,
       });
     }
 

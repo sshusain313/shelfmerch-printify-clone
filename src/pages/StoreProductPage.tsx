@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
+import { getTenantSlugFromLocation } from '@/utils/tenantUtils';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
@@ -79,8 +80,13 @@ const defaultSizeChart = [
 ];
 
 const StoreProductPage = () => {
-  const { subdomain, productId } = useParams<{ subdomain: string; productId: string }>();
+  const params = useParams<{ subdomain: string; productId: string }>();
+  const location = useLocation();
   const navigate = useNavigate();
+  
+  // Get tenant slug from subdomain (hostname) or path parameter (fallback)
+  const subdomain = getTenantSlugFromLocation(location, params) || params.subdomain;
+  const productId = params.productId;
   const [store, setStore] = useState<Store | null>(null);
   const [product, setProduct] = useState<Product | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
@@ -220,6 +226,7 @@ const StoreProductPage = () => {
         }
 
         try {
+          // Use store.id if available, otherwise backend will extract from subdomain (Host header)
           const publicResp = await storeProductsApi.getPublic(
             (foundStore as any).id || (foundStore as any)._id,
             productId,

@@ -43,35 +43,53 @@ const razorpayWebhookRoutes = require('./routes/razorpayWebhook');
 const merchantWithdrawalsRoutes = require('./routes/merchantWithdrawals');
 const adminWithdrawalsRoutes = require('./routes/adminWithdrawals');
 const reviewsRoutes = require('./routes/reviews');
+const { tenantResolver } = require('./middleware/tenantResolver');
 
 // Initialize Express app
 const app = express();
 
 // CORS configuration - MUST BE FIRST
+// Supports wildcard subdomains for multi-tenant architecture
 const corsOptions = {
   origin: function (origin, callback) {
-    const allowedOrigins = process.env.CORS_ORIGINS
-      ? process.env.CORS_ORIGINS.split(',').map(o => o.trim())
-      : [
-        'http://localhost:5173',
-        'http://localhost:3000',
-        'http://localhost:8080',
-        'http://localhost:5174',
-        'http://localhost:5175',
-        'http://localhost:4173'
-      ];
-
+    const BASE_DOMAIN = process.env.BASE_DOMAIN || 'shelfmerch.in';
+    const isProduction = process.env.NODE_ENV === 'production';
+    
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
 
-    // In development, allow all localhost origins
-    if (process.env.NODE_ENV === 'development' || !process.env.NODE_ENV) {
-      if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
-        console.log(`✓ CORS allowed for origin: ${origin}`);
+    // Build allowed origins list
+    const allowedOrigins = process.env.CORS_ORIGINS
+      ? process.env.CORS_ORIGINS.split(',').map(o => o.trim())
+      : [];
+
+    // Always allow root domain
+    allowedOrigins.push(`https://${BASE_DOMAIN}`);
+    allowedOrigins.push(`http://${BASE_DOMAIN}`);
+    
+    // In production, allow wildcard subdomains (*.shelfmerch.in)
+    if (isProduction) {
+      // Allow any subdomain of base domain
+      if (origin.match(new RegExp(`^https://[^.]+\.${BASE_DOMAIN.replace('.', '\\.')}$`))) {
+        console.log(`✓ CORS allowed for subdomain origin: ${origin}`);
         return callback(null, true);
       }
     }
 
+    // In development, allow all localhost origins and localhost subdomains
+    if (process.env.NODE_ENV === 'development' || !process.env.NODE_ENV) {
+      if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
+        console.log(`✓ CORS allowed for localhost origin: ${origin}`);
+        return callback(null, true);
+      }
+      // Also allow localhost subdomains for dev (e.g., xyz.localhost:3000)
+      if (origin.match(/^https?:\/\/[^.]+\.localhost(:\d+)?$/)) {
+        console.log(`✓ CORS allowed for localhost subdomain: ${origin}`);
+        return callback(null, true);
+      }
+    }
+
+    // Check explicit allowed origins
     if (allowedOrigins.indexOf(origin) !== -1) {
       console.log(`✓ CORS allowed for origin: ${origin}`);
       callback(null, true);
@@ -83,7 +101,7 @@ const corsOptions = {
   credentials: true,
   optionsSuccessStatus: 200,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Host'],
   exposedHeaders: ['Authorization'],
   preflightContinue: false
 };
@@ -116,8 +134,18 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 // Cookie parser
 app.use(cookieParser());
 
-// Trust proxy (for accurate IP addresses behind reverse proxy)
+// Trust proxy (for accurate IP addresses and hostname behind reverse proxy)
+// Important: Must trust proxy to get correct hostname from nginx/load balancer
 app.set('trust proxy', 1);
+
+// Enable subdomain routing by ensuring hostname is available
+app.use((req, res, next) => {
+  // Ensure hostname is set (important for subdomain extraction)
+  if (!req.hostname && req.get('host')) {
+    req.hostname = req.get('host').split(':')[0];
+  }
+  next();
+});
 
 // Rate limiting (skip for OPTIONS requests)
 const limiter = rateLimit({
@@ -160,6 +188,20 @@ app.get('/health', (req, res) => {
 });
 
 // API Routes
+// Store-scoped routes that need tenant resolution
+app.use('/api/store-products', tenantResolver, storeProductsRoutes);
+app.use('/api/store-checkout', tenantResolver, storeCheckoutRoutes);
+app.use('/api/store-orders', tenantResolver, storeOrdersRoutes);
+app.use('/api/store-auth', tenantResolver, require('./routes/storeAuth'));
+app.use('/api/store-customer/orders', tenantResolver, storeCustomerOrdersRoutes);
+app.use('/api/store-customers', tenantResolver, storeCustomersRoutes);
+app.use('/api/reviews', tenantResolver, reviewsRoutes);
+
+// Routes that may use tenant but don't require it (legacy support)
+app.use('/api/stores', tenantResolver, storeRoutes);
+app.use('/api/stores', tenantResolver, storeBuilderRoutes); // Builder routes under /api/stores/:id/builder
+
+// Routes that don't need tenant resolution (admin, auth, catalog)
 app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/variants', variantRoutes);
@@ -167,21 +209,12 @@ app.use('/api/variant-options', variantOptionsRoutes);
 app.use('/api/catalogue-fields', catalogueFieldsRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/assets', assetsRoutes);
-app.use('/api/stores', storeRoutes);
-app.use('/api/stores', storeBuilderRoutes); // Builder routes under /api/stores/:id/builder
-app.use('/api/store-products', storeProductsRoutes);
-app.use('/api/store-checkout', storeCheckoutRoutes);
-app.use('/api/store-orders', storeOrdersRoutes);
-app.use('/api/store-auth', require('./routes/storeAuth'));
-app.use('/api/store-customer/orders', storeCustomerOrdersRoutes);
-app.use('/api/store-customers', storeCustomersRoutes);
 app.use('/api/shipping-quote', shippingQuoteRoutes);
 app.use('/api/invoices', invoiceRoutes);
 app.use('/api/wallet', walletRoutes);
 app.use('/api/admin/wallet', adminWalletRoutes);
 app.use('/api/merchant', merchantWithdrawalsRoutes);
 app.use('/api/admin/withdrawals', adminWithdrawalsRoutes);
-app.use('/api/reviews', reviewsRoutes);
 
 // 404 handler
 app.use((req, res) => {

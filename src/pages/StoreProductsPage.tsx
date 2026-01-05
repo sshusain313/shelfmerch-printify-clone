@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
+import { getTenantSlugFromLocation } from '@/utils/tenantUtils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Product, Store, CartItem } from '@/types';
@@ -55,8 +56,12 @@ type SortOption = 'name-asc' | 'name-desc' | 'price-asc' | 'price-desc' | 'newes
 type ViewMode = 'grid' | 'list';
 
 const StoreProductsPage: React.FC = () => {
-  const { subdomain } = useParams<{ subdomain: string }>();
+  const params = useParams<{ subdomain: string }>();
+  const location = useLocation();
   const navigate = useNavigate();
+  
+  // Get tenant slug from subdomain (hostname) or path parameter (fallback)
+  const subdomain = getTenantSlugFromLocation(location, params) || params.subdomain;
   const [store, setStore] = useState<Store | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [allProducts, setAllProducts] = useState<Product[]>([]);

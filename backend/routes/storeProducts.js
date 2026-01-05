@@ -141,12 +141,29 @@ router.post('/', protect, authorize('merchant', 'superadmin'), async (req, res) 
   }
 });
 
-// @route   GET /api/store-products/public/:storeId
+// @route   GET /api/store-products/public/:storeId?
 // @desc    List all public, active, published products for a specific store
 // @access  Public
-router.get('/public/:storeId', async (req, res) => {
+// NOTE: Uses req.tenant when available (subdomain-based), falls back to :storeId param
+router.get(['/public', '/public/:storeId'], async (req, res) => {
   try {
-    const { storeId } = req.params;
+    let storeId = null;
+
+    // Priority 1: Use tenant from middleware (subdomain-based)
+    if (req.tenant && req.tenant._id) {
+      storeId = req.tenant._id;
+    }
+    // Priority 2: Fallback to path parameter
+    else if (req.params.storeId) {
+      storeId = req.params.storeId;
+    }
+
+    if (!storeId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Store identifier required. Provide store subdomain or storeId parameter.'
+      });
+    }
 
     if (!mongoose.Types.ObjectId.isValid(storeId)) {
       return res.status(400).json({ success: false, message: 'Invalid store ID' });
@@ -159,7 +176,7 @@ router.get('/public/:storeId', async (req, res) => {
     })
       .populate({
         path: 'catalogProductId',
-        select: 'name description categoryId subcategoryIds productTypeCode',
+        select: '_id name description categoryId subcategoryIds productTypeCode',
         lean: true
       })
       .sort({ updatedAt: -1 })
@@ -172,20 +189,42 @@ router.get('/public/:storeId', async (req, res) => {
   }
 });
 
-// @route   GET /api/store-products/public/:storeId/:productId
+// @route   GET /api/store-products/public/:storeId?/:productId
 // @desc    Get a specific store product for public storefront viewing
 // @access  Public
+// NOTE: Uses req.tenant when available (subdomain-based), falls back to :storeId param
+// Note: Route order implies this only catches 2-segment paths, so explicit optional param was misleading/unreachable for 1-segment.
 router.get('/public/:storeId/:productId', async (req, res) => {
   try {
     const { storeId, productId } = req.params;
 
-    if (!mongoose.Types.ObjectId.isValid(storeId) || !mongoose.Types.ObjectId.isValid(productId)) {
-      return res.status(400).json({ success: false, message: 'Invalid store or product ID' });
+    if (!productId || !mongoose.Types.ObjectId.isValid(productId)) {
+      return res.status(400).json({ success: false, message: 'Invalid product ID' });
+    }
+
+    // Priority 1: Use tenant from middleware (subdomain-based)
+    let resolvedStoreId = null;
+    if (req.tenant && req.tenant._id) {
+      resolvedStoreId = req.tenant._id;
+    }
+    // Priority 2: Fallback to path parameter
+    else if (storeId) {
+      if (!mongoose.Types.ObjectId.isValid(storeId)) {
+        return res.status(400).json({ success: false, message: 'Invalid store ID' });
+      }
+      resolvedStoreId = storeId;
+    }
+
+    if (!resolvedStoreId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Store identifier required. Provide store subdomain or storeId parameter.'
+      });
     }
 
     const storeProduct = await StoreProduct.findOne({
       _id: productId,
-      storeId: storeId,
+      storeId: resolvedStoreId,
       isActive: true,
       status: 'published',
     })

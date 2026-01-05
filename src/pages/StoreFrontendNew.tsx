@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Product, Store, CartItem } from '@/types';
 import { storeApi, storeProductsApi } from '@/lib/api';
@@ -7,6 +7,7 @@ import { getTheme } from '@/lib/themes';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { useStoreAuth } from '@/contexts/StoreAuthContext';
+import { getTenantSlugFromLocation } from '@/utils/tenantUtils';
 import CartDrawer from '@/components/storefront/CartDrawer';
 import SectionRenderer from '@/components/builder/SectionRenderer';
 import EnhancedStoreHeader from '@/components/storefront/EnhancedStoreHeader';
@@ -18,8 +19,12 @@ import EnhancedFooter from '@/components/storefront/EnhancedFooter';
 
 const StoreFrontendNew = () => {
   const { user, isMerchant, isAdmin } = useAuth();
-  const { subdomain } = useParams<{ subdomain: string }>();
+  const params = useParams<{ subdomain: string }>();
+  const location = useLocation();
   const navigate = useNavigate();
+  
+  // Get tenant slug from subdomain (hostname) or path parameter (fallback)
+  const subdomain = getTenantSlugFromLocation(location, params) || params.subdomain;
   const [store, setStore] = useState<Store | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -41,6 +46,7 @@ const StoreFrontendNew = () => {
       }
       try {
         setSpLoading(true);
+        // Use store.id if available, otherwise backend will extract from subdomain
         const resp = await storeProductsApi.listPublic(store.id);
         if (resp.success) {
           const forStore = resp.data || [];

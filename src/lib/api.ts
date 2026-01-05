@@ -186,12 +186,19 @@ export const storeProductsApi = {
   },
 
   // Get a specific store product for public storefront viewing (with variants)
-  getPublic: async (storeId: string, productId: string) => {
-    const response = await fetch(`${API_BASE_URL}/store-products/public/${storeId}/${productId}`, {
+  getPublic: async (storeId: string | undefined, productId: string) => {
+    // Build URL - if storeId provided, use it; otherwise backend will use Host header (subdomain)
+    // Note: storeId can be undefined when using subdomain-based resolution
+    const url = storeId 
+      ? `${API_BASE_URL}/store-products/public/${storeId}/${productId}`
+      : `${API_BASE_URL}/store-products/public/${productId}`;
+      
+    const response = await fetch(url, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
       },
+      credentials: 'include', // Important: include credentials to preserve cookies
     });
 
     if (!response.ok) {
@@ -204,12 +211,18 @@ export const storeProductsApi = {
   },
 
   // List public products for a store
-  listPublic: async (storeId: string) => {
-    const response = await fetch(`${API_BASE_URL}/store-products/public/${storeId}`, {
+  listPublic: async (storeId?: string) => {
+    // Build URL - if storeId provided, use it; otherwise backend will use Host header (subdomain)
+    const url = storeId 
+      ? `${API_BASE_URL}/store-products/public/${storeId}`
+      : `${API_BASE_URL}/store-products/public`;
+      
+    const response = await fetch(url, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
       },
+      credentials: 'include', // Important: include credentials to preserve cookies
     });
 
     if (!response.ok) {
@@ -1683,12 +1696,18 @@ export const storeApi = {
   },
 
   // Get a public store by subdomain (slug)
-  getBySubdomain: async (subdomain: string) => {
-    const response = await fetch(`${API_BASE_URL}/stores/by-subdomain/${subdomain}`, {
+  getBySubdomain: async (subdomain?: string) => {
+    // Build URL - if subdomain provided, use it; otherwise backend will use Host header
+    const url = subdomain 
+      ? `${API_BASE_URL}/stores/by-subdomain/${subdomain}`
+      : `${API_BASE_URL}/stores/by-subdomain`;
+      
+    const response = await fetch(url, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
       },
+      credentials: 'include', // Important: include credentials to preserve cookies
     });
 
     if (!response.ok) {
