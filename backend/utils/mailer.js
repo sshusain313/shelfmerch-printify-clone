@@ -18,12 +18,31 @@ const createTransporter = () => {
  * @param {string} email - User's email address
  * @param {string} token - Verification token
  * @param {string} name - User's name
+ * @param {string} [clientUrl] - Optional client base URL (from Origin/Referer header)
  * @returns {Promise<void>}
  */
-const sendVerificationEmail = async (email, token, name) => {
+const sendVerificationEmail = async (email, token, name, clientUrl = null) => {
   try {
     const transporter = createTransporter();
-    const baseUrl = process.env.BASE_URL || 'http://shelfmerch.in';
+    
+    // Determine base URL based on environment or client request
+    let baseUrl;
+    
+    // Priority 1: Use client URL if provided (from Origin header)
+    if (clientUrl) {
+      // Clean up client URL (remove trailing slash)
+      baseUrl = clientUrl.endsWith('/') ? clientUrl.slice(0, -1) : clientUrl;
+      console.log(`Using client-provided base URL: ${baseUrl}`);
+    } else {
+      // Priority 2: Fallback to environment configuration or defaults
+      const isDev = process.env.NODE_ENV === 'development' || !process.env.NODE_ENV;
+      const clientPort = process.env.CLIENT_PORT || 8080;
+      const defaultBaseUrl = isDev ? `http://localhost:${clientPort}` : 'https://shelfmerch.in';
+      
+      baseUrl = process.env.BASE_URL || defaultBaseUrl;
+      console.log(`Using default/env base URL: ${baseUrl}`);
+    }
+    
     const verificationUrl = `${baseUrl}/verify-email?token=${token}`;
 
     const mailOptions = {
