@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const User = require('../models/User');
 const { sendTokenResponse, generateToken, generateRefreshToken } = require('../utils/generateToken');
 const { protect, authorize } = require('../middleware/auth');
-const { sendVerificationEmail } = require('../utils/mailer');
+const { sendVerificationEmail, sendPasswordResetOTP } = require('../utils/mailer');
 const rateLimit = require('express-rate-limit');
 
 const router = express.Router();
@@ -82,10 +82,10 @@ router.post(
       .withMessage('Please provide a valid email')
       .normalizeEmail(),
     body('password')
-      .isLength({ min: 6 })
-      .withMessage('Password must be at least 6 characters')
-      .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
-      .withMessage('Password must contain at least one uppercase letter, one lowercase letter, and one number'),
+      .isLength({ min: 8, max: 30 })
+      .withMessage('Password must be between 8 and 30 characters')
+      .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-])/)
+      .withMessage('Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character'),
   ],
   async (req, res) => {
     try {
@@ -523,6 +523,232 @@ router.put(
       res.status(500).json({
         success: false,
         message: 'Server error during password update'
+      });
+    }
+  }
+);
+
+// @route   POST /api/auth/forgot-password
+// @desc    Request password reset OTP
+// @access  Public
+router.post(
+  '/forgot-password',
+  authLimiter,
+  [
+    body('email')
+      .trim()
+      .notEmpty()
+      .withMessage('Email is required')
+      .isEmail()
+      .withMessage('Please provide a valid email')
+      .normalizeEmail(),
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Validation failed',
+          errors: errors.array()
+        });
+      }
+
+      const { email } = req.body;
+
+      // Find user
+      const user = await User.findOne({ email });
+      if (!user) {
+        // Don't reveal if email exists for security
+        return res.status(200).json({
+          success: true,
+          message: 'If an account exists with this email, a verification code has been sent.'
+        });
+      }
+
+      // Generate 6-digit OTP
+      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+      // Store OTP in passwordResetToken (reusing existing field)
+      user.passwordResetToken = otp;
+      user.passwordResetExpires = otpExpiry;
+      await user.save({ validateBeforeSave: false });
+
+      // Get device and location info from request
+      const device = req.headers['user-agent'] || 'Unknown Browser';
+      const location = req.headers['x-forwarded-for'] 
+        ? `IP: ${req.headers['x-forwarded-for'].split(',')[0].trim()}`
+        : 'Unknown Location';
+
+      // Send OTP email
+      try {
+        await sendPasswordResetOTP(email, otp, user.name, {
+          device: device.substring(0, 100), // Limit length
+          location
+        });
+      } catch (emailError) {
+        console.error('Error sending password reset OTP:', emailError);
+        // Clear OTP if email fails
+        user.passwordResetToken = undefined;
+        user.passwordResetExpires = undefined;
+        await user.save({ validateBeforeSave: false });
+        return res.status(500).json({
+          success: false,
+          message: 'Failed to send verification code. Please try again later.'
+        });
+      }
+
+      res.status(200).json({
+        success: true,
+        message: 'If an account exists with this email, a verification code has been sent.'
+      });
+    } catch (error) {
+      console.error('Forgot password error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Server error during password reset request'
+      });
+    }
+  }
+);
+
+// @route   POST /api/auth/verify-reset-otp
+// @desc    Verify password reset OTP
+// @access  Public
+router.post(
+  '/verify-reset-otp',
+  authLimiter,
+  [
+    body('email')
+      .trim()
+      .notEmpty()
+      .withMessage('Email is required')
+      .isEmail()
+      .withMessage('Please provide a valid email')
+      .normalizeEmail(),
+    body('otp')
+      .trim()
+      .notEmpty()
+      .withMessage('Verification code is required')
+      .isLength({ min: 6, max: 6 })
+      .withMessage('Verification code must be 6 digits')
+      .matches(/^\d+$/)
+      .withMessage('Verification code must contain only numbers'),
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Validation failed',
+          errors: errors.array()
+        });
+      }
+
+      const { email, otp } = req.body;
+
+      // Find user with matching OTP and check expiry
+      const user = await User.findOne({
+        email,
+        passwordResetToken: otp,
+        passwordResetExpires: { $gt: Date.now() }
+      }).select('+passwordResetToken +passwordResetExpires');
+
+      if (!user) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid or expired verification code'
+        });
+      }
+
+      // OTP is valid - return success (don't clear it yet, will be cleared on password reset)
+      res.status(200).json({
+        success: true,
+        message: 'Verification code verified successfully'
+      });
+    } catch (error) {
+      console.error('Verify reset OTP error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Server error during OTP verification'
+      });
+    }
+  }
+);
+
+// @route   POST /api/auth/reset-password
+// @desc    Reset password with verified OTP
+// @access  Public
+router.post(
+  '/reset-password',
+  authLimiter,
+  [
+    body('email')
+      .trim()
+      .notEmpty()
+      .withMessage('Email is required')
+      .isEmail()
+      .withMessage('Please provide a valid email')
+      .normalizeEmail(),
+    body('otp')
+      .trim()
+      .notEmpty()
+      .withMessage('Verification code is required')
+      .isLength({ min: 6, max: 6 })
+      .withMessage('Verification code must be 6 digits')
+      .matches(/^\d+$/)
+      .withMessage('Verification code must contain only numbers'),
+    body('newPassword')
+      .isLength({ min: 8, max: 30 })
+      .withMessage('Password must be between 8 and 30 characters')
+      .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-])/)
+      .withMessage('Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character'),
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Validation failed',
+          errors: errors.array()
+        });
+      }
+
+      const { email, otp, newPassword } = req.body;
+
+      // Find user with matching OTP and check expiry
+      const user = await User.findOne({
+        email,
+        passwordResetToken: otp,
+        passwordResetExpires: { $gt: Date.now() }
+      }).select('+passwordResetToken +passwordResetExpires +password');
+
+      if (!user) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid or expired verification code'
+        });
+      }
+
+      // Update password
+      user.password = newPassword;
+      // Clear reset token
+      user.passwordResetToken = undefined;
+      user.passwordResetExpires = undefined;
+      await user.save();
+
+      res.status(200).json({
+        success: true,
+        message: 'Password updated successfully'
+      });
+    } catch (error) {
+      console.error('Reset password error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Server error during password reset'
       });
     }
   }

@@ -1153,6 +1153,36 @@ export const authApi = {
     }>('/auth/users/count');
   },
 
+  forgotPassword: async (email: string) => {
+    return apiRequest<{
+      success: boolean;
+      message: string;
+    }>('/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  },
+
+  verifyResetOTP: async (email: string, otp: string) => {
+    return apiRequest<{
+      success: boolean;
+      message: string;
+    }>('/auth/verify-reset-otp', {
+      method: 'POST',
+      body: JSON.stringify({ email, otp }),
+    });
+  },
+
+  resetPassword: async (email: string, otp: string, newPassword: string) => {
+    return apiRequest<{
+      success: boolean;
+      message: string;
+    }>('/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ email, otp, newPassword }),
+    });
+  },
+
 };
 
 // Product API methods
