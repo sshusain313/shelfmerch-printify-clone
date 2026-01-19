@@ -38,9 +38,11 @@ router.get(
       // Redirect to frontend with token
       // Use config/env for frontend URL, default to localhost:8083 in dev
       // In production, BASE_DOMAIN handles it
-      const frontendUrl = process.env.NODE_ENV === 'production' 
-        ? `https://${process.env.BASE_DOMAIN}/auth` 
-        : 'http://localhost:8083/auth';
+      const frontendBaseUrl = process.env.NODE_ENV === 'production' 
+        ? `https://${process.env.BASE_DOMAIN}` 
+        : (process.env.CLIENT_URL || 'http://localhost:8080');
+      
+      const frontendUrl = `${frontendBaseUrl}/auth`;
       
       const redirectUrl = `${frontendUrl}?token=${response.token}&refreshToken=${response.refreshToken}`;
       
