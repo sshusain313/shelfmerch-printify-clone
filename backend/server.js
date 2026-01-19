@@ -67,7 +67,7 @@ const corsOptions = {
     // Always allow root domain
     allowedOrigins.push(`https://${BASE_DOMAIN}`);
     allowedOrigins.push(`http://${BASE_DOMAIN}`);
-    allowedOrigins.push('http://localhost:8080');
+    allowedOrigins.push('http://localhost:8081');
     allowedOrigins.push('http://72.62.76.198:8080');
     
     // In production, allow wildcard subdomains (*.shelfmerch.in)

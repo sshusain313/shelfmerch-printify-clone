@@ -1,9 +1,15 @@
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { useEffect, useState, useRef } from "react";
 import { productApi } from "@/lib/api";
+import { TrustBadges } from "@/components/TrustBadges";
+import { CareInstructions } from "@/components/CareInstructions";
+import { ProductDescription } from "@/components/ProductDescription";
+import { SizeChart } from "@/components/SizeChart";
+import { KeyFeatures } from "@/components/KeyFeatures";
+import { PrintAreas } from "@/components/PrintAreas";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Navbar } from "@/components/Navbar";
-import { Footer } from "@/components/Footer";
+import Header from '@/components/home/Header';
+import Footer from '@/components/home/Footer';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -24,10 +30,11 @@ import {
 } from "@/components/ui/breadcrumb";
 import {
   Check, Package, Palette, Ruler, Droplets, Wind,
-  Thermometer, X, Heart, Share2, Truck, Shield,
-  Award, Sparkles, TrendingUp, Star, ZoomIn,
+  Thermometer, X, Heart, Share2, Truck, Shield, FileText, Droplet, Archive,
+  Award, Sparkles, ShieldCheck, TrendingUp, Star, ZoomIn,
   ChevronRight, Home, Minus, Plus, Maximize2
 } from "lucide-react";
+
 import { toast } from "sonner";
 
 // Color name to hex mapping
@@ -65,6 +72,48 @@ const colorMap: Record<string, string> = {
   'peach': '#FFE5B4',
 };
 
+const badges = [
+  {
+    icon: Truck,
+    title: "Free Shipping",
+    subtitle: "On orders ₹500+",
+  },
+  {
+    icon: ShieldCheck,
+    title: "Secure Payment",
+    subtitle: "100% Protected",
+  },
+  {
+    icon: Award,
+    title: "Quality Guaranteed",
+    subtitle: "Premium Materials",
+  },
+];
+
+const instructions = [
+  {
+    icon: FileText,
+    title: "General",
+    description: "A top-choice garment known for its softness, durability, and compatibility with DTG printing, making it a favorite in both retail and promotional markets.",
+  },
+  {
+    icon: Droplet,
+    title: "Wash",
+    description: "Maintain the tee's quality by washing it in cold water, which helps preserve the fabric and the vibrancy of the print.",
+  },
+  {
+    icon: Wind,
+    title: "Dry",
+    description: "Tumble dry on a low setting or hang dry to retain the shape and size of the tee post-wash.",
+  },
+  {
+    icon: Archive,
+    title: "Store",
+    description: "Store in a cool, dry place away from direct sunlight to maintain the integrity of the fabric and colors.",
+  },
+];
+
+// Removed inline constants as they are now in components
 const getColorHex = (colorName: string): string => {
   const normalized = colorName.toLowerCase().trim();
   return colorMap[normalized] || '#CCCCCC';
@@ -171,7 +220,6 @@ const ProductDetail = () => {
     }
   }, [product]);
 
-
   // Sticky CTA visibility
   useEffect(() => {
     const handleScroll = () => {
@@ -213,7 +261,7 @@ const ProductDetail = () => {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background">
-        <Navbar />
+        <Header />
         <div className="container py-6 lg:py-8">
           <Skeleton className="h-6 w-64 mb-6" />
           <div className="grid lg:grid-cols-[1.1fr_0.9fr] gap-8 lg:gap-12">
@@ -240,7 +288,7 @@ const ProductDetail = () => {
   if (!product) {
     return (
       <div className="min-h-screen bg-background">
-        <Navbar />
+        <Header />
         <div className="container py-8">
           <div className="flex flex-col items-center justify-center py-16">
             <Package className="h-12 w-12 text-muted-foreground mb-4" />
@@ -261,7 +309,7 @@ const ProductDetail = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <Navbar />
+      <Header />
 
       <div className="container py-6 lg:py-8">
         {/* Breadcrumbs */}
@@ -346,11 +394,10 @@ const ProductDetail = () => {
                 {galleryImages.map((img: any, index: number) => (
                   <div
                     key={img.id || index}
-                    className={`aspect-square bg-muted rounded-lg overflow-hidden cursor-pointer border-2 transition-all ${
-                      selectedImageIndex === index
-                        ? 'border-primary ring-2 ring-primary ring-offset-2'
-                        : 'border-transparent hover:border-primary/50'
-                    }`}
+                    className={`aspect-square bg-muted rounded-lg overflow-hidden cursor-pointer border-2 transition-all ${selectedImageIndex === index
+                      ? 'border-primary ring-2 ring-primary ring-offset-2'
+                      : 'border-transparent hover:border-primary/50'
+                      }`}
                     onClick={() => setSelectedImageIndex(index)}
                   >
                     <img
@@ -402,7 +449,7 @@ const ProductDetail = () => {
                 const attributes = Object.entries(product.catalogue.attributes)
                   .filter(([key, value]) => value && value !== '')
                   .slice(0, 7);
-                
+
                 // Comprehensive label formatting for all categories
                 const formatLabel = (key: string, value: any) => {
                   const formatters: Record<string, (val: any) => string> = {
@@ -418,14 +465,14 @@ const ProductDetail = () => {
                     'hoodType': (val) => `${val} hood`,
                     'pocketStyle': (val) => `${val} pockets`,
                     'neckline': (val) => `${val} neckline`,
-                    
+
                     // Accessories attributes
                     'handleType': (val) => `${val} handles`,
                     'capStyle': (val) => `${val} style`,
                     'visorType': (val) => `${val} visor`,
                     'compatibility': (val) => `Fits ${val}`,
                     'caseType': (val) => `${val} case`,
-                    
+
                     // Home attributes
                     'capacity': (val) => `Capacity: ${val}`,
                     'dishwasherSafe': (val) => `Dishwasher ${val === 'Yes' ? '✓' : '✗'}`,
@@ -434,7 +481,7 @@ const ProductDetail = () => {
                     'fillMaterial': (val) => `Filled with ${val}`,
                     'frameSize': (val) => `${val} frame`,
                     'frameMaterial': (val) => `${val} frame`,
-                    
+
                     // Print attributes
                     'paperType': (val) => `${val} paper`,
                     'paperWeight': (val) => `${val} paper`,
@@ -446,18 +493,18 @@ const ProductDetail = () => {
                     'pageCount': (val) => `${val} pages`,
                     'binding': (val) => `${val} binding`,
                     'ruling': (val) => `${val} pages`,
-                    
+
                     // Packaging attributes
                     'recyclable': (val) => val === 'Yes' ? 'Recyclable' : val === 'Partially' ? 'Partially recyclable' : 'Not recyclable',
                     'boxType': (val) => `${val} box`,
                     'capType': (val) => `${val} cap`,
                     'pouchType': (val) => `${val} pouch`,
-                    
+
                     // Tech attributes
                     'model': (val) => `Model: ${val}`,
                     'protection': (val) => `${val} protection`,
                     'accessoryType': (val) => val,
-                    
+
                     // Jewelry attributes
                     'hypoallergenic': (val) => val === 'Yes' ? 'Hypoallergenic' : 'Contains allergens',
                     'ringSize': (val) => `Size: ${val}`,
@@ -468,15 +515,15 @@ const ProductDetail = () => {
                     'earringType': (val) => `${val} style`,
                     'backingType': (val) => `${val} backing`,
                   };
-                  
+
                   return formatters[key] ? formatters[key](value) : `${key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}: ${value}`;
                 };
-                
+
                 return attributes.map(([key, value]) => (
                   <div key={key} className="flex items-center gap-2.5">
-                  <Check className="w-5 h-5 text-primary flex-shrink-0" />
+                    <Check className="w-5 h-5 text-primary flex-shrink-0" />
                     <span className="text-sm">{formatLabel(key, value)}</span>
-                </div>
+                  </div>
                 ));
               })()}
             </div>
@@ -492,11 +539,10 @@ const ProductDetail = () => {
                     <button
                       key={size}
                       onClick={() => setSelectedSize(size)}
-                      className={`px-4 py-2.5 rounded-lg border-2 font-medium text-sm transition-all ${
-                        selectedSize === size
-                          ? 'border-primary bg-primary/10 text-primary'
-                          : 'border-border hover:border-primary/50 bg-background'
-                      }`}
+                      className={`px-4 py-2.5 rounded-lg border-2 font-medium text-sm transition-all ${selectedSize === size
+                        ? 'border-primary bg-primary/10 text-primary'
+                        : 'border-border hover:border-primary/50 bg-background'
+                        }`}
                     >
                       {size}
                     </button>
@@ -512,7 +558,7 @@ const ProductDetail = () => {
                   <Palette className="w-4 h-4 text-primary" />
                   <p className="text-sm font-semibold">Available Colors</p>
                 </div>
-                <div className="flex flex-wrap gap-3">
+                <div className="flex flex-wrap gap-2">
                   {colorsWithHex.map((c) => {
                     const color = c.value;
                     const colorHex = c.colorHex || getColorHex(color);
@@ -525,10 +571,13 @@ const ProductDetail = () => {
                       >
                         <div
                           className={`w-14 h-14 lg:w-16 lg:h-16 rounded-full border-2 transition-all relative ${isSelected ? 'ring-2 ring-offset-2 ring-primary scale-105' : ''}`}
-                          style={{ backgroundColor: colorHex }}
+                          style={{
+                            backgroundColor: colorHex,
+                            border: colorHex === "#FFFFFF" ? "2px solid hsl(var(--border))" : undefined
+                          }}
                           title={color}
                         >
-                         
+
                         </div>
                         {/* <span className={`text-xs font-medium transition-colors ${
                           isSelected ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground'
@@ -568,34 +617,16 @@ const ProductDetail = () => {
             </div>
 
             {/* Trust Badges */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4">
-              <div className="flex items-start gap-3 p-4 bg-accent/50 rounded-lg border">
-                <div className="p-2 bg-primary/10 rounded-lg">
-                  <Truck className="w-5 h-5 text-primary" />
+            <div className="grid grid-cols-3 gap-3">
+              {badges.map((badge) => (
+                <div key={badge.title} className="trust-badge">
+                  <badge.icon className="w-5 h-5 text-primary flex-shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-foreground truncate">{badge.title}</p>
+                    <p className="text-[10px] text-muted-foreground truncate">{badge.subtitle}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-sm font-semibold mb-0.5">Free Shipping</p>
-                  <p className="text-xs text-muted-foreground">On orders $50+</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3 p-4 bg-accent/50 rounded-lg border">
-                <div className="p-2 bg-primary/10 rounded-lg">
-                  <Shield className="w-5 h-5 text-primary" />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold mb-0.5">Secure Payment</p>
-                  <p className="text-xs text-muted-foreground">100% Protected</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3 p-4 bg-accent/50 rounded-lg border">
-                <div className="p-2 bg-primary/10 rounded-lg">
-                  <Award className="w-5 h-5 text-primary" />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold mb-0.5">Quality</p>
-                  <p className="text-xs text-muted-foreground">Guaranteed</p>
-                </div>
-              </div>
+              ))}
             </div>
 
             {/* Shipping Info */}
@@ -625,325 +656,30 @@ const ProductDetail = () => {
         {/* Detailed Information - All Sections */}
         <div className="mt-10 lg:mt-12 space-y-8">
           {/* About Section */}
-          <Card>
-            <CardContent className="p-6 lg:p-8">
-              <h3 className="text-2xl font-bold mb-4 flex items-center gap-2">
-                <Package className="w-6 h-6 text-primary" />
-                Product Description
-              </h3>
-              <p className="text-muted-foreground leading-relaxed text-base">
-                {product.catalogue?.description || 'No description available.'}
-              </p>
 
-              {product.catalogue?.categoryId && (
-                <div className="mt-8 pt-6 border-t">
-                  <div className="flex flex-wrap items-center gap-4 text-sm">
-                    <div>
-                      <span className="font-semibold text-muted-foreground">Category: </span>
-                      <span className="text-foreground capitalize">{product.catalogue.categoryId}</span>
-                    </div>
-                    {product.catalogue?.subcategoryIds && product.catalogue.subcategoryIds.length > 0 && (
-                      <div>
-                        <span className="font-semibold text-muted-foreground">Subcategories: </span>
-                        <span className="text-foreground">
-                          {product.catalogue.subcategoryIds.join(', ')}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          {/* Product Description */}
+          <ProductDescription
+            description={product.catalogue?.description}
+            category={product.catalogue?.categoryId}
+            subcategoryIds={product.catalogue?.subcategoryIds}
+          />
 
           {/* Size Chart Section */}
-          <Card>
-            <CardContent className="p-6 lg:p-8">
-              <h3 className="text-2xl font-bold mb-6 flex items-center gap-2">
-                <Ruler className="w-6 h-6 text-primary" />
-                Size Chart
-              </h3>
-              {product.availableSizes && product.availableSizes.length > 0 ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full border-collapse">
-                    <thead>
-                      <tr className="border-b-2 border-border">
-                        <th className="text-left p-4 font-semibold">Size</th>
-                        <th className="text-center p-4 font-semibold">Chest</th>
-                        <th className="text-center p-4 font-semibold">Length</th>
-                        <th className="text-center p-4 font-semibold">Sleeve</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {product.availableSizes.map((size: string) => {
-                        const sizeData = sizeChartData[size as keyof typeof sizeChartData] || {
-                          chest: 'N/A',
-                          length: 'N/A',
-                          sleeve: 'N/A'
-                        };
-                        return (
-                          <tr key={size} className="border-b border-border hover:bg-accent/50 transition-colors">
-                            <td className="p-4 font-semibold">{size}</td>
-                            <td className="p-4 text-center text-muted-foreground">{sizeData.chest}</td>
-                            <td className="p-4 text-center text-muted-foreground">{sizeData.length}</td>
-                            <td className="p-4 text-center text-muted-foreground">{sizeData.sleeve}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <p className="text-muted-foreground">Size information not available.</p>
-              )}
-            </CardContent>
-          </Card>
+          <SizeChart />
+
+          {/* Key Features Section */}
+          <KeyFeatures />
 
           {/* Care Instructions Section */}
-          <Card>
-            <CardContent className="p-6 lg:p-8">
-              <h3 className="text-2xl font-bold mb-6 flex items-center gap-2">
-                <Droplets className="w-6 h-6 text-primary" />
-                Care Instructions
-              </h3>
-              <div className="grid md:grid-cols-2 gap-6">
-                <div className="space-y-4">
-                  <div className="flex items-start gap-4">
-                    <div className="p-3 bg-primary/10 rounded-lg flex-shrink-0">
-                      <Droplets className="w-6 h-6 text-primary" />
-                    </div>
-                    <div>
-                      <h4 className="font-semibold mb-2">Washing</h4>
-                      <p className="text-sm text-muted-foreground leading-relaxed">
-                        Machine wash cold with like colors. Use mild detergent. Do not bleach.
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-4">
-                    <div className="p-3 bg-primary/10 rounded-lg flex-shrink-0">
-                      <Wind className="w-6 h-6 text-primary" />
-                    </div>
-                    <div>
-                      <h4 className="font-semibold mb-2">Drying</h4>
-                      <p className="text-sm text-muted-foreground leading-relaxed">
-                        Tumble dry low or hang dry. Do not iron on print area.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-                <div className="space-y-4">
-                  <div className="flex items-start gap-4">
-                    <div className="p-3 bg-primary/10 rounded-lg flex-shrink-0">
-                      <Thermometer className="w-6 h-6 text-primary" />
-                    </div>
-                    <div>
-                      <h4 className="font-semibold mb-2">Ironing</h4>
-                      <p className="text-sm text-muted-foreground leading-relaxed">
-                        Iron on low heat. Avoid ironing directly on printed areas.
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-4">
-                    <div className="p-3 bg-primary/10 rounded-lg flex-shrink-0">
-                      <X className="w-6 h-6 text-primary" />
-                    </div>
-                    <div>
-                      <h4 className="font-semibold mb-2">Do Not</h4>
-                      <p className="text-sm text-muted-foreground leading-relaxed">
-                        Do not dry clean. Do not use fabric softener. Do not bleach.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <CareInstructions />
 
-          {/* Product Specifications Section - Dynamic */}
-          {product.catalogue?.attributes && Object.keys(product.catalogue.attributes).length > 0 && (
-          <Card>
-            <CardContent className="p-6 lg:p-8">
-              <h3 className="text-2xl font-bold mb-6 flex items-center gap-2">
-                <Award className="w-6 h-6 text-primary" />
-                Product Specifications
-              </h3>
-              <div className="grid md:grid-cols-2 gap-6">
-                  {(() => {
-                    // Comprehensive icon mapping for all categories
-                    const getIcon = (key: string) => {
-                      const iconMap: Record<string, any> = {
-                        // Apparel
-                        'gender': Award,
-                        'material': Package,
-                        'gsm': Ruler,
-                        'fit': Check,
-                        'brand': Star,
-                        'collarType': Award,
-                        'fabricComposition': Sparkles,
-                        'sleeveLength': Ruler,
-                        'hoodType': Package,
-                        'pocketStyle': Package,
-                        'neckline': Award,
-                        
-                        // Accessories
-                        'handleType': Package,
-                        'capStyle': Award,
-                        'visorType': Ruler,
-                        'compatibility': Check,
-                        'caseType': Shield,
-                        
-                        // Home
-                        'capacity': Package,
-                        'dishwasherSafe': Droplets,
-                        'microwaveSafe': Thermometer,
-                        'dimensions': Ruler,
-                        'fillMaterial': Package,
-                        'frameSize': Ruler,
-                        'frameMaterial': Package,
-                        
-                        // Print
-                        'paperType': Package,
-                        'paperWeight': Ruler,
-                        'finish': Sparkles,
-                        'corners': Check,
-                        'size': Ruler,
-                        'stickerType': Package,
-                        'waterproof': Shield,
-                        'pageCount': Package,
-                        'binding': Package,
-                        'ruling': Check,
-                        
-                        // Packaging
-                        'recyclable': Award,
-                        'boxType': Package,
-                        'capType': Package,
-                        'pouchType': Package,
-                        
-                        // Tech
-                        'model': Star,
-                        'protection': Shield,
-                        'accessoryType': Package,
-                        
-                        // Jewelry
-                        'hypoallergenic': Shield,
-                        'ringSize': Ruler,
-                        'bandWidth': Ruler,
-                        'chainLength': Ruler,
-                        'chainType': Package,
-                        'claspType': Package,
-                        'earringType': Star,
-                        'backingType': Package,
-                      };
-                      return iconMap[key] || Package;
-                    };
-
-                    // Comprehensive label formatting for all categories
-                    const formatLabel = (key: string) => {
-                      const labelMap: Record<string, string> = {
-                        // Apparel
-                        'gender': 'Target Audience',
-                        'material': 'Material',
-                        'gsm': 'GSM (Grams per Square Meter)',
-                        'fit': 'Fit Style',
-                        'brand': 'Brand',
-                        'collarType': 'Collar Type',
-                        'fabricComposition': 'Fabric Composition',
-                        'sleeveLength': 'Sleeve Length',
-                        'hoodType': 'Hood Type',
-                        'pocketStyle': 'Pocket Style',
-                        'neckline': 'Neckline',
-                        
-                        // Accessories
-                        'handleType': 'Handle Type',
-                        'capStyle': 'Cap Style',
-                        'visorType': 'Visor Type',
-                        'compatibility': 'Device Compatibility',
-                        'caseType': 'Case Type',
-                        
-                        // Home
-                        'capacity': 'Capacity',
-                        'dishwasherSafe': 'Dishwasher Safe',
-                        'microwaveSafe': 'Microwave Safe',
-                        'dimensions': 'Dimensions',
-                        'fillMaterial': 'Fill Material',
-                        'frameSize': 'Frame Size',
-                        'frameMaterial': 'Frame Material',
-                        
-                        // Print
-                        'paperType': 'Paper Type',
-                        'paperWeight': 'Paper Weight',
-                        'finish': 'Finish',
-                        'corners': 'Corner Style',
-                        'size': 'Size',
-                        'stickerType': 'Sticker Type',
-                        'waterproof': 'Waterproof',
-                        'pageCount': 'Page Count',
-                        'binding': 'Binding Type',
-                        'ruling': 'Page Ruling',
-                        
-                        // Packaging
-                        'recyclable': 'Recyclable',
-                        'boxType': 'Box Type',
-                        'capType': 'Cap Type',
-                        'pouchType': 'Pouch Type',
-                        
-                        // Tech
-                        'model': 'Device Model',
-                        'protection': 'Protection Level',
-                        'accessoryType': 'Accessory Type',
-                        
-                        // Jewelry
-                        'hypoallergenic': 'Hypoallergenic',
-                        'ringSize': 'Ring Size',
-                        'bandWidth': 'Band Width',
-                        'chainLength': 'Chain Length',
-                        'chainType': 'Chain Type',
-                        'claspType': 'Clasp Type',
-                        'earringType': 'Earring Type',
-                        'backingType': 'Backing Type',
-                      };
-                      
-                      return labelMap[key] || key.replace(/([A-Z])/g, ' $1').replace(/^./, (str) => str.toUpperCase());
-                    };
-
-                    const attributes = Object.entries(product.catalogue.attributes)
-                      .filter(([key, value]) => value && value !== '');
-
-                    return attributes.map(([key, value]) => {
-                      const IconComponent = getIcon(key);
-                      return (
-                        <div key={key} className="flex items-start gap-4">
-                      <div className="p-3 bg-primary/10 rounded-lg flex-shrink-0">
-                            <IconComponent className="w-6 h-6 text-primary" />
-                      </div>
-                      <div>
-                            <h4 className="font-semibold mb-1">{formatLabel(key)}</h4>
-                            <p className="text-sm text-muted-foreground">{String(value)}</p>
-                      </div>
-                    </div>
-                      );
-                    });
-                  })()}
-                  {product.design?.dpi && (
-                    <div className="flex items-start gap-4">
-                      <div className="p-3 bg-primary/10 rounded-lg flex-shrink-0">
-                        <Star className="w-6 h-6 text-primary" />
-                      </div>
-                      <div>
-                        <h4 className="font-semibold mb-1">Print Resolution</h4>
-                        <p className="text-sm text-muted-foreground">{product.design.dpi} DPI</p>
-                      </div>
-                    </div>
-                  )}
-              </div>
-            </CardContent>
-          </Card>
-          )}
+          {/* Print Areas Section */}
+          <PrintAreas />
         </div>
 
         {/* You May Also Like */}
         {relatedProducts.length > 0 && (
-          <div className="mt-10 lg:mt-12">
+          <div className="space-y-4">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl lg:text-3xl font-bold flex items-center gap-2">
                 <TrendingUp className="w-6 h-6 text-primary" />
@@ -1013,8 +749,9 @@ const ProductDetail = () => {
               )}
             </div>
           </div>
-        )}
-      </div>
+        )
+        }
+      </div >
 
       {/* Product-specific FAQs section removed as FAQ feature is no longer supported. */}
 
@@ -1038,11 +775,10 @@ const ProductDetail = () => {
                   <button
                     key={img.id || index}
                     onClick={() => setSelectedImageIndex(index)}
-                    className={`w-12 h-12 rounded-lg overflow-hidden border-2 transition-all ${
-                      selectedImageIndex === index
-                        ? 'border-primary ring-2 ring-primary'
-                        : 'border-transparent hover:border-primary/50'
-                    }`}
+                    className={`w-12 h-12 rounded-lg overflow-hidden border-2 transition-all ${selectedImageIndex === index
+                      ? 'border-primary ring-2 ring-primary'
+                      : 'border-transparent hover:border-primary/50'
+                      }`}
                   >
                     <img
                       src={img.url}
@@ -1058,31 +794,33 @@ const ProductDetail = () => {
       </Dialog>
 
       {/* Sticky CTA Bar (Mobile) */}
-      {isStickyVisible && (
-        <div className="fixed bottom-0 left-0 right-0 z-50 bg-background border-t shadow-lg lg:hidden">
-          <div className="container py-3 px-4">
-            <div className="flex items-center gap-3">
-              <div className="flex-1">
-                <p className="text-sm text-muted-foreground">From</p>
-                <p className="text-xl font-bold">${product.catalogue?.basePrice?.toFixed(2) || '0.00'}</p>
+      {
+        isStickyVisible && (
+          <div className="fixed bottom-0 left-0 right-0 z-50 bg-background border-t shadow-lg lg:hidden">
+            <div className="container py-3 px-4">
+              <div className="flex items-center gap-3">
+                <div className="flex-1">
+                  <p className="text-sm text-muted-foreground">From</p>
+                  <p className="text-xl font-bold">${product.catalogue?.basePrice?.toFixed(2) || '0.00'}</p>
+                </div>
+                <Button
+                  size="lg"
+                  className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold"
+                  asChild
+                >
+                  <Link to={`/designer/${id}`}>
+                    <Sparkles className="w-4 h-4 mr-2" />
+                    Design Now
+                  </Link>
+                </Button>
               </div>
-              <Button
-                size="lg"
-                className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold"
-                asChild
-              >
-                <Link to={`/designer/${id}`}>
-                  <Sparkles className="w-4 h-4 mr-2" />
-                  Design Now
-                </Link>
-              </Button>
             </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
       <Footer />
-    </div>
+    </div >
   );
 };
 

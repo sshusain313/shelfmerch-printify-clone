@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Navbar } from '@/components/Navbar';
-import { Footer } from '@/components/Footer';
+import Header from '@/components/home/Header';
+import Footer from '@/components/home/Footer';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
@@ -99,7 +99,7 @@ const AllCategories = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <Navbar />
+      <Header />
       
       <div className="container py-8">
         {/* Header */}

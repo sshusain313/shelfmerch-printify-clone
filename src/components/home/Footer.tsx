@@ -12,6 +12,23 @@ import higgindex from "@/assets/higg.png";
 import accord from "@/assets/accord.png";
 import organic from "@/assets/organic.png"; 
 const Footer = () => {
+  // Mapping of link text to routes
+  const solutionRoutes: Record<string, string> = {
+    "Creators & Agencies": "/solutions/creators-agencies",
+    "Fashion & Apparel": "/solutions/fashion-apparel",
+    "Entertainment & Media": "/solutions/entertainment-media",
+    "Home Decor": "/solutions/home-decor",
+    "Customized Merch": "/solutions/customized-merch",
+    "Enterprise Merch": "/solutions/enterprise-merch",
+    "Bulk Orders": "/solutions/bulk-orders",
+  };
+
+  const aboutRoutes: Record<string, string> = {
+    "Our Story": "/about/our-story",
+    "Careers": "/about/careers",
+    "Contact Us": "/support/contact-us",
+  };
+
   const footerLinks = {
     products: {
       title: "Products",
@@ -68,9 +85,12 @@ const Footer = () => {
             <ul className="space-y-2">
               {footerLinks.solutions.links.map((link, index) => (
                 <li key={index}>
-                  <a href="#" className="text-sm text-muted-foreground hover:text-primary transition-colors">
+                  <Link 
+                    to={solutionRoutes[link] || "#"} 
+                    className="text-sm text-muted-foreground hover:text-primary transition-colors"
+                  >
                     {link}
-                  </a>
+                  </Link>
                 </li>
               ))}
             </ul>
@@ -82,9 +102,12 @@ const Footer = () => {
             <ul className="space-y-2">
               {footerLinks.about.links.map((link, index) => (
                 <li key={index}>
-                  <a href="#" className="text-sm text-muted-foreground hover:text-primary transition-colors">
+                  <Link 
+                    to={aboutRoutes[link] || "#"} 
+                    className="text-sm text-muted-foreground hover:text-primary transition-colors"
+                  >
                     {link}
-                  </a>
+                  </Link>
                 </li>
               ))}
             </ul>

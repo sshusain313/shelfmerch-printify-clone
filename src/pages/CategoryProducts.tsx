@@ -1,25 +1,22 @@
 import { useEffect, useState, useMemo } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { Navbar } from '@/components/Navbar';
-import { Footer } from '@/components/Footer';
+import { useParams, Link, useNavigate } from 'react-router-dom';
+import Header from '@/components/home/Header';
+import Footer from '@/components/home/Footer';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Search, ArrowLeft, Filter, ChevronDown, Plus, Minus } from 'lucide-react';
-import { Card, CardContent } from '@/components/ui/card';
+import { CategorySidebar } from '@/components/CategorySidebar';
+import { Search, ChevronDown, User, X } from 'lucide-react';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { productApi } from '@/lib/api';
 import { variantOptionsApi } from '@/lib/api';
 import { getColorHex } from '@/config/productVariantOptions';
 import { getFieldDefinitions, FieldDefinition, FIELD_DEFINITIONS } from '@/config/productFieldDefinitions';
 import { categories } from '@/data/products';
-import { Package } from 'lucide-react';
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
-
+import { useAuth } from "@/contexts/AuthContext";
+import { ProductCard, Product } from "@/components/ProductCard";
 
 // Main categories (these are category-level, not subcategories)
 const mainCategories = ['apparel', 'accessories', 'home', 'print', 'packaging', 'tech', 'jewelry'];
@@ -157,6 +154,8 @@ const categorySlugToParentCategory: Record<string, any> = {
 
 const CategoryProducts = () => {
   const { slug } = useParams();
+  const { isAuthenticated } = useAuth();
+  const navigate = useNavigate();
 
   // find the current category from static list
   const category = useMemo(
@@ -164,13 +163,10 @@ const CategoryProducts = () => {
     [slug]
   );
 
-  const [products, setProducts] = useState([]);
-  const [isLoadingProducts, setIsLoadingProducts] = useState(false);
-  const [error, setError] = useState(null);
+  const [products, setProducts] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const { categoryId } = useParams<{ categoryId: string }>();
-  const [categoryProducts, setCategoryProducts] = useState<Record<string, any>>({});
-  const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortOption, setSortOption] = useState('popularity');
   const [availableColors, setAvailableColors] = useState<any[]>([]);
@@ -290,7 +286,7 @@ const CategoryProducts = () => {
     }
 
     const fetchProducts = async () => {
-      setIsLoadingProducts(true);
+      setIsLoading(true);
       setError(null);
 
       try {
@@ -323,19 +319,19 @@ const CategoryProducts = () => {
 
           console.log('API response for subcategory:', subcategory, response);
 
-           // Build available colors with hex from variants returned by backend
-           const variants: Array<any> = Array.isArray(response.data.variants) ? response.data.variants : [];
-           const colorMapUnique: Record<string, string | undefined> = {};
-           variants.forEach((v) => {
-             if (v && typeof v.color === 'string') {
-               const key = v.color;
-               if (colorMapUnique[key] === undefined) {
-                 colorMapUnique[key] = v.colorHex || undefined;
-               }
-             }
-           });
-           const colorsArr = Object.entries(colorMapUnique).map(([value, hex]) => ({ value, colorHex: hex || getColorHex(value) }));
-           setColorsWithHex(colorsArr);
+          // Build available colors with hex from variants returned by backend
+          const variants: Array<any> = Array.isArray(response.data.variants) ? response.data.variants : [];
+          const colorMapUnique: Record<string, string | undefined> = {};
+          variants.forEach((v) => {
+            if (v && typeof v.color === 'string') {
+              const key = v.color;
+              if (colorMapUnique[key] === undefined) {
+                colorMapUnique[key] = v.colorHex || undefined;
+              }
+            }
+          });
+          const colorsArr = Object.entries(colorMapUnique).map(([value, hex]) => ({ value, colorHex: hex || getColorHex(value) }));
+          setColorsWithHex(colorsArr);
 
           if (response && response.success && Array.isArray(response.data)) {
             setProducts(response.data);
@@ -343,12 +339,12 @@ const CategoryProducts = () => {
             setProducts([]);
           }
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error('Failed to fetch products:', err);
         setError('Failed to load products');
         setProducts([]);
       } finally {
-        setIsLoadingProducts(false);
+        setIsLoading(false);
       }
     };
 
@@ -393,7 +389,7 @@ const CategoryProducts = () => {
   useEffect(() => {
     // Determine parent category ID for field definitions
     let categoryId: string | undefined = undefined;
-    
+
     if (isMainCategory) {
       // For main categories, use the slug directly
       categoryId = slug || undefined;
@@ -401,20 +397,20 @@ const CategoryProducts = () => {
       // For subcategories, look up the parent category
       // Try exact match first
       categoryId = categorySlugToParentCategory[slug || ''];
-      
+
       // If not found, try variations (singular/plural)
       if (!categoryId && slug) {
         // Try adding 's' (e.g., 'hoodie' -> 'hoodies')
         const pluralSlug = slug + 's';
         categoryId = categorySlugToParentCategory[pluralSlug];
-        
+
         // Try removing 's' if it ends with 's' (e.g., 'hoodies' -> 'hoodie')
         if (!categoryId && slug.endsWith('s')) {
           const singularSlug = slug.slice(0, -1);
           categoryId = categorySlugToParentCategory[singularSlug];
         }
       }
-      
+
       // If still not found, try to find by subcategory name
       if (!categoryId && subcategory) {
         // Reverse lookup: find which parent category has this subcategory
@@ -426,7 +422,7 @@ const CategoryProducts = () => {
             if (categoryId) break;
           }
         }
-        
+
       }
     }
 
@@ -437,7 +433,7 @@ const CategoryProducts = () => {
     const fieldDefinitions = categoryId
       ? getFieldDefinitions(categoryId as any, subcategory ? [subcategory] : [])
       : [];
-    
+
     // Also get subcategory-specific attributes directly from bySubcategory
     let subcategorySpecificAttributes: FieldDefinition[] = [];
     if (categoryId && subcategory && FIELD_DEFINITIONS[categoryId as keyof typeof FIELD_DEFINITIONS]) {
@@ -446,7 +442,7 @@ const CategoryProducts = () => {
         subcategorySpecificAttributes = categoryDef.bySubcategory[subcategory];
       }
     }
-    
+
     // Debug logging
     if (fieldDefinitions.length === 0) {
       console.warn('No field definitions found', { categoryId, slug, subcategory, isMainCategory });
@@ -462,7 +458,7 @@ const CategoryProducts = () => {
     fieldDefinitions.forEach(def => {
       attributesMap[def.key] = new Set();
     });
-    
+
     // Also initialize from subcategory-specific attributes
     subcategorySpecificAttributes.forEach(def => {
       if (!attributesMap[def.key]) {
@@ -486,12 +482,12 @@ const CategoryProducts = () => {
     // Extract data from products if available, merging with DB colors
     // Also build product-specific colorHex map for display
     const productColorHexMapLocal: Record<string, Record<string, string>> = {};
-    
+
     if (products && products.length > 0) {
       products.forEach((product: any) => {
         const productId = product._id || product.id;
         const productColorMap: Record<string, string> = {};
-        
+
         // Extract colors from product variants (with colorHex) or availableColors
         if (product.variants && Array.isArray(product.variants)) {
           product.variants.forEach((variant: any) => {
@@ -499,7 +495,7 @@ const CategoryProducts = () => {
               const colorHex = variant.colorHex || getColorHex(variant.color);
               // Store in product-specific map
               productColorMap[variant.color] = colorHex;
-              
+
               // Also add to global colorsMap for filters
               if (!colorsMap.has(variant.color)) {
                 colorsMap.set(variant.color, {
@@ -515,7 +511,7 @@ const CategoryProducts = () => {
             const colorHex = getColorHex(colorName);
             // Store in product-specific map
             productColorMap[colorName] = colorHex;
-            
+
             // Also add to global colorsMap for filters
             if (!colorsMap.has(colorName)) {
               colorsMap.set(colorName, {
@@ -526,7 +522,7 @@ const CategoryProducts = () => {
             }
           });
         }
-        
+
         // Store product color map
         if (productId && Object.keys(productColorMap).length > 0) {
           productColorHexMapLocal[productId] = productColorMap;
@@ -563,7 +559,7 @@ const CategoryProducts = () => {
         });
       });
     }
-    
+
     // Update product color hex map state
     setProductColorHexMap(productColorHexMapLocal);
 
@@ -588,13 +584,13 @@ const CategoryProducts = () => {
 
     // Process attributes for display - prioritize subcategory-specific attributes from bySubcategory
     const processedAttributes: Record<string, { label: string, options: string[], type: string, fieldDef: FieldDefinition, hasProducts: Set<string> }> = {};
-    
+
     // First, process subcategory-specific attributes (these are unique to the subcategory from bySubcategory)
     subcategorySpecificAttributes.forEach(def => {
       // For select fields, use all options from field definition
       // For other field types, use values found in products
       let options: string[] = [];
-      
+
       if (def.type === 'select' && def.options && def.options.length > 0) {
         // Use all options from field definition for select fields
         options = [...def.options];
@@ -610,7 +606,7 @@ const CategoryProducts = () => {
       // Show other field types only if they have values in products
       const isSelectWithOptions = def.type === 'select' && def.options && def.options.length > 0;
       const hasProductValues = options.length > 0;
-      
+
       if (isSelectWithOptions || hasProductValues) {
         processedAttributes[def.key] = {
           label: def.label,
@@ -621,16 +617,16 @@ const CategoryProducts = () => {
         };
       }
     });
-    
+
     // Then, process all other field definitions (common + any remaining fields)
     fieldDefinitions.forEach(def => {
       // Skip if already processed (subcategory-specific takes priority)
       if (processedAttributes[def.key]) return;
-      
+
       // For select fields, use all options from field definition
       // For other field types, use values found in products
       let options: string[] = [];
-      
+
       if (def.type === 'select' && def.options && def.options.length > 0) {
         // Use all options from field definition for select fields
         options = [...def.options];
@@ -646,7 +642,7 @@ const CategoryProducts = () => {
       // Show other field types only if they have values in products
       const isSelectWithOptions = def.type === 'select' && def.options && def.options.length > 0;
       const hasProductValues = options.length > 0;
-      
+
       if (isSelectWithOptions || hasProductValues) {
         processedAttributes[def.key] = {
           label: def.label,
@@ -658,36 +654,48 @@ const CategoryProducts = () => {
       }
     });
 
-    console.log('Final processed attributes:', Object.keys(processedAttributes));
-    
     setAvailableColors(colors);
     setAvailableSizes(sizes);
     setAvailableTags(tags);
     setAvailableAttributes(processedAttributes);
   }, [products, slug, subcategory, isMainCategory]);
 
-  // Format product data for display
-  const formatProduct = (product: any) => {
+  // Format product data for display in ProductCard
+  const formatProductForCard = (product: any): Product => {
     // Get brand from attributes (dynamic) or fallback to ShelfMerch
     const brand = product.catalogue?.attributes?.brand || 'ShelfMerch';
+
+    // Resolve colors: use availableColors and map to hex if possible from productColorHexMap
+    // or just use getColorHex
+    const productId = product._id || product.id;
+    const colorMap = productColorHexMap[productId] || {};
+
+    const colors = (product.availableColors || []).map((c: string) => {
+      return colorMap[c] || getColorHex(c);
+    });
+
+    const imageUrl = product.galleryImages?.find((img: any) => img.isPrimary)?.url ||
+      product.galleryImages?.[0]?.url ||
+      '/placeholder.png';
+
+    // If multiple images, map them
+    // Note: ProductCard expects images[] array.
+    const images = product.galleryImages?.map((img: any) => img.url) || [imageUrl];
 
     return {
       id: product._id || product.id,
       name: product.catalogue?.name || 'Unnamed Product',
-      image: product.galleryImages?.find((img: any) => img.isPrimary)?.url ||
-        product.galleryImages?.[0]?.url ||
-        '/placeholder.png',
-      brand: brand,
-      price: product.catalogue?.basePrice?.toFixed(2) || '0.00',
-      badge: product.catalogue?.tags?.[0] || null,
-      sizesCount: product.availableSizes?.length || 0,
-      gendersCount: product.catalogue.attributes.gender?.length || 0,
-      colorsCount: product.availableColors?.length || 0,
+      price: product.catalogue?.basePrice || 0,
+      images: images,
+      creator: brand,
+      colors: colors,
+      sizes: product.availableSizes || [],
+      printMethod: "DTG", // Default or extract if available
+      badge: product.catalogue?.tags?.[0] === 'new' ? 'new' : undefined,
     };
   };
 
   const productsCount = filteredProducts.length;
-  const totalProductsCount = products.length;
 
   // Get parent category ID for subcategory options
   const parentCategoryIdForSubcats = useMemo(() => {
@@ -698,7 +706,7 @@ const CategoryProducts = () => {
   // Get subcategories for category filter buttons
   const subcategoryOptions = useMemo(() => {
     if (!parentCategoryIdForSubcats) return [];
-    
+
     // Get subcategories from categorySlugToSubcategory that belong to this parent
     const subcats: string[] = [];
     Object.entries(categorySlugToSubcategory).forEach(([catSlug, subcatName]) => {
@@ -711,485 +719,135 @@ const CategoryProducts = () => {
     return subcats;
   }, [parentCategoryIdForSubcats]);
 
-  // Derive category name with fallbacks (after isMainCategory, subcategory, and parentCategoryId are defined)
-  const categoryName = useMemo(() => {
-    // First try to get from static category list
-    if (category?.name) return category.name;
-    
-    // If it's a main category, format the slug
-    if (isMainCategory && slug) {
-      return slug.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
-    }
-    
-    // If we have a subcategory, try to get parent category name
-    if (subcategory && parentCategoryId) {
-      const parentCategoryNames: Record<string, string> = {
-        'apparel': 'Apparel',
-        'accessories': 'Accessories',
-        'home': 'Home & Living',
-        'print': 'Print',
-        'packaging': 'Packaging',
-        'tech': 'Tech',
-        'jewelry': 'Jewelry'
-      };
-      return parentCategoryNames[parentCategoryId] || parentCategoryId;
-    }
-    
-    // Fallback: format slug
-    if (slug) {
-      return slug.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
-    }
-    
-    return 'Category';
-  }, [category, slug, isMainCategory, subcategory, parentCategoryId]);
-
   return (
     <div className="min-h-screen bg-background">
-      <Navbar />
+      <Header />
 
-      <main className="w-full">
-        {/* Breadcrumb */}
-        <div className="border-b bg-white">
-          <div className="container mx-auto px-4 py-3 flex flex-col sm:flex-row items-center justify-between">
-            <div className="text-sm text-muted-foreground">
-              <Link to="/products" className="hover:text-foreground">Catalogue</Link>
-              <span className="mx-2">/</span>
-              <span className="text-foreground">{categoryName}</span>
-              {subcategory && !isMainCategory && (
-                <>
-                  <span className="mx-2">/</span>
-                  <span className="text-foreground">{subcategory}</span>
-                </>
-              )}
-            </div>
-            
-            <div className="relative flex-1 max-w-3xl mx-auto sm:mx-4">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <input type="text" placeholder="Search products..." className="w-full h-10 bg-[#ECECE9] pl-14 pr-4 text-base sm:text-md border border-input/40 rounded-2xl  shadow-sm hover:shadow-md hover:border-primary/30 focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-primary/10 focus:border-primary transition-all duration-300 placeholder:text-muted-foreground/60" />
-            </div>  
-
-            {/* Sort Dropdown */}
-            <Select value={sortOption} onValueChange={setSortOption}>
-                    <SelectTrigger className="w-[120px] border-0 shadow-none text-sm">
-                      <SelectValue placeholder="Sorted by Featured" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="featured">Featured</SelectItem>
-                      <SelectItem value="price-low">Price: Low to High</SelectItem>
-                      <SelectItem value="price-high">Price: High to Low</SelectItem>
-                      <SelectItem value="newest">Newest</SelectItem>
-                      <SelectItem value="popularity">Popularity</SelectItem>
-                    </SelectContent>
-            </Select>
-            </div>
-        </div>
-
-        {/* Header */}
-        <div className="border-b bg-white">
-          <div className="container mx-auto px-4 py-6">
-            <h1 className="text-3xl font-semibold">
-              {categoryName}
-            </h1>
-            {error && (
-              <p className="text-sm text-red-500 mt-2">
-                {error}
+      {/* Hero banner */}
+      <section className="bg-foreground text-background py-8">
+        <div className="container">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+            <div>
+              <h2 className="text-3xl md:text-4xl font-black mb-2">
+                Create. Print. <span className="text-green-500">Sell.</span>
+              </h2>
+              <p className="text-background/70 max-w-md">
+                Launch your own merch store in minutes. No inventory, no hassle.
               </p>
-            )}
+            </div>
+            <div className="flex gap-3">
+              <Button
+                size="lg"
+                className="bg-green-500 hover:bg-green-600 text-white rounded-full px-6 py-3 font-bold"
+                onClick={() => {
+                  if (isAuthenticated) {
+                    navigate("/create-store");
+                  } else {
+                    navigate("/auth");
+                  }
+                }}
+              >
+                Start Your Store
+              </Button>
+              <Button
+                size="lg"
+                className="bg-black hover:bg-black/90 text-white border border-gray-400 rounded-full px-6 py-3 font-bold"
+                onClick={() => navigate("/products")}
+              >
+                Explore Products
+              </Button>
+            </div>
           </div>
         </div>
+      </section>
 
-        {/* Main Content Area with Sidebar */}
-        <div className="flex">
-          {/* Left Sidebar - Filters */}
-          <aside className="w-64 border-r bg-white min-h-[calc(100vh-200px)] sticky top-0 self-start">
-            <div className="p-4">
-              
-              {subcategoryOptions.length > 0 && (
-                <div className="mb-6">
-                  <div className="flex flex-wrap gap-2 mb-4">
-                    <button
-                      onClick={() => {
-                        
-                      }}
-                      className="px-4 py-2 text-sm border rounded-md hover:bg-muted transition-colors bg-primary text-primary-foreground"
-                    >
-                      All
-                    </button>
-                    {subcategoryOptions.map((subcat) => (
-                      <button
-                        key={subcat}
-                        className="px-4 py-2 text-sm border rounded-md hover:bg-muted transition-colors"
-                      >
-                        {subcat}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
+      {/* Search + controls bar */}
+      <section className="border-b border-border bg-background">
+        <div className="container py-4 flex flex-col md:flex-row items-center gap-4">
+          {/* Search input */}
+          <div className="w-full md:flex-1">
+            <div className="flex items-center bg-secondary rounded-full px-4">
+              <Search className="w-5 h-5 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="Search products, designs, or creators"
+                className="flex-1 bg-transparent px-3 py-3 text-sm outline-none placeholder:text-muted-foreground"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+          </div>
 
-              {/* Filter Accordions */}
-              <ScrollArea className="h-[calc(100vh-300px)] pr-4">
-                <Accordion type="multiple" className="w-full">
-                  {/* Dynamic Attributes from Field Definitions */}
-                  {Object.entries(availableAttributes).map(([key, { label, options, type, fieldDef, hasProducts }]) => (
-                    <AccordionItem key={key} value={key} className="border-b">
-                      <AccordionTrigger className="py-3 text-sm font-medium hover:no-underline">
-                        <div className="flex items-center justify-between w-full">
-                          <span>{label}</span>
-                        </div>
-                      </AccordionTrigger>
-                      <AccordionContent className="pt-2 pb-4">
-                        {type === 'select' && options.length > 0 ? (
-                          <div className="space-y-2">
-                            {options.map((option) => {
-                              const isSelected = selectedAttributes[key]?.includes(option) || false;
-                              const optionHasProducts = hasProducts.has(option);
-                              return (
-                                <div key={option} className="flex items-center space-x-2">
-                                  <Checkbox
-                                    id={`${key}-${option}`}
-                                    checked={isSelected}
-                                    onCheckedChange={() => toggleAttribute(key, option)}
-                                    disabled={!optionHasProducts && products.length > 0}
-                                  />
-                                  <Label 
-                                    htmlFor={`${key}-${option}`}
-                                    className={`cursor-pointer flex-1 text-sm ${!optionHasProducts && products.length > 0 ? 'text-muted-foreground opacity-60' : ''}`}
-                                  >
-                                    {option}
-                                    {!optionHasProducts && products.length > 0 && (
-                                      <span className="text-xs ml-1">(0)</span>
-                                    )}
-                                  </Label>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        ) : type === 'text' || type === 'textarea' ? (
-                          <div className="space-y-2">
-                            {options.length > 0 ? (
-                              options.map((option) => (
-                                <div key={option} className="flex items-center space-x-2">
-                                  <Checkbox
-                                    id={`${key}-${option}`}
-                                    checked={selectedAttributes[key]?.includes(option) || false}
-                                    onCheckedChange={() => toggleAttribute(key, option)}
-                                  />
-                                  <Label htmlFor={`${key}-${option}`} className="cursor-pointer flex-1 text-sm">
-                                    {option}
-                                  </Label>
-                                </div>
-                              ))
-                            ) : (
-                              <p className="text-sm text-muted-foreground">No values available</p>
-                            )}
-                          </div>
-                        ) : type === 'number' ? (
-                          <div className="space-y-2">
-                            {options.length > 0 ? (
-                              options.map((option) => (
-                                <div key={option} className="flex items-center space-x-2">
-                                  <Checkbox
-                                    id={`${key}-${option}`}
-                                    checked={selectedAttributes[key]?.includes(option) || false}
-                                    onCheckedChange={() => toggleAttribute(key, option)}
-                                  />
-                                  <Label htmlFor={`${key}-${option}`} className="cursor-pointer flex-1 text-sm">
-                                    {option} {fieldDef.unit || ''}
-                                  </Label>
-                                </div>
-                              ))
-                            ) : (
-                              <p className="text-sm text-muted-foreground">No values available</p>
-                            )}
-                          </div>
-                        ) : null}
-                      </AccordionContent>
-                    </AccordionItem>
-                  ))}
+          {/* Currency, region, actions */}
+          <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-end">
+            <select className="h-10 rounded-full border border-border bg-background px-4 text-sm">
+              <option>USD $</option>
+              <option>INR ₹</option>
+              <option>EUR €</option>
+              <option>GBP £</option>
+            </select>
+            <select className="h-10 rounded-full border border-border bg-background px-4 text-sm hidden sm:inline-flex">
+              <option>United States</option>
+              <option>India</option>
+              <option>United Kingdom</option>
+              <option>Germany</option>
+            </select>
+            <button
+              className="text-sm font-medium px-3 py-2 rounded-full hover:bg-secondary transition-colors"
+              onClick={() => (window.location.href = "/my-designs")}
+            >
+              My Designs
+            </button>
+            <Button
+              size="sm"
+              className="gap-2 bg-emerald-500 hover:bg-emerald-600 text-white"
+            >
+              <User className="w-4 h-4" />
+              <span>My Store</span>
+            </Button>
+          </div>
+        </div>
+      </section>
 
-                  <AccordionItem value="colors" className="border-b">
-                    <AccordionTrigger className="py-3 text-sm font-medium hover:no-underline">
-                      <div className="flex items-center justify-between w-full">
-                        <span>Colors</span>
-                      </div>
-                    </AccordionTrigger>
-                    <AccordionContent className="pt-2 pb-4">
-                      <div className="flex flex-wrap gap-2">
-                        {availableColors.length > 0 ? (
-                          availableColors.map((color) => {
-                            const isSelected = selectedColors.includes(color.value);
-                            return (
-                              <div
-                                key={color.id}
-                                onClick={() => toggleColor(color.value)}
-                                className={`w-8 h-8 rounded-full border-2 cursor-pointer transition-all ${isSelected ? 'ring-2 ring-offset-2 ring-primary scale-110' : 'hover:ring-2 hover:ring-offset-2 hover:ring-primary/50'
-                                  }`}
-                                style={{ backgroundColor: color.colorHex || color.value }}
-                                title={color.value}
-                              />
-                            );
-                          })
-                        ) : (
-                          <p className="text-sm text-muted-foreground">No colors available</p>
-                        )}
-                      </div>
-                    </AccordionContent>
-                  </AccordionItem>
+      {/* Main content */}
+      <main className="container py-6">
+        <div className="flex flex-col lg:flex-row gap-8">
+          {/* Left: Dynamic Sidebar (formerly CategorySidebar) */}
+         
+           <CategorySidebar />
 
-                  <AccordionItem value="sizes" className="border-b">
-                    <AccordionTrigger className="py-3 text-sm font-medium hover:no-underline">
-                      <div className="flex items-center justify-between w-full">
-                        <span>Sizes</span>
-                        
-                      </div>
-                    </AccordionTrigger>
-                    <AccordionContent className="pt-2 pb-4">
-                      <div className="grid grid-cols-3 gap-2">
-                        {availableSizes.length > 0 ? (
-                          availableSizes.map((size) => {
-                            const isSelected = selectedSizes.includes(size.value);
-                            return (
-                              <div
-                                key={size.id}
-                                onClick={() => toggleSize(size.value)}
-                                className={`border rounded-md py-1.5 text-center text-xs cursor-pointer transition-colors ${isSelected ? 'bg-primary text-primary-foreground border-primary' : 'hover:bg-muted'
-                                  }`}
-                              >
-                                {size.value}
-                              </div>
-                            );
-                          })
-                        ) : (
-                          <p className="text-sm text-muted-foreground col-span-3">No sizes available</p>
-                        )}
-                      </div>
-                    </AccordionContent>
-                  </AccordionItem>
-                </Accordion>
-              </ScrollArea>
-
-              {/* Clear Filters Button */}
-              <div className="mt-4 pt-4 border-t">
-                <Button 
-                  variant="outline" 
-                  className="w-full" 
-                  onClick={clearFilters}
-                  size="sm"
-                >
-                  Clear all filters
-                </Button>
+          {/* Right: Product Grid */}
+          <div className="flex-1">
+            {/* Top Info Row */}
+            <div className="flex items-center justify-between mb-6 pb-4 border-b border-border">
+              <div>
+                <h1 className="text-2xl font-bold capitalize">
+                  {subcategory || (isMainCategory ? slug : 'Products')}
+                </h1>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {productsCount} Result{productsCount !== 1 ? 's' : ''}
+                </p>
               </div>
             </div>
-          </aside>
 
-          {/* Main Content Area */}
-          <div className="flex-1 bg-white">
-            <div className="container mx-auto px-4 py-6">
-              {/* Product Grid Controls */}
-              <div className="flex items-center justify-between mb-6">
-                {/* <div className="text-sm text-muted-foreground">
-                  {isLoadingProducts
-                    ? 'Loading...'
-                    : `${productsCount} Item${productsCount !== 1 ? 's' : ''}`}
-                </div> */}
-                <div className="flex items-center gap-4">
-                  {/* Sort Dropdown */}
-                  {/* <Select value={sortOption} onValueChange={setSortOption}>
-                    <SelectTrigger className="w-[180px] border-0 shadow-none text-sm">
-                      <SelectValue placeholder="Sorted by Featured" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="featured">Featured</SelectItem>
-                      <SelectItem value="price-low">Price: Low to High</SelectItem>
-                      <SelectItem value="price-high">Price: High to Low</SelectItem>
-                      <SelectItem value="newest">Newest</SelectItem>
-                      <SelectItem value="popularity">Popularity</SelectItem>
-                    </SelectContent>
-                  </Select> */}
-
-                  {/* Attribute Tags - Display all unique attribute values as tags */}
-                  <div className="flex flex-wrap items-center gap-2">
-                    {/* Size Tags */}
-                    {/* {availableSizes.map((size) => {
-                      const isSelected = selectedSizes.includes(size.value);
-                      return (
-                        <Badge
-                          key={size.id}
-                          variant={isSelected ? "default" : "outline"}
-                          className={`cursor-pointer transition-colors whitespace-nowrap ${
-                            isSelected
-                              ? 'bg-primary text-primary-foreground hover:bg-primary/90'
-                              : 'hover:bg-muted'
-                          }`}
-                          onClick={() => toggleSize(size.value)}
-                        >
-                          Size: {size.value}
-                        </Badge>
-                      );
-                    })} */}
-
-                    {/* Color Tags */}
-                    {/* {availableColors.map((color) => {
-                      const isSelected = selectedColors.includes(color.value);
-                      return (
-                        <Badge
-                          key={color.id}
-                          variant={isSelected ? "default" : "outline"}
-                          className={`cursor-pointer transition-colors whitespace-nowrap flex items-center gap-1.5 ${
-                            isSelected
-                              ? 'bg-primary text-primary-foreground hover:bg-primary/90'
-                              : 'hover:bg-muted'
-                          }`}
-                          onClick={() => toggleColor(color.value)}
-                        >
-                          <div
-                            className="w-3 h-3 rounded-full border border-gray-300"
-                            style={{ backgroundColor: color.colorHex || color.value }}
-                          />
-                          Color: {color.value}
-                        </Badge>
-                      );
-                    })} */}
-
-                    {/* Dynamic Attribute Tags */}
-                    {Object.entries(availableAttributes).map(([key, { label, options }]) => {
-                      return options.map((option) => {
-                        const isSelected = selectedAttributes[key]?.includes(option) || false;
-                        return (
-                          <Badge
-                            key={`${key}-${option}`}
-                            variant={isSelected ? "default" : "outline"}
-                            className={`cursor-pointer transition-colors whitespace-nowrap ${
-                              isSelected
-                                ? 'bg-primary text-primary-foreground hover:bg-primary/90'
-                                : 'hover:bg-muted'
-                            }`}
-                            onClick={() => toggleAttribute(key, option)}
-                          >
-                            {label}: {option}
-                          </Badge>
-                        );
-                      });
-                    })}
-
-                    {/* Tag Tags (if any) */}
-                    {/* {availableTags.map((tag) => {
-                      const isSelected = selectedTags.includes(tag);
-                      return (
-                        <Badge
-                          key={tag}
-                          variant={isSelected ? "default" : "outline"}
-                          className={`cursor-pointer transition-colors whitespace-nowrap ${
-                            isSelected
-                              ? 'bg-primary text-primary-foreground hover:bg-primary/90'
-                              : 'hover:bg-muted'
-                          }`}
-                          onClick={() => toggleTag(tag)}
-                        >
-                          {tag}
-                        </Badge>
-                      );
-                    })} */}
+            {/* Product Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-3 gap-3">
+              {isLoading ? (
+                Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="animate-pulse">
+                    <div className="aspect-[3/4] bg-secondary rounded-lg mb-3" />
+                    <div className="h-4 bg-secondary rounded w-3/4 mb-2" />
+                    <div className="h-4 bg-secondary rounded w-1/2" />
                   </div>
-                </div>
-              </div>
-
-              {/* Products Grid / Empty / Loading */}
-              {isLoadingProducts && productsCount === 0 ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
-                  {Array.from({ length: 8 }).map((_, idx) => (
-                    <div
-                      key={idx}
-                      className="bg-card rounded-lg overflow-hidden border animate-pulse h-full"
-                    >
-                      <div className="aspect-square bg-muted" />
-                      <div className="p-4 space-y-2">
-                        <div className="h-3 bg-muted rounded" />
-                        <div className="h-4 bg-muted rounded w-3/4" />
-                        <div className="h-4 bg-muted rounded w-1/3" />
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                ))
               ) : filteredProducts.length > 0 ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
-                  {filteredProducts.map((product: any) => {
-                    const formattedProduct = formatProduct(product);
-                    // Get available colors for this product
-                    const productColors = product.availableColors || [];
-                    const displayColors = productColors.slice(0, 5);
-                    const remainingColorsCount = productColors.length - 5;
-                    
-                    return (
-                      <Link
-                        key={formattedProduct.id}
-                        to={`/products/${formattedProduct.id}`}
-                        className="group"
-                      >
-                        <div className="flex flex-col h-full">
-                          {/* Product Image */}
-                          <div className="aspect-square bg-muted relative overflow-hidden mb-3">
-                            <img
-                              src={formattedProduct.image}
-                              alt={formattedProduct.name}
-                              className="w-full h-full object-cover group-hover:opacity-90 transition-opacity duration-300"
-                            />
-                            {formattedProduct.badge && (
-                              <Badge className="absolute top-2 right-2 bg-black/80 text-white border-0">
-                                {formattedProduct.badge}
-                              </Badge>
-                            )}
-                          </div>
-                          
-                          {/* Product Info */}
-                          <div className="flex-1 flex flex-col">
-                            <h3 className="font-medium text-base mb-1 group-hover:underline transition-colors line-clamp-2">
-                              {formattedProduct.name}
-                            </h3>
-                            <p className="text-sm text-muted-foreground mb-2 line-clamp-2">
-                              {product.catalogue?.description || formattedProduct.brand}
-                            </p>
-                            
-                            {/* Color Swatches */}
-                            {displayColors.length > 0 && (
-                              <div className="flex items-center gap-1.5 mb-3">
-                                {displayColors.map((colorName: string, idx: number) => {
-                                  // Get colorHex from product variants, fallback to getColorHex
-                                  const productId = formattedProduct.id;
-                                  const productColorMap = productColorHexMap[productId] || {};
-                                  const colorHex = productColorMap[colorName] || getColorHex(colorName);
-                                  return (
-                                    <div
-                                      key={idx}
-                                      className="w-4 h-4 rounded-full border border-gray-300"
-                                      style={{ backgroundColor: colorHex || colorName }}
-                                      title={colorName}
-                                    />
-                                  );
-                                })}
-                                {remainingColorsCount > 0 && (
-                                  <span className="text-xs text-muted-foreground ml-1">
-                                    + {remainingColorsCount} more
-                                  </span>
-                                )}
-                              </div>
-                            )}
-                            
-                            {/* Price */}
-                            <p className="text-base font-semibold mt-auto">
-                              ${formattedProduct.price}
-                            </p>
-                          </div>
-                        </div>
-                      </Link>
-                    );
-                  })}
-                </div>
+                filteredProducts.map((product) => (
+                  <ProductCard key={product._id || product.id} product={formatProductForCard(product)} />
+                ))
               ) : (
-                <div className="text-center py-16">
+                <div className="col-span-full text-center py-16">
                   <p className="text-xl text-muted-foreground mb-4">
-                    No products found matching your filters.
+                    No products found matching filters.
                   </p>
                   <Button variant="outline" onClick={clearFilters}>Clear Filters</Button>
                 </div>
@@ -1198,6 +856,29 @@ const CategoryProducts = () => {
           </div>
         </div>
       </main>
+
+      {/* Footer CTA */}
+      <section className="bg-accent py-16">
+        <div className="container text-center">
+          <h2 className="text-3xl md:text-5xl font-black text-accent-foreground mb-4">
+            Ready to build your brand?
+          </h2>
+          <p className="text-accent-foreground/70 mb-8 max-w-xl mx-auto">
+            Join thousands of creators selling custom merch. Zero upfront costs, unlimited creativity.
+          </p>
+          <Button
+            variant="default"
+            size="lg"
+            className="px-8 py-4 text-lg"
+            onClick={() => {
+              if (isAuthenticated) navigate("/create-store");
+              else navigate("/auth");
+            }}
+          >
+            Start Your Free Store
+          </Button>
+        </div>
+      </section>
 
       <Footer />
     </div>

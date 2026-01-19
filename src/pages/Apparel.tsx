@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { Navbar } from '@/components/Navbar';
-import { Footer } from '@/components/Footer';
+import Header from '@/components/home/Header';
+import Footer from '@/components/home/Footer';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
@@ -139,7 +139,7 @@ const CategorySubcategories = () => {
   if (!category) {
     return (
       <div className="min-h-screen bg-background">
-        <Navbar />
+        <Header />
         <div className="container py-8">
           <div className="text-center py-12">
             <h1 className="text-2xl font-bold mb-2">Category Not Found</h1>
@@ -156,7 +156,7 @@ const CategorySubcategories = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <Navbar />
+      <Header />
 
       <div className="container py-8">
         {/* Header Section */}

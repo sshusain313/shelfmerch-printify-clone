@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Navbar } from '@/components/Navbar';
-import { Footer } from '@/components/Footer';
+import Header from '@/components/home/Header';
+import Footer from '@/components/home/Footer';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Search, ArrowLeft, Filter } from 'lucide-react';
@@ -554,7 +554,7 @@ const CategoryProducts = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <Navbar />
+      <Header />
 
       <main className="container mx-auto px-4 py-8">
         {/* Breadcrumb */}

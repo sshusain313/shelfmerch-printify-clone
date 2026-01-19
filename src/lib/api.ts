@@ -189,10 +189,10 @@ export const storeProductsApi = {
   getPublic: async (storeId: string | undefined, productId: string) => {
     // Build URL - if storeId provided, use it; otherwise backend will use Host header (subdomain)
     // Note: storeId can be undefined when using subdomain-based resolution
-    const url = storeId 
+    const url = storeId
       ? `${API_BASE_URL}/store-products/public/${storeId}/${productId}`
       : `${API_BASE_URL}/store-products/public/${productId}`;
-      
+
     const response = await fetch(url, {
       method: 'GET',
       headers: {
@@ -213,10 +213,10 @@ export const storeProductsApi = {
   // List public products for a store
   listPublic: async (storeId?: string) => {
     // Build URL - if storeId provided, use it; otherwise backend will use Host header (subdomain)
-    const url = storeId 
+    const url = storeId
       ? `${API_BASE_URL}/store-products/public/${storeId}`
       : `${API_BASE_URL}/store-products/public`;
-      
+
     const response = await fetch(url, {
       method: 'GET',
       headers: {
@@ -232,6 +232,26 @@ export const storeProductsApi = {
 
     const json = await response.json();
     return json as { success: boolean; data: any[] };
+  },
+};
+
+// Catalog Products API (for internal catalog, not store-specific listings)
+export const catalogProductsApi = {
+  // List catalog products with optional filters/search
+  list: async (params?: { page?: number; limit?: number; search?: string; isActive?: boolean }) => {
+    const queryParams = new URLSearchParams();
+    if (params?.page) queryParams.append('page', params.page.toString());
+    if (params?.limit) queryParams.append('limit', params.limit.toString());
+    if (params?.search) queryParams.append('search', params.search);
+    if (params?.isActive !== undefined) queryParams.append('isActive', String(params.isActive));
+
+    const query = queryParams.toString();
+
+    return apiRequest<{
+      success: boolean;
+      data: any[];
+      count?: number;
+    }>(`/products${query ? `?${query}` : ''}`);
   },
 };
 
@@ -1701,10 +1721,10 @@ export const storeApi = {
   // Get a public store by subdomain (slug)
   getBySubdomain: async (subdomain?: string) => {
     // Build URL - if subdomain provided, use it; otherwise backend will use Host header
-    const url = subdomain 
+    const url = subdomain
       ? `${API_BASE_URL}/stores/by-subdomain/${subdomain}`
       : `${API_BASE_URL}/stores/by-subdomain`;
-      
+
     const response = await fetch(url, {
       method: 'GET',
       headers: {

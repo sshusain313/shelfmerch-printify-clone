@@ -1,13 +1,13 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Navbar } from "@/components/Navbar";
-import { Footer } from "@/components/Footer";
+import Header from '@/components/home/Header';
+import Footer from "@/components/home/Footer";
 import { Store, Globe, Printer, Truck, DollarSign, Leaf, TrendingUp, Shield, Star, Users, Map, PlayCircle, Award, Quote } from "lucide-react";
 
 const Index = () => {
   return (
     <div className="min-h-screen bg-background">
-      <Navbar />
+      <Header />
       
       {/* Hero Section */}
       <section className="relative overflow-hidden bg-gradient-to-b from-accent/30 to-background">

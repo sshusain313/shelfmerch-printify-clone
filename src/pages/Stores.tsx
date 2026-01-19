@@ -281,56 +281,138 @@ const Stores = () => {
                   </Button>
                 </Card>
               ) : (
-                <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-                  {stores.map((store) => (
-                  <Card key={store.id} className="p-6 flex flex-col justify-between gap-4 border-l-4 border-l-primary">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <h3 className="font-bold text-lg">{store.storeName}</h3>
-                        <p className="text-sm text-muted-foreground">{store.subdomain}.shelfmerch.com</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {store.useBuilder && (
-                          <Badge variant="secondary" className="text-xs flex items-center gap-1 bg-green-100 text-green-700 border-green-200">
-                            <CheckCircle2 className="w-3 h-3" />
-                            Builder
-                          </Badge>
-                        )}
-                        <Badge variant="outline" className="text-xs">Active</Badge>
-                      </div>
-                    </div>
+                <Card className="overflow-hidden">
+                  <div className="overflow-x-auto">
+                    {/* Desktop Table View */}
+                    <table className="w-full hidden md:table">
+                      <thead className="bg-muted/50">
+                        <tr>
+                          <th className="px-6 py-4 text-left text-sm font-semibold">Store Name</th>
+                          <th className="px-6 py-4 text-left text-sm font-semibold">Status</th>
+                          <th className="px-6 py-4 text-left text-sm font-semibold">Builder</th>
+                          <th className="px-6 py-4 text-left text-sm font-semibold">Last Published</th>
+                          <th className="px-6 py-4 text-left text-sm font-semibold">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {stores.map((store) => (
+                          <tr key={store.id} className="hover:bg-muted/30 transition-colors">
+                            <td className="px-6 py-4">
+                              <div>
+                                <div className="font-semibold text-foreground">{store.storeName}</div>
+                                <div className="text-sm text-muted-foreground">{store.subdomain}.shelfmerch.com</div>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4">
+                              <Badge className="bg-green-100 text-green-700 border-green-200 hover:bg-green-100">
+                                Active
+                              </Badge>
+                            </td>
+                            <td className="px-6 py-4">
+                              {store.useBuilder ? (
+                                <Badge variant="secondary" className="text-xs flex items-center gap-1 bg-green-100 text-green-700 border-green-200 w-fit">
+                                  <CheckCircle2 className="w-3 h-3" />
+                                  Builder
+                                </Badge>
+                              ) : (
+                                <span className="text-sm text-muted-foreground">-</span>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 text-sm text-muted-foreground">
+                              {store.builderLastPublishedAt
+                                ? new Date(store.builderLastPublishedAt).toLocaleDateString('en-GB', {
+                                    day: '2-digit',
+                                    month: '2-digit',
+                                    year: 'numeric'
+                                  })
+                                : '-'}
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="flex items-center gap-6">
+                                <Button 
+                                  variant="outline" 
+                                  size="sm" 
+                                  className="h-8"
+                                  asChild
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <a href={getStoreUrl(store.subdomain)} target="_blank" rel="noreferrer">
+                                    <ExternalLink className="w-4 h-4 mr-2" />
+                                    Visit Store
+                                  </a>
+                                </Button>
+                                <Button 
+                                  size="sm" 
+                                  className="h-8 bg-primary hover:bg-primary/90 text-primary-foreground"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigate(`/stores/${store.id}/builder`);
+                                  }}
+                                >
+                                  <Paintbrush className="w-4 h-4 mr-2" />
+                                  Customize Storefront
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
 
-                    {store.builderLastPublishedAt && (
-                      <p className="text-xs text-muted-foreground">
-                        Last published: {new Date(store.builderLastPublishedAt).toLocaleDateString()}
-                      </p>
-                    )}
-
-                    <div className="flex flex-col gap-2 pt-2">
-                      <div className="flex items-center gap-2">
-                        <Button variant="outline" size="sm" className="flex-1" asChild>
-                          <a href={getStoreUrl(store.subdomain)} target="_blank" rel="noreferrer">
-                            <ExternalLink className="w-4 h-4 mr-2" />
-                            Visit Store
-                          </a>
-                        </Button>
-                        <Button variant="default" size="sm" className="flex-1" onClick={() => toast.info('Dashboard coming soon')}>
-                          Dashboard
-                        </Button>
-                      </div>
-                      <Button 
-                        variant="secondary" 
-                        size="sm" 
-                        className="w-full"
-                        onClick={() => navigate(`/stores/${store.id}/builder`)}
-                      >
-                        <Paintbrush className="w-4 h-4 mr-2" />
-                        Customize Storefront
-                      </Button>
+                    {/* Mobile Stacked View */}
+                    <div className="md:hidden divide-y">
+                      {stores.map((store) => (
+                        <div key={store.id} className="p-4 space-y-4 hover:bg-muted/30 transition-colors">
+                          <div>
+                            <div className="font-semibold text-foreground mb-1">{store.storeName}</div>
+                            <div className="text-sm text-muted-foreground">{store.subdomain}.shelfmerch.com</div>
+                          </div>
+                          <div className="flex items-center gap-3 flex-wrap">
+                            <Badge className="bg-green-200 text-green-700 border-green-200 hover:bg-green-200">
+                              Active
+                            </Badge>
+                            {store.useBuilder && (
+                              <Badge variant="secondary" className="text-xs flex items-center gap-1 bg-green-100 text-green-700 border-green-200">
+                                <CheckCircle2 className="w-3 h-3" />
+                                Builder
+                              </Badge>
+                            )}
+                            {store.builderLastPublishedAt && (
+                              <span className="text-sm text-muted-foreground">
+                                Last published: {new Date(store.builderLastPublishedAt).toLocaleDateString('en-GB', {
+                                  day: '2-digit',
+                                  month: '2-digit',
+                                  year: 'numeric'
+                                })}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex flex-col gap-2 pt-2">
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              className="w-full"
+                              asChild
+                            >
+                              <a href={getStoreUrl(store.subdomain)} target="_blank" rel="noreferrer">
+                                <ExternalLink className="w-4 h-4 mr-2" />
+                                Visit Store
+                              </a>
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
+                              onClick={() => navigate(`/stores/${store.id}/builder`)}
+                            >
+                              <Paintbrush className="w-4 h-4 mr-2" />
+                              Customize Storefront
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  </Card>
-                  ))}
-                </div>
+                  </div>
+                </Card>
               )}
             </div>
           )}

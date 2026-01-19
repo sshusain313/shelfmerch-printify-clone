@@ -1,10 +1,7 @@
-@tailwind base;
+/* @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
-All colors MUST be HSL.
-*/
 
 @layer base {
   :root {
@@ -89,7 +86,7 @@ All colors MUST be HSL.
 }
 
 @layer components {
-  /* Storefront Button Styles */
+
   .btn-primary-store {
     @apply px-8 py-4 rounded-full bg-primary text-primary-foreground font-medium flex items-center justify-center gap-2 hover:bg-primary/90 transition-colors shadow-lg hover:shadow-xl;
   }
@@ -98,22 +95,21 @@ All colors MUST be HSL.
     @apply px-8 py-4 rounded-full border-2 border-foreground text-foreground font-medium flex items-center justify-center gap-2 hover:bg-foreground hover:text-background transition-colors;
   }
 
-  /* Section Heading */
+
   .section-heading {
     @apply text-3xl md:text-4xl lg:text-5xl font-semibold tracking-tight;
   }
 
-  /* Hero Gradient */
+
   .hero-gradient {
     @apply bg-gradient-to-br from-muted/30 via-background to-accent/20;
   }
 
-  /* Font Display */
+
   .font-display {
     font-family: var(--font-display, ui-serif, Georgia, Cambria, "Times New Roman", Times, serif);
   }
 
-  /* Animations */
   @keyframes float {
     0%, 100% {
       transform: translateY(0px);
@@ -168,12 +164,178 @@ All colors MUST be HSL.
     }
   }
 
-  /* Product Card Styles */
   .product-card {
     @apply transition-all duration-300;
   }
 
   .product-image-wrapper {
     @apply relative overflow-hidden;
+  }
+} */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222 47% 11%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+
+    --primary: 142 71% 45%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222 47% 11%;
+
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+
+    --accent: 210 40% 96%;
+    --accent-foreground: 222 47% 11%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 142 71% 45%;
+
+    --radius: 0.5rem;
+
+    /* Custom Shelf Merch Colors */
+    --brand-green: 142 71% 45%;
+    --brand-green-hover: 142 71% 38%;
+    --brand-dark: 222 47% 11%;
+    --brand-gray: 215 16% 47%;
+    --brand-light-gray: 210 40% 96%;
+    --footer-bg: 220 26% 14%;
+    --footer-foreground: 210 40% 96%;
+    --hero-gradient-start: 220 26% 14%;
+    --hero-gradient-end: 220 26% 20%;
+
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5% 26%;
+    --sidebar-primary: 240 6% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 5% 96%;
+    --sidebar-accent-foreground: 240 6% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217 91% 60%;
+  }
+
+  .dark {
+    --background: 222 47% 11%;
+    --foreground: 210 40% 98%;
+
+    --card: 222 47% 11%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 222 47% 11%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 142 71% 45%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 217 33% 17%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 20% 65%;
+
+    --accent: 217 33% 17%;
+    --accent-foreground: 210 40% 98%;
+
+    --destructive: 0 63% 31%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 217 33% 17%;
+    --input: 217 33% 17%;
+    --ring: 212 27% 84%;
+    --sidebar-background: 240 6% 10%;
+    --sidebar-foreground: 240 5% 96%;
+    --sidebar-primary: 224 76% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 4% 16%;
+    --sidebar-accent-foreground: 240 5% 96%;
+    --sidebar-border: 240 4% 16%;
+    --sidebar-ring: 217 91% 60%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+}
+
+@layer components {
+  .container-custom {
+    @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8;
+  }
+
+  .section-padding {
+    @apply py-16 lg:py-24;
+  }
+
+  .section-title {
+    @apply text-3xl md:text-4xl font-bold text-foreground leading-tight;
+  }
+
+  .section-subtitle {
+    @apply text-lg text-muted-foreground leading-relaxed;
+  }
+
+  .hero-title {
+    @apply text-4xl md:text-5xl lg:text-6xl font-bold text-foreground leading-tight;
+  }
+
+  .hero-description {
+    @apply text-lg md:text-xl text-muted-foreground leading-relaxed max-w-xl;
+  }
+
+  .card-hover {
+    @apply transition-all duration-300 hover:shadow-lg hover:-translate-y-1;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .gradient-hero {
+    background: linear-gradient(135deg, hsl(var(--hero-gradient-start)) 0%, hsl(var(--hero-gradient-end)) 100%);
+  }
+
+  .gradient-primary {
+    background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(142 71% 38%) 100%);
+  }
+
+  /* Hide scrollbar for Chrome, Safari and Opera */
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Hide scrollbar for IE, Edge and Firefox */
+  .scrollbar-hide {
+    -ms-overflow-style: none; /* IE and Edge */
+    scrollbar-width: none; /* Firefox */
   }
 }

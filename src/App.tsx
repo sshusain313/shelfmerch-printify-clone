@@ -53,6 +53,25 @@ import WalletTransactions from "./pages/WalletTransactions";
 import MerchantWallet from "./pages/MerchantWallet";
 import AdminWithdrawals from "./pages/AdminWithdrawals";
 
+import PricingPage from "./pages/rem-pgs/PricingPage";
+import PlatformPage from "./pages/PlatformPage";
+import CreatorAgenciesPage from "./pages/rem-pgs/solutions/CreatorAgenciesPage";
+import FashionApparelPage from "./pages/rem-pgs/solutions/FashionApparelPage";
+import EntertainmentMediaPage from "./pages/rem-pgs/solutions/EntertainmentMediaPage";
+import HomeDecorPage from "./pages/rem-pgs/solutions/HomeDecorPage";
+import CustomizedMerchPage from "./pages/rem-pgs/solutions/CustomizedMerchPage";
+import EnterpriseMerchPage from "./pages/rem-pgs/solutions/EnterpriseMerchPage";
+import BulkOrdersPage from "./pages/rem-pgs/solutions/BulkOrdersPage";
+import OurStoryPage from "./pages/rem-pgs/about/OurStoryPage";
+import CareersPage from "./pages/rem-pgs/about/CareersPage";
+import HelpCenterPage from "./pages/rem-pgs/support/HelpCenterPage";
+import PoliciesPage from "./pages/rem-pgs/support/PoliciesPage";
+import CurrentProductionShippingTimesPage from "./pages/rem-pgs/support/CurrentProductionShippingTimesPage";
+import CustomerSupportPolicyPage from "./pages/rem-pgs/support/CustomerSupportPolicyPage";
+import ContentGuidelinesPage from "./pages/rem-pgs/support/ContentGuidelinesPage";
+import ContactUsPage from "./pages/rem-pgs/support/ContactUsPage";
+
+
 // Root route component that conditionally renders Index or StoreRoutes
 // On subdomains, StoreRoutes handles all routing including root path
 const RootRoute = () => {
@@ -79,6 +98,7 @@ const App = () => (
                 {/* Main site routes - only render when NOT on a tenant subdomain */}
                 {!isTenantSubdomain() && (
                   <>
+                    <Route path="/platform" element={<PlatformPage />} />
                     <Route path="/products" element={<Products />} />
                     <Route path="/categories" element={<AllCategories />} />
                     <Route path="/category-subcategories/:categoryId" element={<CategorySubcategories />} />
@@ -86,6 +106,26 @@ const App = () => (
                     <Route path="/products/:id" element={<ProductDetail />} />
                     <Route path="/auth" element={<Auth />} />
                     <Route path="/verify-email" element={<VerifyEmail />} />
+                    {/* Pricing */}
+                    <Route path="/pricing" element={<PricingPage />} />
+                    {/* Solutions */}
+                    <Route path="/solutions/creators-agencies" element={<CreatorAgenciesPage />} />
+                    <Route path="/solutions/fashion-apparel" element={<FashionApparelPage />} />
+                    <Route path="/solutions/entertainment-media" element={<EntertainmentMediaPage />} />
+                    <Route path="/solutions/home-decor" element={<HomeDecorPage />} />
+                    <Route path="/solutions/customized-merch" element={<CustomizedMerchPage />} />
+                    <Route path="/solutions/enterprise-merch" element={<EnterpriseMerchPage />} />
+                    <Route path="/solutions/bulk-orders" element={<BulkOrdersPage />} />
+                    {/* About Us */}
+                    <Route path="/about/our-story" element={<OurStoryPage />} />
+                    <Route path="/about/careers" element={<CareersPage />} />
+                    {/* Support */}
+                    <Route path="/support/help-center" element={<HelpCenterPage />} />
+                    <Route path="/support/policies" element={<PoliciesPage />} />
+                    <Route path="/support/production-shipping-times" element={<CurrentProductionShippingTimesPage />} />
+                    <Route path="/support/customer-support-policy" element={<CustomerSupportPolicyPage />} />
+                    <Route path="/support/content-guidelines" element={<ContentGuidelinesPage />} />
+                    <Route path="/support/contact-us" element={<ContactUsPage />} />
                   </>
                 )}
                 <Route
