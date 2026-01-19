@@ -92,7 +92,7 @@ router.post(
       // Log incoming request for debugging
       console.log('Register request body:', JSON.stringify(req.body, null, 2));
       console.log('Email type:', typeof req.body.email, 'Value:', req.body.email);
-      
+
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
         console.log('Validation errors:', JSON.stringify(errors.array(), null, 2));
@@ -108,7 +108,7 @@ router.post(
       }
 
       let { name, email, password, role } = req.body;
-      
+
       // Clean email - remove any leading @ that normalizeEmail might have added incorrectly
       if (email && typeof email === 'string') {
         email = email.trim();
@@ -117,7 +117,7 @@ router.post(
           email = email.substring(1); // Remove leading @
         }
       }
-      
+
       // Additional validation
       if (!email || typeof email !== 'string' || !email.trim()) {
         return res.status(400).json({
@@ -126,7 +126,7 @@ router.post(
           errors: [{ msg: 'Email is required', param: 'email', value: email }]
         });
       }
-      
+
       // Validate email format manually as backup
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(email)) {
@@ -149,11 +149,11 @@ router.post(
       // Validate role if provided
       const validRoles = ['superadmin', 'merchant', 'staff'];
       const userRole = role && validRoles.includes(role) ? role : 'merchant';
-      
+
       // Generate verification token
       const verificationToken = crypto.randomBytes(32).toString('hex');
       const verificationTokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
-      
+
       // Create user
       console.log('Creating user with:', { name, email, role: userRole });
       const user = await User.create({
@@ -191,7 +191,7 @@ router.post(
     } catch (error) {
       console.error('Register error:', error);
       console.error('Error stack:', error.stack);
-      
+
       // Handle duplicate email error
       if (error.code === 11000 || error.message?.includes('duplicate')) {
         return res.status(400).json({
@@ -200,7 +200,7 @@ router.post(
           errors: [{ msg: 'Email already registered', param: 'email' }]
         });
       }
-      
+
       res.status(500).json({
         success: false,
         message: 'Server error during registration',
