@@ -17,6 +17,9 @@ interface StoreAuthContextType {
     register: (subdomain: string, name: string, email: string, password: string) => Promise<boolean>;
     logout: () => void;
     checkAuth: (subdomain: string) => Promise<void>;
+    requestPasswordResetOTP: (subdomain: string, email: string) => Promise<boolean>;
+    verifyPasswordResetOTP: (subdomain: string, email: string, otp: string) => Promise<boolean>;
+    resetPassword: (subdomain: string, email: string, otp: string, newPassword: string) => Promise<boolean>;
 }
 
 const StoreAuthContext = createContext<StoreAuthContextType | undefined>(undefined);
@@ -127,6 +130,74 @@ export const StoreAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         // Simple fix: clear all keys starting with store_token_? Or just reset state.
     };
 
+    const requestPasswordResetOTP = async (subdomain: string, email: string): Promise<boolean> => {
+        try {
+            const resp = await fetch(`${API_BASE}/store-auth/forgot-password`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ subdomain, email }),
+            });
+            const data = await resp.json();
+
+            if (resp.ok && data.success) {
+                toast.success(data.message || 'We\'ve sent a verification code to your email.');
+                return true;
+            } else {
+                toast.error(data.message || 'Failed to send verification code');
+                return false;
+            }
+        } catch (err) {
+            console.error('Request password reset OTP error', err);
+            toast.error('Failed to send verification code. Please try again.');
+            return false;
+        }
+    };
+
+    const verifyPasswordResetOTP = async (subdomain: string, email: string, otp: string): Promise<boolean> => {
+        try {
+            const resp = await fetch(`${API_BASE}/store-auth/verify-reset-otp`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ subdomain, email, otp }),
+            });
+            const data = await resp.json();
+
+            if (resp.ok && data.success) {
+                return true;
+            } else {
+                toast.error(data.message || 'Invalid or expired verification code');
+                return false;
+            }
+        } catch (err) {
+            console.error('Verify password reset OTP error', err);
+            toast.error('Failed to verify code. Please try again.');
+            return false;
+        }
+    };
+
+    const resetPassword = async (subdomain: string, email: string, otp: string, newPassword: string): Promise<boolean> => {
+        try {
+            const resp = await fetch(`${API_BASE}/store-auth/reset-password`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ subdomain, email, otp, newPassword }),
+            });
+            const data = await resp.json();
+
+            if (resp.ok && data.success) {
+                toast.success('Password updated successfully. Please login.');
+                return true;
+            } else {
+                toast.error(data.message || 'Failed to reset password');
+                return false;
+            }
+        } catch (err) {
+            console.error('Reset password error', err);
+            toast.error('Failed to reset password. Please try again.');
+            return false;
+        }
+    };
+
     return (
         <StoreAuthContext.Provider value={{
             customer,
@@ -135,7 +206,10 @@ export const StoreAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             login,
             register,
             logout,
-            checkAuth
+            checkAuth,
+            requestPasswordResetOTP,
+            verifyPasswordResetOTP,
+            resetPassword
         }}>
             {children}
         </StoreAuthContext.Provider>

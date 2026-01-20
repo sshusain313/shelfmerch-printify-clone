@@ -38,6 +38,14 @@ const StoreCustomerSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    passwordResetOTP: {
+      type: String,
+      select: false, // Don't include in queries by default
+    },
+    passwordResetOTPExpiry: {
+      type: Date,
+      select: false,
+    },
   },
   {
     timestamps: true,
