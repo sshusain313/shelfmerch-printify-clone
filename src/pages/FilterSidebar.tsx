@@ -2,14 +2,14 @@
 import { useState } from "react";
 import { ChevronDown, X } from "lucide-react";
 
-const productTypes = [
-  { name: "T-shirt" },
-  { name: "Hoodie" },
-  { name: "Sweatshirt" },
-  { name: "Jacket" },
-  { name: "Crop Top" },
-  { name: "Tank Top" },
-];
+// const productTypes = [
+//   { name: "T-shirt" },
+//   { name: "Hoodie" },
+//   { name: "Sweatshirt" },
+//   { name: "Jacket" },
+//   { name: "Crop Top" },
+//   { name: "Tank Top" },
+// ];
 
 const materials = [
   { name: "Cotton" },
@@ -221,7 +221,7 @@ export const FilterSidebar = () => {
 
         {/* Filter sections */}
         <div className="max-h-[calc(100vh-220px)] overflow-y-auto pr-2">
-          <FilterSection title="Product Type">
+          {/* <FilterSection title="Product Type">
             {productTypes.map((type) => (
               <FilterCheckbox
                 key={type.name}
@@ -230,7 +230,7 @@ export const FilterSidebar = () => {
                 onChange={() => toggleFilter(type.name, selectedTypes, setSelectedTypes)}
               />
             ))}
-          </FilterSection>
+          </FilterSection> */}
 
           <FilterSection title="Material">
             {materials.map((material) => (

@@ -22,7 +22,17 @@ const Footer = () => {
     "Enterprise Merch": "/solutions/enterprise-merch",
     "Bulk Orders": "/solutions/bulk-orders",
   };
-
+  const ProductsRoutes: Record<string, string> = {
+    "Catalogue": "/products/category/apparel",
+    "T-shirts": "/products/category/t-shirts",
+    "Polos": "/products/category/apparel",
+    "Oversized": "/products/category/apparel",
+    "Hoodies": "/products/category/hoodies",
+    "Sweatshirts": "/products/category/sweatshirts",
+    "Mrchx": "/products/category/apparel",
+    "Tees Graphy": "/products/category/apparel",
+   
+  };
   const aboutRoutes: Record<string, string> = {
     "Our Story": "/about/our-story",
     "Careers": "/about/careers",

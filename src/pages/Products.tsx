@@ -20,6 +20,10 @@ const formatForCatalog = (product: any, isLatest = false) => {
         imageUrl: product.galleryImages?.find((img: any) => img.isPrimary)?.url ||
             product.galleryImages?.[0]?.url ||
             '/placeholder.png',
+        // Include category/subcategory info for navigation
+        categoryId: product.catalogue?.categoryId,
+        subcategoryId: product.catalogue?.subcategoryIds?.[0] || product.catalogue?.subcategoryId,
+        subcategoryIds: product.catalogue?.subcategoryIds || [],
     };
 };
 
@@ -55,10 +59,15 @@ const Products = () => {
                 // Fallback to mock products
                 const mocks = mockProducts.map(p => ({
                     ...p,
-                    catalogue: { name: p.name, basePrice: parseFloat(p.price), tags: [p.badge] },
+                    catalogue: { 
+                        name: p.name, 
+                        basePrice: p.price, 
+                        tags: p.badge ? [p.badge] : [],
+                        categoryId: p.category
+                    },
                     galleryImages: [{ url: p.image, isPrimary: true }],
-                    availableSizes: Array(p.sizesCount).fill('M'),
-                    availableColors: Array(p.colorsCount).fill('Black')
+                    availableSizes: p.sizes || [],
+                    availableColors: p.colors || []
                 }));
 
                 setBestProducts(mocks.slice(0, 4).map(p => formatForCatalog(p)));

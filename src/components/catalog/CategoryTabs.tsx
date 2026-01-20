@@ -153,6 +153,13 @@ const categories: Category[] = [
 
 ];
 
+const slugify = (value: string): string => {
+  return value
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/\s+/g, "-");
+};
+
 const CategoryTabs = () => {
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const categoryRef = useRef<HTMLDivElement>(null);
@@ -254,7 +261,9 @@ const CategoryTabs = () => {
       {activeCategory && (
         <div className="mt-8 slide-enter overflow-hidden">
           <div className="relative">
-            <h3 className="text-lg font-semibold mb-4 px-1">{categories.find(c => c.id === activeCategory)?.name} Categories</h3>
+            <h3 className="text-lg font-semibold mb-4 px-1">
+              {categories.find(c => c.id === activeCategory)?.name} Categories
+            </h3>
             {/* Sub Scroll Left */}
             <button
               onClick={() => scrollSubcategories("left")}
@@ -262,23 +271,18 @@ const CategoryTabs = () => {
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
-            <Link
-              key={activeCategory}
-              to={`/category-subcategories/${activeCategory}`}
-              className="group"
+            <div
+              ref={subcategoryRef}
+              className="flex items-center gap-4 overflow-x-auto scrollbar-hide py-2 px-1 snap-x snap-mandatory"
             >
-              <div
-                ref={subcategoryRef}
-                className="flex items-center gap-4 overflow-x-auto scrollbar-hide py-2 px-1 snap-x snap-mandatory"
-              >
-                {activeSubcategories.map((sub, index) => (
-                  <button
+              {activeSubcategories.map((sub, index) => {
+                const slug = slugify(sub.name);
+                return (
+                  <Link
                     key={sub.name}
+                    to={`/products/category/${slug}`}
                     className="group flex-shrink-0 aspect-square w-28 sm:w-32 relative rounded-xl overflow-hidden snap-start transition-all hover:ring-2 hover:ring-primary hover:ring-offset-1"
                     style={{ animationDelay: `${index * 50}ms` }}
-                    onClick={() => {
-                      console.log(`Navigate to: ${sub.name}`);
-                    }}
                   >
                     <img
                       src={sub.image}
@@ -289,10 +293,10 @@ const CategoryTabs = () => {
                     <span className="absolute bottom-2 left-2 right-2 text-xs font-semibold text-white text-center">
                       {sub.name}
                     </span>
-                  </button>
-                ))}
-              </div>
-            </Link>
+                  </Link>
+                );
+              })}
+            </div>
             {/* Sub Scroll Right */}
             <button
               onClick={() => scrollSubcategories("right")}

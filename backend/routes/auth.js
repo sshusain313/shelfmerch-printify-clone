@@ -215,7 +215,6 @@ router.post(
 // @access  Public
 router.post(
   '/login',
-  authLimiter,
   [
     body('email')
       .trim()
@@ -265,15 +264,6 @@ router.post(
         return res.status(401).json({
           success: false,
           message: 'Invalid credentials'
-        });
-      }
-
-      // Check if email is verified
-      if (!user.isEmailVerified) {
-        return res.status(403).json({
-          success: false,
-          message: 'Please verify your email address before logging in. Check your inbox for the verification email.',
-          requiresVerification: true
         });
       }
 

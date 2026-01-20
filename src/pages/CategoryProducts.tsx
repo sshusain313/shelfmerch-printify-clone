@@ -4,6 +4,7 @@ import Header from '@/components/home/Header';
 import Footer from '@/components/home/Footer';
 import { Button } from '@/components/ui/button';
 import { CategorySidebar } from '@/components/CategorySidebar';
+import { FilterSidebar } from './FilterSidebar';
 import { Search, ChevronDown, User, X } from 'lucide-react';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Badge } from '@/components/ui/badge';
@@ -812,9 +813,11 @@ const CategoryProducts = () => {
       {/* Main content */}
       <main className="container py-6">
         <div className="flex flex-col lg:flex-row gap-8">
-          {/* Left: Dynamic Sidebar (formerly CategorySidebar) */}
-         
-           <CategorySidebar />
+          {/* Left: Category sidebar + Filters (stacked) */}
+          <div className="hidden lg:flex lg:flex-col w-64 flex-shrink-0 gap-6">
+            <CategorySidebar />
+            <FilterSidebar />
+          </div>
 
           {/* Right: Product Grid */}
           <div className="flex-1">

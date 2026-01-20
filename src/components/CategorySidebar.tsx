@@ -1,5 +1,6 @@
 
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { ChevronDown } from "lucide-react";
 
 interface CategoryItem {
@@ -17,9 +18,18 @@ const categories: CategoryItem[] = [
   { name: "Print Products", children: ["Business Cards", "Books", "ID Cards", "Stickers", "Posters", "Flyers", "Greeting Cards", "Billboards", "Magazines", "Brochures", "Lanyards", "Banners", "Canvas", "Notebooks"] },
   { name: "Packaging", children: ["Boxes", "Tubes", "Bottles", "Pouch", "Cosmetics", "Bottles"] },
   { name: "Tech", children: ["IPhone Cases", "Lap Top Cases", "IPad Cases", "Macbook Cases", "Phone Cases"] },
-  { name: "Jewelry", children: ["Rings", "Necklaces", "Earrings"] },
+  { name: "Jewelry", children: ["Rings", "Necklaces", "Earrings", "Bracelets"] },
 
 ];
+
+const slugify = (value: string): string => {
+  return value
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/[^a-z0-9\s-]/g, "") // remove non-alphanumeric except space and hyphen
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-");
+};
 
 interface CategorySectionProps {
   category: CategoryItem;
@@ -45,14 +55,18 @@ const CategorySection = ({ category }: CategorySectionProps) => {
       </button>
       {isOpen && category.children && (
         <div className="pl-4 pt-1 space-y-1">
-          {category.children.map((child) => (
-            <button
-              key={child}
-              className="block w-full text-left text-sm text-foreground hover:text-foreground transition-colors py-1"
-            >
-              {child}
-            </button>
-          ))}
+          {category.children.map((child) => {
+            const slug = slugify(child);
+            return (
+              <Link
+                key={child}
+                to={`/products/category/${slug}`}
+                className="block w-full text-left text-sm text-foreground hover:text-foreground transition-colors py-1"
+              >
+                {child}
+              </Link>
+            );
+          })}
         </div>
       )}
     </div>
