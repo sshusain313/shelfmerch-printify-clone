@@ -139,7 +139,6 @@ export const ProductInfoPanel: React.FC<{
   onDisplacementSettingsChange,
   PX_PER_INCH = 10,
 }) => {
-  const [isColorDropdownOpen, setIsColorDropdownOpen] = React.useState(false);
   const [expandedColor, setExpandedColor] = React.useState<string | null>(null);
 
   // Build a map of color names to hex values from variants
@@ -284,28 +283,25 @@ export const ProductInfoPanel: React.FC<{
             {/* Color Grid */}
             <div className="grid grid-cols-1 gap-2">
               {availableColors.map((color, index) => {
-                const isSelected = selectedColors.includes(color);
+                const colorSizes = selectedSizesByColor[color] || [];
+                const isColorSelected = selectedColors.includes(color) || colorSizes.length > 0;
                 const colorHex = colorHexMap[color] || getColorHex(color);
                 const isExpanded = expandedColor === color;
                 const sizesForColor = getSizesForColor(color);
 
                 return (
                   <div key={index} className="space-y-2">
-                    {/* Color Option */}
+                    {/* Color Option (clickable header to expand/collapse) */}
                     <div
                       className={`
-                        flex items-center gap-2 p-2 rounded-md border-2 transition-all
-                        ${isSelected 
-                          ? 'border-primary bg-primary/5' 
+                        flex items-center gap-2 p-2 rounded-md border-2
+                        ${isColorSelected
+                          ? 'border-primary bg-primary/5'
                           : 'border-border hover:border-primary/50 hover:bg-muted/50'
                         }
                       `}
+                      onClick={() => setExpandedColor(isExpanded ? null : color)}
                     >
-                      <Checkbox
-                        checked={isSelected}
-                        onCheckedChange={() => onColorToggle?.(color)}
-                        className="cursor-pointer"
-                      />
                       <div
                         className="w-6 h-6 rounded-full border-2 flex-shrink-0"
                         style={{
@@ -315,16 +311,13 @@ export const ProductInfoPanel: React.FC<{
                       />
                       <span className="text-sm font-medium flex-1">{color}</span>
                       {sizesForColor.length > 0 && (
-                        <button
-                          onClick={() => setExpandedColor(isExpanded ? null : color)}
-                          className="p-1 hover:bg-muted rounded"
-                        >
+                        <div className="p-1">
                           {isExpanded ? (
                             <ChevronUp className="h-4 w-4" />
                           ) : (
                             <ChevronDown className="h-4 w-4" />
                           )}
-                        </button>
+                        </div>
                       )}
                     </div>
 
@@ -352,10 +345,26 @@ export const ProductInfoPanel: React.FC<{
                                 <Checkbox
                                   checked={isSizeSelected}
                                   onCheckedChange={() => {
+                                    const newSelected = !isSizeSelected;
+                                    const existingSizes = selectedSizesByColor[color] || [];
+
+                                    // Update size selection for this color
                                     if (onSizeToggleForColor) {
                                       onSizeToggleForColor(color, size);
                                     } else {
                                       onSizeToggle?.(size);
+                                    }
+
+                                    // Auto-highlight color based on size selection
+                                    if (newSelected) {
+                                      if (!selectedColors.includes(color)) {
+                                        onColorToggle?.(color);
+                                      }
+                                    } else {
+                                      // If this was the last selected size for this color, remove color highlight
+                                      if (existingSizes.length === 1 && selectedColors.includes(color)) {
+                                        onColorToggle?.(color);
+                                      }
                                     }
                                   }}
                                   className="cursor-pointer"
