@@ -36,18 +36,28 @@ router.get(
       });
 
       // Redirect to frontend with token
-      // Use config/env for frontend URL, default to localhost:8083 in dev
-      // In production, BASE_DOMAIN handles it
+      // Use BASE_URL or BASE_DOMAIN for frontend URL
+      const BASE_DOMAIN = process.env.BASE_DOMAIN || 'shelfmerch.in';
+      const BASE_URL = process.env.BASE_URL || (process.env.NODE_ENV === 'production' 
+        ? `http://${BASE_DOMAIN}` 
+        : 'http://localhost:5000');
       const frontendUrl = process.env.NODE_ENV === 'production' 
-        ? `https://${process.env.BASE_DOMAIN}/auth` 
-        : 'http://localhost:8083/auth';
+        ? `${BASE_URL}/auth` 
+        : (process.env.FRONTEND_URL || 'http://localhost:5173/auth');
       
       const redirectUrl = `${frontendUrl}?token=${response.token}&refreshToken=${response.refreshToken}`;
       
       res.redirect(redirectUrl);
     } catch (err) {
-      console.error('Google Config Error:', err);
-      res.redirect('http://localhost:8083/auth?error=google_auth_failed');
+      console.error('Google OAuth callback error:', err);
+      const BASE_DOMAIN = process.env.BASE_DOMAIN || 'shelfmerch.in';
+      const BASE_URL = process.env.BASE_URL || (process.env.NODE_ENV === 'production' 
+        ? `http://${BASE_DOMAIN}` 
+        : 'http://localhost:5000');
+      const frontendUrl = process.env.NODE_ENV === 'production' 
+        ? `${BASE_URL}/auth` 
+        : (process.env.FRONTEND_URL || 'http://localhost:5173/auth');
+      res.redirect(`${frontendUrl}?error=google_auth_failed`);
     }
   }
 );

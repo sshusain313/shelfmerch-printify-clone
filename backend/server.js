@@ -55,7 +55,7 @@ const corsOptions = {
   origin: function (origin, callback) {
     const BASE_DOMAIN = process.env.BASE_DOMAIN || 'shelfmerch.in';
     const isProduction = process.env.NODE_ENV === 'production';
-    
+
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
 
@@ -67,9 +67,15 @@ const corsOptions = {
     // Always allow root domain
     allowedOrigins.push(`https://${BASE_DOMAIN}`);
     allowedOrigins.push(`http://${BASE_DOMAIN}`);
+
+    // Allow CLIENT_URL if defined
+    if (process.env.CLIENT_URL) {
+      allowedOrigins.push(process.env.CLIENT_URL);
+    }
+
     allowedOrigins.push('http://localhost:8080');
     allowedOrigins.push('http://72.62.76.198:8080');
-    
+
     // In production, allow wildcard subdomains (*.shelfmerch.in)
     if (isProduction) {
       // Allow any subdomain of base domain
