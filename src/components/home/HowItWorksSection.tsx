@@ -51,9 +51,7 @@ const HowItWorksSection = () => {
         </div>
 
         <div className="text-center">
-          <Button className="bg-primary hover:bg-lime-dark text-primary-foreground font-semibold px-6 py-3 rounded-lg flex items-center gap-2 mx-auto">
-            Start Selling
-          </Button>
+          
         </div>
       </div>
     </section>

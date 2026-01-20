@@ -36,13 +36,22 @@ const Header = () => {
   const [isSolutionsOpen, setIsSolutionsOpen] = useState(false);
   const [isAboutUsOpen, setIsAboutUsOpen] = useState(false);
   const [isSupportOpen, setIsSupportOpen] = useState(false);
+  const [isSupportExpanded, setIsSupportExpanded] = useState(false);
+
+  const primarySupportItems = supportItems.filter(
+    (item) => item.name === 'Help Center' || item.name === 'Contact Us'
+  );
+
+  const secondarySupportItems = supportItems.filter(
+    (item) => item.name !== 'Help Center' && item.name !== 'Contact Us'
+  );
 
   const handleLogout = async () => {
     await logout();
   };
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    <header className="sticky top-0 z-[60] w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container flex h-16 items-center justify-between">
         {/* Logo */}
         <Link to="/" className="flex items-center gap-2">
@@ -71,7 +80,6 @@ const Header = () => {
             onMouseLeave={() => setIsSolutionsOpen(false)}
           >
             <button 
-              onClick={() => setIsSolutionsOpen(!isSolutionsOpen)}
               className="flex items-center gap-1 cursor-pointer hover:text-primary transition-colors"
             >
               <span className="text-l font-medium">Solutions</span>
@@ -79,7 +87,7 @@ const Header = () => {
             </button>
             
             {isSolutionsOpen && (
-              <div className="absolute top-full left-0 w-56 z-50 pt-1">
+              <div className="absolute top-full left-0 w-56 z-[70] pt-1">
                 <div className="bg-popover border border-border rounded-lg shadow-lg py-2">
                   {solutionsItems.map((item) => (
                     <Link
@@ -107,7 +115,6 @@ const Header = () => {
             onMouseLeave={() => setIsAboutUsOpen(false)}
           >
             <button 
-              onClick={() => setIsAboutUsOpen(!isAboutUsOpen)}
               className="flex items-center gap-1 cursor-pointer hover:text-primary transition-colors"
             >
               <span className="text-l font-medium">About Us</span>
@@ -115,7 +122,7 @@ const Header = () => {
             </button>
             
             {isAboutUsOpen && (
-              <div className="absolute top-full left-0 w-56 z-50 pt-1">
+              <div className="absolute top-full left-0 w-56 z-[70] pt-1">
                 <div className="bg-popover border border-border rounded-lg shadow-lg py-2">
                   {aboutUsItems.map((item) => (
                     <Link
@@ -140,10 +147,12 @@ const Header = () => {
           <div 
             className="relative"
             onMouseEnter={() => setIsSupportOpen(true)}
-            onMouseLeave={() => setIsSupportOpen(false)}
+            onMouseLeave={() => {
+              setIsSupportOpen(false);
+              setIsSupportExpanded(false);
+            }}
           >
             <button 
-              onClick={() => setIsSupportOpen(!isSupportOpen)}
               className="flex items-center gap-1 cursor-pointer hover:text-primary transition-colors"
             >
               <span className="text-l font-medium">Support</span>
@@ -151,22 +160,59 @@ const Header = () => {
             </button>
             
             {isSupportOpen && (
-              <div className="absolute top-full left-0 w-56 z-50 pt-1">
+              <div className="absolute top-full left-0 w-56 z-[70] pt-1">
                 <div className="bg-popover border border-border rounded-lg shadow-lg py-2">
-                  {supportItems.map((item) => (
-                    <Link
-                      key={item.path}
-                      to={item.path}
-                      onClick={() => setIsSupportOpen(false)}
-                      className={`block px-4 py-2 text-sm transition-colors ${
-                        location.pathname === item.path
-                          ? 'bg-primary/10 text-primary font-medium'
-                          : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                      }`}
-                    >
-                      {item.name}
-                    </Link>
-                  ))}
+                  {primarySupportItems.map((item) => {
+                    if (item.name === 'Help Center') {
+                      return (
+                        <button
+                          key={item.path}
+                          type="button"
+                          onClick={() => setIsSupportExpanded((prev) => !prev)}
+                          className="w-full text-left px-4 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground"
+                        >
+                          {item.name}
+                        </button>
+                      );
+                    }
+
+                    return (
+                      <Link
+                        key={item.path}
+                        to={item.path}
+                        onClick={() => {
+                          setIsSupportOpen(false);
+                          setIsSupportExpanded(false);
+                        }}
+                        className={`block px-4 py-2 text-sm transition-colors ${
+                          location.pathname === item.path
+                            ? 'bg-primary/10 text-primary font-medium'
+                            : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                        }`}
+                      >
+                        {item.name}
+                      </Link>
+                    );
+                  })}
+
+                  {isSupportExpanded &&
+                    secondarySupportItems.map((item) => (
+                      <Link
+                        key={item.path}
+                        to={item.path}
+                        onClick={() => {
+                          setIsSupportOpen(false);
+                          setIsSupportExpanded(false);
+                        }}
+                        className={`block px-4 py-2 text-sm transition-colors ${
+                          location.pathname === item.path
+                            ? 'bg-primary/10 text-primary font-medium'
+                            : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                        }`}
+                      >
+                        {item.name}
+                      </Link>
+                    ))}
                 </div>
               </div>
             )}

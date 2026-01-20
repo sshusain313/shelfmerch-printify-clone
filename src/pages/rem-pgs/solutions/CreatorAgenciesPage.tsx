@@ -35,6 +35,7 @@ const CreatorsAgenciesPage = () => {
         title="Creators & Agencies"
         description="Shelf Merch makes custom merch easy with premium designs and reliable delivery for creators and agencies."
         ctaText="Let's Talk"
+        ctaLink="/support/contact-us"
         image={heroConcert}
         imageAlt="Concert crowd with stage lights"
       />

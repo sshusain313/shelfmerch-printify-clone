@@ -18,10 +18,9 @@ const StoreConnectionSection = () => {
             <p className="text-muted-foreground">
             Our Print API connects you to production facilities in India and instantly links you to a global network of on-demand manufacturing partners across the USA, Middle East, UK, and beyond.
             </p>
-            <a href="#" className="text-primary font-semibold flex items-center gap-2 hover:underline">
+            <p className="text-primary font-semibold flex items-center gap-2 ">
               Coming Soon
-              <ArrowRight className="h-4 w-4" />
-            </a>
+            </p>
           </div>
 
           {/* Right - Integration Image */}

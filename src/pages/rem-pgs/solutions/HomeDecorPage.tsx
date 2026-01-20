@@ -16,6 +16,7 @@ const HomeDecorPage = () => {
         title="Home Decor"
         description="Offer a personalized home décor range with custom designs that reflect your style and enhance any space."
         ctaText="Let's Talk"
+        ctaLink="/support/contact-us"
         image={heroHomeDecor}
         imageAlt="Modern interior design with green chairs"
       />

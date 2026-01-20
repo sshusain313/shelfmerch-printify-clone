@@ -77,7 +77,7 @@ const BulkOrdersPage = () => {
                 Order in bulk and save—design and customize products for your brand, organization, event, or shop with up to 30% savings.
               </p>
               <Link
-                to="/"
+                to="/support/contact-us"
                 className="inline-flex items-center justify-center px-6 py-3 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-brand-green-hover transition-colors"
               >
                 Get your quote
@@ -142,7 +142,7 @@ const BulkOrdersPage = () => {
                 Bulk ordering is available for select products when ordering 60 or more similar items from the same print provider. You can mix different products within the order as long as they come from the same provider.
               </p>
               <Link
-                to="/"
+                to="/support/contact-us"
                 className="inline-flex items-center justify-center px-5 py-2.5 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-brand-green-hover transition-colors"
               >
                 Get your quote

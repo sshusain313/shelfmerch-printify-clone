@@ -5,7 +5,7 @@ import sweatshirtGreen from "@/assets/product-sweatshirt-green.png";
 import mug from "@/assets/product-mug.png";
 import caps from "@/assets/product-caps.png";
 import accessories from "@/assets/product-accessories.png";
-
+import { Link } from "react-router-dom";
 
 const ProductsShowcase = () => {
   const products = [
@@ -43,10 +43,12 @@ const ProductsShowcase = () => {
             <p className="text-muted-foreground">
               Choose from a wide range of products in our catalog. Deliver reliable quality and build a brand customers trust. With 99.8% of orders meeting standards, leading brands rely on us for fulfillment.
             </p>
+            <Link to="/products">
             <a href="#" className="text-primary font-semibold flex items-center gap-2 hover:underline">
-              View our full Product range
-              <ArrowRight className="h-4 w-4" />
-            </a>
+                  View our full Product range
+                <ArrowRight className="h-4 w-4" />
+              </a>
+            </Link>
 
             
           </div>

@@ -27,7 +27,7 @@ const CustomizedMerchPage = () => {
                 Customized merchandise with on-demand personalization, offering unique products tailored to your brand and audience.
               </p>
               <Link
-                to="/"
+                to="/support/contact-us"
                 className="inline-flex items-center justify-center px-6 py-3 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-brand-green-hover transition-colors"
               >
                 Let's Talk

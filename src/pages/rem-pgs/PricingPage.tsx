@@ -3,6 +3,7 @@ import Footer from '@/components/home/Footer';
 import { Button } from '@/components/ui/button';
 import { ArrowRight, Check, Building2, Heart } from 'lucide-react';
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import pricingImage from '@/assets/pricing.png';
 import createStore from '@/assets/create-store.png';
 import sellOnline from '@/assets/sell-online.png';
@@ -11,6 +12,7 @@ import shipGlobally from '@/assets/ship.png';
 import expertImage from '@/assets/connect.png';
 const PricingPage = () => {
   const [isMonthly, setIsMonthly] = useState(true);
+  const navigate = useNavigate();
 
   const pricingPlans = [
     {
@@ -201,6 +203,10 @@ const PricingPage = () => {
                   <Button
                     onClick={(e) => {
                       e.preventDefault();
+                      if (plan.name === 'Enterprise' && plan.cta === "Let's Talk") {
+                        navigate('/support/contact-us');
+                        return;
+                      }
                     }}
                     className={`w-full mb-6 ${
                       plan.ctaVariant === 'default'

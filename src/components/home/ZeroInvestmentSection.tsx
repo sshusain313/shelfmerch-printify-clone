@@ -5,6 +5,7 @@ import create from "@/assets/create-store.png";
 import sell from "@/assets/sell.png";
 import print from "@/assets/pod.png";
 import ship from "@/assets/ship-globally.png";
+import { Link } from "react-router-dom";
 const ZeroInvestmentSection = () => {
   const features = [
     {
@@ -32,9 +33,11 @@ const ZeroInvestmentSection = () => {
   return (
     <section className="py-16 md:py-20 bg-background">
       <div className="container">
+        
         <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-12">
           Start with Zero Investment
         </h2>
+        
         
         <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           {features.map((feature, index) => (
@@ -52,10 +55,12 @@ const ZeroInvestmentSection = () => {
           ))}
         </div>
 
+        <Link to="/auth">
         <Button className="bg-primary hover:bg-lime-dark text-primary-foreground font-semibold px-6 py-3 rounded-lg flex items-center gap-2">
           Create Digital Store
           <ArrowRight className="h-4 w-4" />
         </Button>
+        </Link>
       </div>
     </section>
   );

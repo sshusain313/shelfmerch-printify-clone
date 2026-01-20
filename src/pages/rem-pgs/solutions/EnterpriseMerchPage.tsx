@@ -97,6 +97,7 @@ const EnterpriseMerchPage = () => {
         title="Enterprise Merch"
         description="Elevate your business with Shelf Merch—providing top-quality merchandise and high profitability for businesses of any size. Zero risk, all reward."
         ctaText="Let's Talk"
+        ctaLink="/support/contact-us"
         image={heroEnterprise}
         imageAlt="Premium framed artwork"
       />

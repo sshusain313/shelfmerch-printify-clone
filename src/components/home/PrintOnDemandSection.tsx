@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { ArrowRight } from "lucide-react";
 import customTshirt from "@/assets/product-custom-tshirt.png";
+import { Link } from "react-router-dom";
 
 
 const PrintOnDemandSection = () => {
@@ -19,10 +20,12 @@ const PrintOnDemandSection = () => {
             <p className="text-muted-foreground">
               When an order is placed, it's automatically sent to the nearest printing facility, so there's no need for inventory, management, or storage.
             </p>
+            <Link to="/stores">     
             <Button className="bg-primary hover:bg-lime-dark text-primary-foreground font-semibold px-6 py-3 rounded-lg flex items-center gap-2">
               Start Selling
               <ArrowRight className="h-4 w-4" />
             </Button>
+            </Link>
           </div>
 
           {/* Right Images */}
