@@ -354,12 +354,38 @@ const ProductDetail = () => {
           </BreadcrumbList>
         </Breadcrumb>
 
-        <div className="grid lg:grid-cols-[1.1fr_0.9fr] gap-8 lg:gap-12">
+        <div className="grid lg:grid-cols-8 gap-8 lg:gap-12">
+
           {/* Product Images */}
-          <div className="space-y-4">
+          {/* Product Images */}
+          <div className="grid lg:col-span-5 grid-cols-1 lg:grid-cols-5 gap-5">
+            {/* Thumbnails - Left Column */}
+            {galleryImages.length > 0 && (
+              <div className="flex flex-row lg:flex-col gap-2 overflow-x-auto lg:overflow-visible order-2 lg:order-1">
+                {galleryImages.slice(0, 4).map((img: any, index: number) => (
+                  <div
+                    key={img.id || index}
+                    className={`aspect-square w-20 lg:w-full bg-muted rounded-lg overflow-hidden cursor-pointer border-2 flex-shrink-0 transition-all ${selectedImageIndex === index
+                      ? 'border-primary ring-2 ring-primary ring-offset-2'
+                      : 'border-transparent hover:border-primary/50'
+                      }`}
+                    onClick={() => setSelectedImageIndex(index)}
+                  >
+                    <img
+                      src={img.url}
+                      alt={img.altText || `Thumbnail ${index + 1}`}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Main Image - Right Columns */}
             <div
               ref={imageRef}
-              className="relative aspect-square bg-muted rounded-xl overflow-hidden group cursor-zoom-in"
+              className={`relative aspect-square bg-muted rounded-xl overflow-hidden group cursor-zoom-in order-1 lg:order-2 ${galleryImages.length > 0 ? 'lg:col-span-4' : 'lg:col-span-5'
+                }`}
               onMouseMove={handleImageMouseMove}
               onMouseEnter={() => setIsZoomed(true)}
               onMouseLeave={() => setIsZoomed(false)}
@@ -389,30 +415,10 @@ const ProductDetail = () => {
                 </div>
               )}
             </div>
-            {galleryImages.length > 0 && (
-              <div className="grid grid-cols-5 gap-2">
-                {galleryImages.map((img: any, index: number) => (
-                  <div
-                    key={img.id || index}
-                    className={`aspect-square bg-muted rounded-lg overflow-hidden cursor-pointer border-2 transition-all ${selectedImageIndex === index
-                      ? 'border-primary ring-2 ring-primary ring-offset-2'
-                      : 'border-transparent hover:border-primary/50'
-                      }`}
-                    onClick={() => setSelectedImageIndex(index)}
-                  >
-                    <img
-                      src={img.url}
-                      alt={img.altText || `Thumbnail ${index + 1}`}
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
 
           {/* Product Info */}
-          <div className="space-y-6">
+          <div className="space-y-6 lg:col-span-3">
             {/* Brand & Tags */}
             <div>
               {product.catalogue?.brand && (
@@ -443,7 +449,7 @@ const ProductDetail = () => {
             </div>
 
             {/* Product Features - Dynamic from attributes */}
-            <div className="space-y-2.5">
+            {/* <div className="space-y-2.5">
               {product.catalogue?.attributes && (() => {
                 // Convert attributes object to array and limit to 7
                 const attributes = Object.entries(product.catalogue.attributes)
@@ -526,7 +532,7 @@ const ProductDetail = () => {
                   </div>
                 ));
               })()}
-            </div>
+            </div> */}
 
             {/* Size Selector */}
             {product.availableSizes && product.availableSizes.length > 0 && (
