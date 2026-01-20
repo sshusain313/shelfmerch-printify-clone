@@ -14,6 +14,7 @@ import { getVariantOptions, getColorHex } from '@/config/productVariantOptions';
 import { variantOptionsApi } from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
 import { VariantImagesModal } from './VariantImagesModal';
+import { ProductVariantRow } from './ProductVariantRow';
 import {
   Tooltip,
   TooltipContent,
@@ -345,157 +346,7 @@ export const ProductVariantsSection = ({
     );
   };
 
-  // Localized row component to keep per-row state and avoid global updates
-  interface VariantRowProps {
-    variant: ProductVariant;
-    onUpdate: (id: string, patch: Partial<ProductVariant>) => void;
-    onClickImages: (variant: ProductVariant) => void;
-  }
 
-  const VariantRow = memo(function VariantRow({ variant, onUpdate, onClickImages }: VariantRowProps) {
-    const [sku, setSku] = useState<string>(variant.sku ?? '');
-    const [priceStr, setPriceStr] = useState<string>(variant.price !== undefined ? String(variant.price) : '');
-    const [active, setActive] = useState<boolean>(!!variant.isActive);
-
-    useEffect(() => {
-      setSku(variant.sku ?? '');
-      setPriceStr(variant.price !== undefined ? String(variant.price) : '');
-      setActive(!!variant.isActive);
-    }, [variant.sku, variant.price, variant.isActive]);
-
-    const handleSkuLocalChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-      const v = e.target.value;
-      setSku(v);
-    }, []);
-
-    const commitSku = useCallback(() => {
-      onUpdate(variant.id, { sku });
-    }, [onUpdate, variant.id, sku]);
-
-    const handlePriceLocalChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-      const value = e.target.value;
-      // Allow empty, numbers, and decimal point
-      if (value === '' || /^\d*\.?\d*$/.test(value)) {
-        setPriceStr(value);
-      }
-    }, []);
-
-    const commitPrice = useCallback(() => {
-      const value = priceStr;
-      const numeric = value === '' || value === '.' ? undefined : parseFloat(value);
-      const newPrice = (value === '' || value === '.' || isNaN(numeric as number) || (numeric as number) < 0) ? undefined : numeric;
-      onUpdate(variant.id, { price: newPrice });
-    }, [onUpdate, variant.id, priceStr]);
-
-    const handleActiveChange = useCallback((checked: boolean) => {
-      setActive(checked);
-    }, []);
-
-    const commitActive = useCallback(() => {
-      onUpdate(variant.id, { isActive: active });
-    }, [onUpdate, variant.id, active]);
-
-    // Count how many view images are set
-    const imageCount = variant.viewImages
-      ? Object.values(variant.viewImages).filter((url) => url && url.trim() !== '').length
-      : 0;
-
-    return (
-      <Card className="p-3">
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex-1 grid grid-cols-4 gap-2 items-center">
-            <div>
-              <Label className="text-xs text-muted-foreground">Size</Label>
-              <p className="text-sm font-medium">{variant.size}</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <div
-                className="w-4 h-4 rounded-full border flex-shrink-0"
-                style={{
-                  backgroundColor: variant.colorHex || '#ccc',
-                  borderColor: variant.color?.toLowerCase() === 'white' ? '#E5E7EB' : 'transparent',
-                }}
-              />
-              <div>
-                <Label className="text-xs text-muted-foreground">Color</Label>
-                <p className="text-sm font-medium">{variant.color}</p>
-              </div>
-            </div>
-            <div>
-              <Label className="text-xs text-muted-foreground">SKU</Label>
-              <Input
-                value={sku}
-                onChange={handleSkuLocalChange}
-                onBlur={commitSku}
-                onKeyDown={(e) => e.key === 'Enter' && commitSku()}
-                className="h-8 text-sm"
-              />
-            </div>
-            <div>
-              <Label className="text-xs text-muted-foreground">Price</Label>
-              <Input
-                type="text"
-                inputMode="decimal"
-                value={priceStr}
-                onChange={handlePriceLocalChange}
-                onBlur={commitPrice}
-                onKeyDown={(e) => e.key === 'Enter' && commitPrice()}
-                placeholder="0.00"
-                className="h-8 text-sm"
-              />
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            {/* Images Button */}
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="h-8 w-8 relative"
-                    onClick={() => onClickImages(variant)}
-                  >
-                    <Camera className="h-4 w-4" />
-                    {imageCount > 0 && (
-                      <span className="absolute -top-1 -right-1 bg-primary text-primary-foreground text-[10px] rounded-full w-4 h-4 flex items-center justify-center">
-                        {imageCount}
-                      </span>
-                    )}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Manage variant images ({imageCount}/4)</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-
-            {/* Active Toggle */}
-            <div className="flex items-center gap-2">
-              <Label className="text-xs">Active</Label>
-              <Switch
-                checked={active}
-                onCheckedChange={(checked) => handleActiveChange(checked as boolean)}
-                onBlur={commitActive}
-                onKeyDown={(e: React.KeyboardEvent) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    commitActive();
-                  }
-                }}
-              />
-            </div>
-          </div>
-        </div>
-      </Card>
-    );
-  }, (prev, next) => (
-    prev.variant.id === next.variant.id &&
-    prev.variant.sku === next.variant.sku &&
-    prev.variant.price === next.variant.price &&
-    prev.variant.isActive === next.variant.isActive &&
-    prev.variant.viewImages === next.variant.viewImages
-  ));
 
   return (
     <div className="space-y-6">
@@ -642,7 +493,7 @@ export const ProductVariantsSection = ({
 
           <div className="space-y-2 max-h-[400px] overflow-y-auto">
             {variants.map((variant) => (
-              <VariantRow
+              <ProductVariantRow
                 key={variant.id}
                 variant={variant}
                 onUpdate={handleVariantUpdate}
