@@ -580,6 +580,72 @@ const StoreProductPage = () => {
     });
   };
 
+  // "Buy It Now" – add current product (qty 1) to cart and route to checkout/auth
+  const handleBuyNow = () => {
+    if (!product || !store) return;
+    if (!selectedColor || !selectedSize) {
+      toast.error('Please choose a color and size');
+      return;
+    }
+
+    const colorMap = variantPriceMap[selectedColor];
+    const unitPrice =
+      (colorMap && typeof colorMap[selectedSize] === 'number'
+        ? colorMap[selectedSize]
+        : product.price);
+
+    const buyNowItem: CartItem = {
+      productId: product.id,
+      product: { ...product, price: unitPrice },
+      quantity: 1,
+      variant: { color: selectedColor, size: selectedSize },
+    };
+
+    // Build next cart state with this item at quantity = 1 (no duplicates)
+    const nextCart: CartItem[] = (() => {
+      const existingIndex = cart.findIndex(
+        (item) =>
+          item.productId === buyNowItem.productId &&
+          item.variant.color === buyNowItem.variant.color &&
+          item.variant.size === buyNowItem.variant.size,
+      );
+
+      if (existingIndex >= 0) {
+        const updated = [...cart];
+        updated[existingIndex] = { ...buyNowItem };
+        return updated;
+      }
+
+      return [...cart, buyNowItem];
+    })();
+
+    setCart(nextCart);
+
+    if (isAuthenticated) {
+      const checkoutPath = buildStorePath('/checkout', store.subdomain);
+      navigate(checkoutPath, {
+        state: {
+          cart: nextCart,
+          storeId: store.id,
+          subdomain: store.subdomain,
+          from: '/checkout',
+          action: 'buy-now',
+        },
+      });
+    } else {
+      const authPath = buildStorePath('/auth?redirect=checkout', store.subdomain);
+      navigate(authPath, {
+        state: {
+          cart: nextCart,
+          storeId: store.id,
+          subdomain: store.subdomain,
+          from: '/checkout',
+          action: 'buy-now',
+        },
+      });
+    }
+  };
+
   const handleShare = async () => {
     const url = window.location.href;
     if (navigator.share) {
@@ -963,7 +1029,7 @@ const StoreProductPage = () => {
               variant="outline"
               size="lg"
               className="flex-1 text-base font-semibold border-2 hover:bg-accent/50"
-              onClick={handleCheckout}
+              onClick={handleBuyNow}
             >
               Buy it now
             </Button>
