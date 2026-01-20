@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Header from "@/components/catalog/HeaderPlaceholder";
 import SearchControls from "@/components/catalog/SearchControls";
 import CategoryTabs from "@/components/catalog/CategoryTabs";
@@ -28,6 +29,7 @@ const formatForCatalog = (product: any, isLatest = false) => {
 };
 
 const Products = () => {
+    const navigate = useNavigate();
     const [products, setProducts] = useState<any[]>([]);
     const [bestProducts, setBestProducts] = useState<any[]>([]);
     const [newProducts, setNewProducts] = useState<any[]>([]);
@@ -36,6 +38,64 @@ const Products = () => {
 
     const [isLoading, setIsLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
+
+    // Helper: slugify similar to CategorySidebar
+    const slugify = (value: string): string => {
+        return value
+            .toLowerCase()
+            .replace(/&/g, 'and')
+            .replace(/[^a-z0-9\s-]/g, '')
+            .replace(/\s+/g, '-')
+            .replace(/-+/g, '-');
+    };
+
+    // Known subcategory names from the catalogue sidebar
+    const subcategoryNames: string[] = [
+        // Apparel
+        'T-shirts', 'Hoodies', 'Sweatshirts', 'Jackets', 'Crop Tops', 'Tank Tops',
+        // Accessories
+        'Tote Bags', 'Caps', 'Phone Covers', 'Gaming Pads', 'Beanies',
+        // Home & Living
+        'Mugs', 'Cushions', 'Cans', 'Frames', 'Coasters',
+        // Print Products
+        'Business Cards', 'Books', 'ID Cards', 'Stickers', 'Posters', 'Flyers', 'Greeting Cards', 'Billboards', 'Magazines', 'Brochures', 'Lanyards', 'Banners', 'Canvas', 'Notebooks',
+        // Packaging
+        'Boxes', 'Tubes', 'Bottles', 'Pouch', 'Cosmetics',
+        // Tech
+        'IPhone Cases', 'Lap Top Cases', 'IPad Cases', 'Macbook Cases', 'Phone Cases',
+        // Jewelry
+        'Rings', 'Necklaces', 'Earrings', 'Bracelets',
+    ];
+
+    const resolveSubcategorySlugFromSearch = (term: string): string | null => {
+        const q = term.toLowerCase().trim();
+        if (!q) return null;
+
+        for (const name of subcategoryNames) {
+            const normName = name.toLowerCase().trim();
+
+            // Basic exact match
+            if (q === normName) {
+                return slugify(name);
+            }
+
+            // Allow simple singular/plural variations (e.g. "t-shirt" vs "t-shirts")
+            const noDash = normName.replace(/-/g, ' ');
+            if (q === noDash || q === noDash.replace(/s\b/, '') || (q + 's') === noDash) {
+                return slugify(name);
+            }
+        }
+
+        return null;
+    };
+
+    const getSubcategorySlugFromProduct = (product: any): string | null => {
+        const catalogue = product?.catalogue || {};
+        const fromArray = Array.isArray(catalogue.subcategoryIds) && catalogue.subcategoryIds[0];
+        const fromSingle = catalogue.subcategoryId;
+        const slug = fromArray || fromSingle;
+        return typeof slug === 'string' && slug.trim() ? slug : null;
+    };
 
     // Fetch initial data
     useEffect(() => {
@@ -83,22 +143,46 @@ const Products = () => {
     }, []);
 
     const handleSearch = async () => {
-        if (!searchQuery.trim()) return;
+        const trimmed = searchQuery.trim();
+        if (!trimmed) return;
+
+        // 1) Exact subcategory match from known subcategories
+        const directSubcategorySlug = resolveSubcategorySlugFromSearch(trimmed);
+        if (directSubcategorySlug) {
+            navigate(`/products/category/${directSubcategorySlug}?search=${encodeURIComponent(trimmed)}`);
+            return;
+        }
+
         setIsLoading(true);
         try {
+            // 2) Use backend search to infer relevant subcategory from results
             const response = await productApi.getCatalogProducts({
                 page: 1,
                 limit: 24,
-                search: searchQuery
+                search: trimmed,
             });
-            if (response && response.success && response.data) {
-                const results = response.data.map(p => formatForCatalog(p));
-                // Update all sections with search results or show a specific search results section
-                // For this layout, we'll update the "Best Products" and maybe others
+
+            if (response && response.success && Array.isArray(response.data) && response.data.length > 0) {
+                const firstProduct = response.data[0];
+                const inferredSlug = getSubcategorySlugFromProduct(firstProduct);
+
+                if (inferredSlug) {
+                    navigate(`/products/category/${inferredSlug}?search=${encodeURIComponent(trimmed)}`);
+                    return;
+                }
+
+                // Fallback: keep current page and update sections with search results
+                const results = response.data.map((p: any) => formatForCatalog(p));
                 setBestProducts(results.slice(0, 6));
                 setNewProducts(results.slice(6, 12));
                 setStarterProducts(results.slice(12, 18));
                 setKitProducts(results.slice(18, 24));
+            } else {
+                // No results – clear sections
+                setBestProducts([]);
+                setNewProducts([]);
+                setStarterProducts([]);
+                setKitProducts([]);
             }
         } catch (error) {
             console.error('Search failed:', error);

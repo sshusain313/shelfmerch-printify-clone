@@ -10,7 +10,7 @@ import { toast } from 'sonner';
 import { Loader2, CheckCircle2, AlertCircle, Check, X } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import googleLogo from '@/assets/google-logo-new.png';
-
+import { Link } from 'react-router-dom';
 type PasswordRule = {
   label: string;
   test: (password: string) => boolean;
@@ -607,9 +607,11 @@ const Auth = () => {
     <div className="min-h-screen flex items-center justify-center bg-muted/30 px-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
+          <Link to="/">
           <h1 className="font-heading text-3xl font-bold text-foreground mb-2">
             Shelf<span className="text-primary">Merch</span>
           </h1>
+          </Link>
           <p className="text-muted-foreground">Start your print-on-demand business</p>
         </div>
 
@@ -762,6 +764,7 @@ const Auth = () => {
                     <p className="text-sm text-red-600">{confirmPasswordError}</p>
                   )}
                 </div>
+                
                 <Button type="submit" className="w-full" disabled={isLoading}>
                   {isLoading ? (
                     <>
@@ -772,7 +775,7 @@ const Auth = () => {
                     'Sign up for Free'
                   )}
                 </Button>
-
+                
                 <div className="relative my-4">
                   <div className="absolute inset-0 flex items-center">
                     <span className="w-full border-t" />

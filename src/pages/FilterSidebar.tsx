@@ -11,7 +11,10 @@ import { ChevronDown, X } from "lucide-react";
 //   { name: "Tank Top" },
 // ];
 
-const materials = [
+// Static definitions are kept only for styling (e.g. color hex), but
+// actual filter options (which materials/colors/sizes appear) are
+// provided dynamically by the parent component based on backend data.
+const materialsPalette = [
   { name: "Cotton" },
   { name: "Organic Cotton" },
   { name: "Polyester" },
@@ -25,7 +28,7 @@ const printMethods = [
   { name: "AOP" },
 ];
 
-const colors = [
+const colorsPalette = [
   { name: "White", hex: "#FFFFFF" },
   { name: "Black", hex: "#000000" },
   { name: "Navy", hex: "#1e3a5f" },
@@ -38,7 +41,7 @@ const colors = [
   { name: "Orange", hex: "#f97316" },
 ];
 
-const sizes = ["XS", "S", "M", "L", "XL", "XXL"];
+const sizeOrder = ["XS", "S", "M", "L", "XL", "XXL"];
 
 const deliveryOptions = [
   { name: "2-4 days" },
@@ -119,25 +122,67 @@ const FilterChip = ({ label, onRemove }: FilterChipProps) => (
   </span>
 );
 
-export const FilterSidebar = () => {
+interface FilterSidebarProps {
+  availableMaterials: string[];
+  availableColors: string[];
+  availableSizes: string[];
+  selectedMaterials: string[];
+  selectedColors: string[];
+  selectedSizes: string[];
+  onFiltersChange: (filters: {
+    materials: string[];
+    colors: string[];
+    sizes: string[];
+  }) => void;
+}
+
+export const FilterSidebar = ({
+  availableMaterials,
+  availableColors,
+  availableSizes,
+  selectedMaterials,
+  selectedColors,
+  selectedSizes,
+  onFiltersChange,
+}: FilterSidebarProps) => {
+  // Internal-only filters (types, print methods, delivery, price) remain local,
+  // but dynamic material/colors/sizes are controlled via props.
   const [selectedTypes, setSelectedTypes] = useState<string[]>([]);
-  const [selectedMaterials, setSelectedMaterials] = useState<string[]>([]);
   const [selectedPrintMethods, setSelectedPrintMethods] = useState<string[]>([]);
-  const [selectedColors, setSelectedColors] = useState<string[]>([]);
-  const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
   const [selectedDelivery, setSelectedDelivery] = useState<string[]>([]);
   const [priceRange, setPriceRange] = useState([0, 5000]);
 
-  const toggleFilter = (
-    item: string,
-    selected: string[],
-    setSelected: React.Dispatch<React.SetStateAction<string[]>>
-  ) => {
-    if (selected.includes(item)) {
-      setSelected(selected.filter((i) => i !== item));
-    } else {
-      setSelected([...selected, item]);
-    }
+  const updateFilters = (opts: {
+    materials?: string[];
+    colors?: string[];
+    sizes?: string[];
+  }) => {
+    onFiltersChange({
+      materials: opts.materials !== undefined ? opts.materials : selectedMaterials,
+      colors: opts.colors !== undefined ? opts.colors : selectedColors,
+      sizes: opts.sizes !== undefined ? opts.sizes : selectedSizes,
+    });
+  };
+
+  const toggleMaterial = (item: string) => {
+    const next = selectedMaterials.includes(item)
+      ? selectedMaterials.filter((i) => i !== item)
+      : [...selectedMaterials, item];
+    updateFilters({ materials: next });
+  };
+
+  const toggleColor = (item: string) => {
+    const next = selectedColors.includes(item)
+      ? selectedColors.filter((i) => i !== item)
+      : [...selectedColors, item];
+    updateFilters({ colors: next });
+  };
+
+  const toggleSize = (item: string) => {
+    const next = selectedSizes.includes(item)
+      ? selectedSizes.filter((i) => i !== item)
+      : [...selectedSizes, item];
+    updateFilters({ sizes: next });
   };
 
   const activeFiltersCount =
@@ -150,12 +195,10 @@ export const FilterSidebar = () => {
 
   const clearAllFilters = () => {
     setSelectedTypes([]);
-    setSelectedMaterials([]);
     setSelectedPrintMethods([]);
-    setSelectedColors([]);
-    setSelectedSizes([]);
     setSelectedDelivery([]);
     setPriceRange([0, 5000]);
+    updateFilters({ materials: [], colors: [], sizes: [] });
   };
 
   return (
@@ -191,37 +234,38 @@ export const FilterSidebar = () => {
               <FilterChip
                 key={`material-${material}`}
                 label={material}
-                onRemove={() =>
-                  setSelectedMaterials(
-                    selectedMaterials.filter((value) => value !== material)
-                  )
-                }
+                onRemove={() => {
+                  const next = selectedMaterials.filter((value) => value !== material);
+                  updateFilters({ materials: next });
+                }}
               />
             ))}
             {selectedColors.map((color) => (
               <FilterChip
                 key={`color-${color}`}
                 label={color}
-                onRemove={() =>
-                  setSelectedColors(selectedColors.filter((value) => value !== color))
-                }
+                onRemove={() => {
+                  const next = selectedColors.filter((value) => value !== color);
+                  updateFilters({ colors: next });
+                }}
               />
             ))}
             {selectedSizes.map((size) => (
               <FilterChip
                 key={`size-${size}`}
                 label={size}
-                onRemove={() =>
-                  setSelectedSizes(selectedSizes.filter((value) => value !== size))
-                }
+                onRemove={() => {
+                  const next = selectedSizes.filter((value) => value !== size);
+                  updateFilters({ sizes: next });
+                }}
               />
             ))}
           </div>
         )}
 
-        {/* Filter sections */}
+        {/* Filter sections
         <div className="max-h-[calc(100vh-220px)] overflow-y-auto pr-2">
-          {/* <FilterSection title="Product Type">
+          <FilterSection title="Product Type">
             {productTypes.map((type) => (
               <FilterCheckbox
                 key={type.name}
@@ -232,20 +276,21 @@ export const FilterSidebar = () => {
             ))}
           </FilterSection> */}
 
-          <FilterSection title="Material">
-            {materials.map((material) => (
-              <FilterCheckbox
-                key={material.name}
-                name={material.name}
-                checked={selectedMaterials.includes(material.name)}
-                onChange={() =>
-                  toggleFilter(material.name, selectedMaterials, setSelectedMaterials)
-                }
-              />
-            ))}
-          </FilterSection>
+          {/* Material filter - only show if backend has materials for this subcategory */}
+          {availableMaterials.length > 0 && (
+            <FilterSection title="Material">
+              {availableMaterials.map((materialName) => (
+                <FilterCheckbox
+                  key={materialName}
+                  name={materialName}
+                  checked={selectedMaterials.includes(materialName)}
+                  onChange={() => toggleMaterial(materialName)}
+                />
+              ))}
+            </FilterSection>
+          )}
 
-          <FilterSection title="Print Method">
+          {/* <FilterSection title="Print Method">
             {printMethods.map((method) => (
               <FilterCheckbox
                 key={method.name}
@@ -256,18 +301,17 @@ export const FilterSidebar = () => {
                 }
               />
             ))}
-          </FilterSection>
+          </FilterSection> */}
 
-          <FilterSection title="Price Range">
+          {/* <FilterSection title="Price Range">
             <div className="space-y-3">
-              {/* Price display */}
+              
               <div className="flex items-center justify-between text-sm font-medium">
                 <span className="text-foreground">₹0</span>
                 <span className="text-foreground">₹{priceRange[1]}</span>
               </div>
 
               
-              {/* Bottom slider with single green track + handle */}
               <input
                 type="range"
                 min={0}
@@ -287,48 +331,73 @@ export const FilterSidebar = () => {
                            [&::-moz-range-thumb]:background-color:transparent"
               />
             </div>
-          </FilterSection>
+          </FilterSection> */}
 
-          <FilterSection title="Colors">
-            <div className="flex flex-wrap gap-2">
-              {colors.map((color) => (
-                <button
-                  key={color.name}
-                  onClick={() => toggleFilter(color.name, selectedColors, setSelectedColors)}
-                  className={`w-8 h-8 rounded-full border-2 transition-all ${
-                    selectedColors.includes(color.name)
-                      ? "border-foreground scale-110 ring-2 ring-green-500 ring-offset-2"
-                      : "border-border hover:border-foreground"
-                  }`}
-                  style={{ backgroundColor: color.hex }}
-                  title={color.name}
-                />
-              ))}
-            </div>
-          </FilterSection>
+          {/* Colors filter - only show if backend has colors for this subcategory */}
+          {availableColors.length > 0 && (
+            <FilterSection title="Colors">
+              <div className="flex flex-wrap gap-2">
+                {availableColors.map((colorName) => {
+                  const colorConfig = colorsPalette.find(
+                    (c) => c.name.toLowerCase() === colorName.toLowerCase()
+                  );
+                  const hex = colorConfig?.hex || "#e5e7eb";
+                  const isActive = selectedColors.includes(colorName);
 
-          <FilterSection title="Sizes">
-            <div className="flex flex-wrap gap-2">
-              {sizes.map((size) => {
-                const active = selectedSizes.includes(size);
-                return (
-                  <button
-                    key={size}
-                    onClick={() => toggleFilter(size, selectedSizes, setSelectedSizes)}
-                    className={`px-3 py-1 rounded-full text-sm border transition-colors
-                      ${active
-                        ? "bg-green-50 text-green-700 border-green-500"
-                        : "bg-white text-foreground border-border hover:border-gray-400"
+                  return (
+                    <button
+                      key={colorName}
+                      onClick={() => toggleColor(colorName)}
+                      className={`w-8 h-8 rounded-full border-2 transition-all ${
+                        isActive
+                          ? "border-foreground scale-110 ring-2 ring-green-500 ring-offset-2"
+                          : "border-border hover:border-foreground"
                       }`}
-                  >
-                    {size}
-                  </button>
-                );
-              })}
-            </div>
-          </FilterSection>
+                      style={{ backgroundColor: hex }}
+                      title={colorName}
+                    />
+                  );
+                })}
+              </div>
+            </FilterSection>
+          )}
 
-          <FilterSection title="Delivery Time">
+          {/* Sizes filter - only show if backend has sizes for this subcategory */}
+          {availableSizes.length > 0 && (
+            <FilterSection title="Sizes">
+              <div className="flex flex-wrap gap-2">
+                {availableSizes
+                  .slice()
+                  .sort((a, b) => {
+                    const indexA = sizeOrder.indexOf(a);
+                    const indexB = sizeOrder.indexOf(b);
+                    if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+                    if (indexA !== -1) return -1;
+                    if (indexB !== -1) return 1;
+                    return a.localeCompare(b);
+                  })
+                  .map((size) => {
+                    const active = selectedSizes.includes(size);
+                    return (
+                      <button
+                        key={size}
+                        onClick={() => toggleSize(size)}
+                        className={`px-3 py-1 rounded-full text-sm border transition-colors
+                      ${
+                        active
+                          ? "bg-green-50 text-green-700 border-green-500"
+                          : "bg-white text-foreground border-border hover:border-gray-400"
+                      }`}
+                      >
+                        {size}
+                      </button>
+                    );
+                  })}
+              </div>
+            </FilterSection>
+          )}
+
+          {/* <FilterSection title="Delivery Time">
             {deliveryOptions.map((option) => (
               <FilterCheckbox
                 key={option.name}
@@ -339,9 +408,9 @@ export const FilterSidebar = () => {
                 }
               />
             ))}
-          </FilterSection>
+          </FilterSection> */}
         </div>
-      </div>
-    </aside>
+      {/* </div> */}
+     </aside>
   );
 };

@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import Header from '@/components/home/Header';
 import Footer from '@/components/home/Footer';
 import { Button } from '@/components/ui/button';
@@ -155,6 +155,7 @@ const categorySlugToParentCategory: Record<string, any> = {
 
 const CategoryProducts = () => {
   const { slug } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
 
@@ -168,10 +169,13 @@ const CategoryProducts = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [searchQuery, setSearchQuery] = useState('');
+  // Catalogue search initialised from ?search= so navigation preserves search text
+  const initialSearch = searchParams.get('search') || '';
+  const [searchQuery, setSearchQuery] = useState(initialSearch);
   const [sortOption, setSortOption] = useState('popularity');
   const [availableColors, setAvailableColors] = useState<any[]>([]);
   const [availableSizes, setAvailableSizes] = useState<any[]>([]);
+  const [availableMaterials, setAvailableMaterials] = useState<string[]>([]);
   const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [availableAttributes, setAvailableAttributes] = useState<Record<string, { label: string, options: string[], type: string, fieldDef: FieldDefinition, hasProducts: Set<string> }>>({});
   // Real color options and hex codes from backend
@@ -183,12 +187,74 @@ const CategoryProducts = () => {
 
   const [selectedColors, setSelectedColors] = useState<string[]>([]);
   const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
+  const [selectedMaterials, setSelectedMaterials] = useState<string[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [selectedAttributes, setSelectedAttributes] = useState<Record<string, string[]>>({});
 
+  // Helper: slugify similar to CategorySidebar
+  const slugify = (value: string): string => {
+    return value
+      .toLowerCase()
+      .replace(/&/g, "and")
+      .replace(/[^a-z0-9\s-]/g, "") // remove non-alphanumeric except space and hyphen
+      .replace(/\s+/g, "-")
+      .replace(/-+/g, "-");
+  };
+
+  // Known subcategory names (aligned with CategorySidebar)
+  const subcategoryNames: string[] = [
+    // Apparel
+    "T-shirts", "Hoodies", "Sweatshirts", "Jackets", "Crop Tops", "Tank Tops",
+    // Accessories
+    "Tote Bags", "Caps", "Phone Covers", "Gaming Pads", "Beanies",
+    // Home & Living
+    "Mugs", "Cushions", "Cans", "Frames", "Coasters",
+    // Print Products
+    "Business Cards", "Books", "ID Cards", "Stickers", "Posters", "Flyers", "Greeting Cards", "Billboards", "Magazines", "Brochures", "Lanyards", "Banners", "Canvas", "Notebooks",
+    // Packaging
+    "Boxes", "Tubes", "Bottles", "Pouch", "Cosmetics",
+    // Tech
+    "IPhone Cases", "Lap Top Cases", "IPad Cases", "Macbook Cases", "Phone Cases",
+    // Jewelry
+    "Rings", "Necklaces", "Earrings", "Bracelets",
+  ];
+
+  const resolveSubcategorySlugFromSearch = (term: string): string | null => {
+    const q = term.toLowerCase().trim();
+    if (!q) return null;
+
+    for (const name of subcategoryNames) {
+      const normName = name.toLowerCase().trim();
+
+      // Basic exact match against name
+      if (q === normName) {
+        return slugify(name);
+      }
+
+      // Allow simple singular/plural / spacing variations
+      const noDash = normName.replace(/-/g, " ");
+      if (q === noDash || q === noDash.replace(/s\b/, "") || (q + "s") === noDash) {
+        return slugify(name);
+      }
+
+      // If the query contains the subcategory name (e.g. "black t-shirt")
+      if (q.includes(normName) || q.includes(noDash)) {
+        return slugify(name);
+      }
+    }
+
+    return null;
+  };
+
   // Filter products based on selection
   const filteredProducts = useMemo(() => {
-    if (selectedColors.length === 0 && selectedSizes.length === 0 && selectedTags.length === 0 && Object.keys(selectedAttributes).length === 0) {
+    if (
+      selectedColors.length === 0 &&
+      selectedSizes.length === 0 &&
+      selectedTags.length === 0 &&
+      selectedMaterials.length === 0 &&
+      Object.keys(selectedAttributes).length === 0
+    ) {
       return products;
     }
 
@@ -202,6 +268,11 @@ const CategoryProducts = () => {
       const matchesTags = selectedTags.length === 0 ||
         (product.catalogue?.tags && product.catalogue.tags.some((t: string) => selectedTags.includes(t)));
 
+      const productMaterial = product.catalogue?.attributes?.material;
+      const matchesMaterial =
+        selectedMaterials.length === 0 ||
+        (typeof productMaterial === 'string' && selectedMaterials.includes(productMaterial));
+
       // Check dynamic attributes (includes gender, brand, and all other attributes)
       const matchesAttributes = Object.entries(selectedAttributes).every(([key, values]) => {
         if (values.length === 0) return true;
@@ -213,9 +284,9 @@ const CategoryProducts = () => {
         return values.includes(productValue);
       });
 
-      return matchesColor && matchesSize && matchesTags && matchesAttributes;
+      return matchesColor && matchesSize && matchesTags && matchesAttributes && matchesMaterial;
     });
-  }, [products, selectedColors, selectedSizes, selectedTags, selectedAttributes]);
+  }, [products, selectedColors, selectedSizes, selectedTags, selectedMaterials, selectedAttributes]);
 
   const toggleColor = (color: string) => {
     setSelectedColors(prev =>
@@ -252,9 +323,26 @@ const CategoryProducts = () => {
     });
   };
 
+  // Keep the URL ?search= param in sync with the current searchQuery
+  useEffect(() => {
+    const current = searchParams.get('search') || '';
+    const next = searchQuery.trim();
+
+    if (next && current !== next) {
+      const params = new URLSearchParams(searchParams);
+      params.set('search', next);
+      setSearchParams(params, { replace: true });
+    } else if (!next && current) {
+      const params = new URLSearchParams(searchParams);
+      params.delete('search');
+      setSearchParams(params, { replace: true });
+    }
+  }, [searchQuery, searchParams, setSearchParams]);
+
   const clearFilters = () => {
     setSelectedColors([]);
     setSelectedSizes([]);
+    setSelectedMaterials([]);
     setSelectedTags([]);
     setSelectedAttributes({});
   };
@@ -294,12 +382,13 @@ const CategoryProducts = () => {
         // If it's a main category, fetch by category
         // If it's a subcategory, fetch by subcategory
         if (isMainCategory) {
-          console.log('Fetching products for main category:', slug);
+          console.log('Fetching products for main category:', slug, 'search:', searchQuery);
 
           const response = await productApi.getCatalogProducts({
             page: 1,
             limit: 100,
             category: slug, // Use category filter for main categories
+            search: searchQuery.trim() || undefined,
           });
 
           console.log('API response for category:', slug, response);
@@ -310,12 +399,13 @@ const CategoryProducts = () => {
             setProducts([]);
           }
         } else if (subcategory) {
-          console.log('Fetching products for subcategory:', subcategory);
+          console.log('Fetching products for subcategory:', subcategory, 'search:', searchQuery);
 
           const response = await productApi.getCatalogProducts({
             page: 1,
             limit: 100,
             subcategory: subcategory, // Use subcategory filter for subcategories
+            search: searchQuery.trim() || undefined,
           });
 
           console.log('API response for subcategory:', subcategory, response);
@@ -350,7 +440,7 @@ const CategoryProducts = () => {
     };
 
     fetchProducts();
-  }, [slug, subcategory, isMainCategory]);
+  }, [slug, subcategory, isMainCategory, searchQuery]);
 
   // Store parent category ID for use in other hooks
   const [parentCategoryId, setParentCategoryId] = useState<string | undefined>(undefined);
@@ -583,6 +673,9 @@ const CategoryProducts = () => {
 
     const tags = Array.from(tagsSet).sort() as string[];
 
+    // Derive available materials from dynamic attributes (if present)
+    const materials = Array.from(attributesMap['material'] || []).sort();
+
     // Process attributes for display - prioritize subcategory-specific attributes from bySubcategory
     const processedAttributes: Record<string, { label: string, options: string[], type: string, fieldDef: FieldDefinition, hasProducts: Set<string> }> = {};
 
@@ -659,6 +752,7 @@ const CategoryProducts = () => {
     setAvailableSizes(sizes);
     setAvailableTags(tags);
     setAvailableAttributes(processedAttributes);
+    setAvailableMaterials(materials);
   }, [products, slug, subcategory, isMainCategory]);
 
   // Format product data for display in ProductCard
@@ -774,7 +868,28 @@ const CategoryProducts = () => {
                 placeholder="Search products, designs, or creators"
                 className="flex-1 bg-transparent px-3 py-3 text-sm outline-none placeholder:text-muted-foreground"
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  const trimmed = value.trim();
+
+                  // 1) Detect subcategory intent from search across all subcategories
+                  const targetSlug = resolveSubcategorySlugFromSearch(trimmed);
+
+                  // Cross-subcategory search: navigate to that subcategory page
+                  if (targetSlug && targetSlug !== slug) {
+                    const params = new URLSearchParams();
+                    if (trimmed) {
+                      params.set('search', trimmed);
+                    }
+                    const query = params.toString();
+                    navigate(`/products/category/${targetSlug}${query ? `?${query}` : ''}`);
+                    return;
+                  }
+
+                  // Same-subcategory search or no clear subcategory intent:
+                  // stay on this page and filter via backend using searchQuery
+                  setSearchQuery(value);
+                }}
               />
             </div>
           </div>
@@ -793,7 +908,7 @@ const CategoryProducts = () => {
               <option>United Kingdom</option>
               <option>Germany</option>
             </select>
-            <button
+            {/* <button
               className="text-sm font-medium px-3 py-2 rounded-full hover:bg-secondary transition-colors"
               onClick={() => (window.location.href = "/my-designs")}
             >
@@ -805,7 +920,7 @@ const CategoryProducts = () => {
             >
               <User className="w-4 h-4" />
               <span>My Store</span>
-            </Button>
+            </Button> */}
           </div>
         </div>
       </section>
@@ -816,7 +931,19 @@ const CategoryProducts = () => {
           {/* Left: Category sidebar + Filters (stacked) */}
           <div className="hidden lg:flex lg:flex-col w-64 flex-shrink-0 gap-6">
             <CategorySidebar />
-            <FilterSidebar />
+            <FilterSidebar
+              availableMaterials={availableMaterials}
+              availableColors={availableColors.map((c: any) => c.value ?? c)}
+              availableSizes={availableSizes.map((s: any) => s.value ?? s.id ?? s)}
+              selectedMaterials={selectedMaterials}
+              selectedColors={selectedColors}
+              selectedSizes={selectedSizes}
+              onFiltersChange={({ materials, colors, sizes }) => {
+                setSelectedMaterials(materials);
+                setSelectedColors(colors);
+                setSelectedSizes(sizes);
+              }}
+            />
           </div>
 
           {/* Right: Product Grid */}

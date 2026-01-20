@@ -99,16 +99,16 @@ const SearchControls = ({ searchQuery, onSearchChange, onSearchSubmit }: SearchC
             )}
           </div>
 
-          {/* Nav Links */}
-          <button className="text-sm font-semibold text-foreground hover:text-primary transition-colors hidden sm:block">
+          
+          {/* <button className="text-sm font-semibold text-foreground hover:text-primary transition-colors hidden sm:block">
             My Designs
           </button>
 
-          {/* My Store CTA */}
+          
           <button className="h-10 px-5 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-sm flex items-center gap-2 transition-all shadow-sm hover:shadow-md">
             <User className="w-4 h-4" />
             <span>My Store</span>
-          </button>
+          </button> */}
         </div>
       </div>
     </header>
