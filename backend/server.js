@@ -67,6 +67,12 @@ const corsOptions = {
     // Always allow root domain
     allowedOrigins.push(`https://${BASE_DOMAIN}`);
     allowedOrigins.push(`http://${BASE_DOMAIN}`);
+
+    // Allow CLIENT_URL if defined
+    if (process.env.CLIENT_URL) {
+      allowedOrigins.push(process.env.CLIENT_URL);
+    }
+
     allowedOrigins.push('http://localhost:8080');
     allowedOrigins.push('http://72.62.76.198:8080');
 
@@ -137,9 +143,30 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 // Cookie parser
 app.use(cookieParser());
 
-// Trust proxy (for accurate IP addresses and hostname behind reverse proxy)
+const passport = require('passport');
+const session = require('express-session');
+
+// Trusted proxy (for accurate IP addresses and hostname behind reverse proxy)
 // Important: Must trust proxy to get correct hostname from nginx/load balancer
 app.set('trust proxy', 1);
+
+// Express Session Middleware - Required for Passport OAuth state validation
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'secret',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: process.env.NODE_ENV === 'production', // true in production
+    maxAge: 24 * 60 * 60 * 1000 // 24 hours
+  }
+}));
+
+// Passport Config
+require('./config/passport')(passport);
+
+// Passport Middleware
+app.use(passport.initialize());
+app.use(passport.session());
 
 // Enable subdomain routing by ensuring hostname is available
 app.use((req, res, next) => {

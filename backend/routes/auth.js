@@ -8,6 +8,59 @@ const { sendVerificationEmail, sendPasswordResetOTP } = require('../utils/mailer
 const rateLimit = require('express-rate-limit');
 
 const router = express.Router();
+const passport = require('passport');
+
+// @route   GET /api/auth/google
+// @desc    Auth with Google
+// @access  Public
+router.get('/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
+
+// @route   GET /api/auth/google/callback
+// @desc    Google auth callback
+// @access  Public
+router.get(
+  '/google/callback',
+  passport.authenticate('google', { session: false, failureRedirect: '/login' }),
+  async (req, res) => {
+    try {
+      // Generate tokens
+      const user = req.user;
+      const response = await new Promise((resolve, reject) => {
+        // Mock res object to capture sendTokenResponse output
+        const mockRes = {
+          cookie: function() { return this; }, // Allow chaining or standalone call
+          status: function(code) { return this; }, // Allow chaining
+          json: function(data) { resolve(data); return this; } // Capture data
+        };
+        sendTokenResponse(user, 200, mockRes);
+      });
+
+      // Redirect to frontend with token
+      // Use BASE_URL or BASE_DOMAIN for frontend URL
+      const BASE_DOMAIN = process.env.BASE_DOMAIN || 'shelfmerch.in';
+      const BASE_URL = process.env.BASE_URL || (process.env.NODE_ENV === 'production' 
+        ? `http://${BASE_DOMAIN}` 
+        : 'http://localhost:5000');
+      const frontendUrl = process.env.NODE_ENV === 'production' 
+        ? `${BASE_URL}/auth` 
+        : (process.env.FRONTEND_URL || 'http://localhost:5173/auth');
+      
+      const redirectUrl = `${frontendUrl}?token=${response.token}&refreshToken=${response.refreshToken}`;
+      
+      res.redirect(redirectUrl);
+    } catch (err) {
+      console.error('Google OAuth callback error:', err);
+      const BASE_DOMAIN = process.env.BASE_DOMAIN || 'shelfmerch.in';
+      const BASE_URL = process.env.BASE_URL || (process.env.NODE_ENV === 'production' 
+        ? `http://${BASE_DOMAIN}` 
+        : 'http://localhost:5000');
+      const frontendUrl = process.env.NODE_ENV === 'production' 
+        ? `${BASE_URL}/auth` 
+        : (process.env.FRONTEND_URL || 'http://localhost:5173/auth');
+      res.redirect(`${frontendUrl}?error=google_auth_failed`);
+    }
+  }
+);
 
 // Rate limiting for auth routes (skip for OPTIONS requests)
 const authLimiter = rateLimit({
@@ -140,9 +193,9 @@ router.post(
       // Check if user already exists
       const existingUser = await User.findOne({ email });
       if (existingUser) {
-        return res.status(400).json({
+        return res.status(409).json({
           success: false,
-          message: 'User already exists with this email'
+          message: 'Email already exists.'
         });
       }
 
@@ -169,7 +222,8 @@ router.post(
 
       // Send verification email
       try {
-        await sendVerificationEmail(email, verificationToken, name);
+        const clientUrl = req.get('origin') || req.get('referer');
+        await sendVerificationEmail(email, verificationToken, name, clientUrl);
         console.log('Verification email sent successfully');
       } catch (emailError) {
         console.error('Error sending verification email:', emailError);
@@ -194,9 +248,9 @@ router.post(
 
       // Handle duplicate email error
       if (error.code === 11000 || error.message?.includes('duplicate')) {
-        return res.status(400).json({
+        return res.status(409).json({
           success: false,
-          message: 'User already exists with this email',
+          message: 'Email already exists.',
           errors: [{ msg: 'Email already registered', param: 'email' }]
         });
       }

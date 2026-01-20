@@ -5,7 +5,7 @@
 
 // Reserved subdomains that should not be treated as tenant slugs
 const RESERVED_SUBDOMAINS = ['www', 'shelfmerch', 'admin', 'api'];
-const BASE_DOMAIN = process.env.BASE_DOMAIN || 'shelfmerch.in';
+const BASE_DOMAIN = process.env.BASE_DOMAIN || 'shelfmerch.com';
 
 /**
  * Extract tenant slug from hostname

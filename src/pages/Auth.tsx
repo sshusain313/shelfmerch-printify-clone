@@ -9,6 +9,7 @@ import { authApi } from '@/lib/api';
 import { toast } from 'sonner';
 import { Loader2, CheckCircle2, AlertCircle, Check, X } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import googleLogo from '@/assets/google-logo-new.png';
 
 type PasswordRule = {
   label: string;
@@ -19,7 +20,7 @@ type ForgotPasswordStep = 'email' | 'otp' | 'reset';
 
 const Auth = () => {
   const [isLoading, setIsLoading] = useState(false);
-  const { login, signup } = useAuth();
+  const { login, signup, refreshUser } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
@@ -185,6 +186,18 @@ const Auth = () => {
   useEffect(() => {
     const verified = searchParams.get('verified');
     const error = searchParams.get('error');
+    const token = searchParams.get('token');
+    const refreshToken = searchParams.get('refreshToken');
+
+    if (token && refreshToken) {
+      localStorage.setItem('token', token);
+      localStorage.setItem('refreshToken', refreshToken);
+      refreshUser().then(() => {
+        toast.success('Successfully logged in with Google');
+        navigate(from, { replace: true });
+      });
+      return;
+    }
 
     if (verified === 'true') {
       toast.success('Email verified successfully! You can now log in.');
@@ -251,12 +264,14 @@ const Auth = () => {
       await signup(signupEmail.trim(), signupPassword, signupName.trim());
       toast.success('Account created! Please check your email to verify your account.');
     } catch (error: any) {
+
       // Handle account already exists
       if (error?.response?.data?.message?.toLowerCase().includes('already exists') ||
-          error?.response?.data?.message?.toLowerCase().includes('user already exists')) {
+        error?.response?.data?.message?.toLowerCase().includes('user already exists')) {
         toast.error('Account already exists. Please login.');
       } else {
         toast.error(error?.response?.data?.message || 'Failed to create account');
+
       }
     } finally {
       setIsLoading(false);
@@ -672,6 +687,20 @@ const Auth = () => {
                     'Log in'
                   )}
                 </Button>
+
+                <div className="relative my-4">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t" />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-card px-2 text-muted-foreground">Or continue with</span>
+                  </div>
+                </div>
+
+                <Button variant="outline" type="button" className="w-full" onClick={() => window.location.href = 'https://shelfmerch.com/api/auth/google'}>
+                  <img src={googleLogo} alt="Google" className="mr-2 h-5 w-5" />
+                  Google
+                </Button>
               </form>
             </TabsContent>
 
@@ -742,6 +771,20 @@ const Auth = () => {
                   ) : (
                     'Sign up for Free'
                   )}
+                </Button>
+
+                <div className="relative my-4">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t" />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-card px-2 text-muted-foreground">Or continue with</span>
+                  </div>
+                </div>
+
+                <Button variant="outline" type="button" className="w-full" onClick={() => window.location.href = 'http://localhost:5000/api/auth/google'}>
+                  <img src={googleLogo} alt="Google" className="mr-2 h-5 w-5" />
+                  Google
                 </Button>
               </form>
             </TabsContent>
