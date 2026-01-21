@@ -19,7 +19,7 @@ const sizeData = [
 
 export const SizeChart = forwardRef<HTMLDivElement>((_, ref) => {
     return (
-        <section ref={ref} className="space-y-4">
+        <section ref={ref} id="size-chart" className="space-y-4">
             <h2 className="section-title">Size Chart</h2>
             <div className="rounded-xl border border-border overflow-hidden">
                 <Table>

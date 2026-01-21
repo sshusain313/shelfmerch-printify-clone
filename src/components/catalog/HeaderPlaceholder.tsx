@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, User, Package, Store, Settings, LogOut } from "lucide-react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -37,6 +37,7 @@ const Header = () => {
   const [isAboutUsOpen, setIsAboutUsOpen] = useState(false);
   const [isSupportOpen, setIsSupportOpen] = useState(false);
   const [isSupportExpanded, setIsSupportExpanded] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
 
   const primarySupportItems = supportItems.filter(
     (item) => item.name === 'Help Center' || item.name === 'Contact Us'
@@ -226,21 +227,59 @@ const Header = () => {
         {/* CTA Buttons */}
         <div className="flex items-center gap-3">
           {isAuthenticated ? (
-            <>
-              <Link to="/dashboard">
-                <Button variant="ghost" className="hidden sm:inline-flex text-sm font-medium">
-                  Dashboard
-                </Button>
-              </Link>
-              <span className="text-sm font-medium hidden md:inline">{user?.name}</span>
-              <Button 
-                variant="ghost" 
-                className="text-sm font-medium"
-                onClick={handleLogout}
-              >
-                Log out
-              </Button>
-            </>
+            <div 
+              className="relative"
+              onMouseEnter={() => setIsProfileOpen(true)}
+              onMouseLeave={() => setIsProfileOpen(false)}
+            >
+              <button className="flex items-center gap-1 cursor-pointer hover:text-primary transition-colors">
+                <User className="h-4 w-4" />
+                <span className="text-l font-medium hidden md:inline">{user?.name}</span>
+                <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${isProfileOpen ? 'rotate-180' : ''}`} />
+              </button>
+              
+              {isProfileOpen && (
+                <div className="absolute top-full right-0 w-56 z-[70] pt-1">
+                  <div className="bg-popover border border-border rounded-lg shadow-lg py-2">
+                    <Link
+                      to="/dashboard"
+                      onClick={() => setIsProfileOpen(false)}
+                      className="flex items-center gap-3 px-4 py-2 text-sm transition-colors text-muted-foreground hover:bg-accent hover:text-foreground"
+                    >
+                      <Package className="h-4 w-4" />
+                      My Products
+                    </Link>
+                    <Link
+                      to="/stores"
+                      onClick={() => setIsProfileOpen(false)}
+                      className="flex items-center gap-3 px-4 py-2 text-sm transition-colors text-muted-foreground hover:bg-accent hover:text-foreground"
+                    >
+                      <Store className="h-4 w-4" />
+                      My Stores
+                    </Link>
+                    <Link
+                      to="/settings"
+                      onClick={() => setIsProfileOpen(false)}
+                      className="flex items-center gap-3 px-4 py-2 text-sm transition-colors text-muted-foreground hover:bg-accent hover:text-foreground"
+                    >
+                      <Settings className="h-4 w-4" />
+                      Settings
+                    </Link>
+                    <div className="border-t border-border my-1" />
+                    <button
+                      onClick={() => {
+                        setIsProfileOpen(false);
+                        handleLogout();
+                      }}
+                      className="flex items-center gap-3 w-full px-4 py-2 text-sm transition-colors text-muted-foreground hover:bg-accent hover:text-foreground text-left"
+                    >
+                      <LogOut className="h-4 w-4" />
+                      Log out
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           ) : (
             <>
               <Link to="/auth">

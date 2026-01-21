@@ -539,19 +539,28 @@ const ProductDetail = () => {
               <div>
                 <div className="flex items-center justify-between mb-3">
                   <p className="text-sm font-semibold">Available Sizes</p>
+                  <a
+                    href="#size-chart"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      const element = document.getElementById('size-chart');
+                      if (element) {
+                        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      }
+                    }}
+                    className="text-xs text-primary hover:underline"
+                  >
+                    Size Chart
+                  </a>
                 </div>
                 <div className="flex flex-wrap gap-2.5">
                   {product.availableSizes.map((size: string) => (
-                    <button
+                    <span
                       key={size}
-                      onClick={() => setSelectedSize(size)}
-                      className={`px-4 py-2.5 rounded-lg border-2 font-medium text-sm transition-all ${selectedSize === size
-                        ? 'border-primary bg-primary/10 text-primary'
-                        : 'border-border hover:border-primary/50 bg-background'
-                        }`}
+                      className="px-4 py-2.5 rounded-lg border-2 font-medium text-sm border-border bg-background"
                     >
                       {size}
-                    </button>
+                    </span>
                   ))}
                 </div>
               </div>
@@ -568,28 +577,20 @@ const ProductDetail = () => {
                   {colorsWithHex.map((c) => {
                     const color = c.value;
                     const colorHex = c.colorHex || getColorHex(color);
-                    const isSelected = selectedColor === c.value;
                     return (
                       <div
                         key={color}
-                        className="flex flex-col items-center gap-2 cursor-pointer group"
-                        onClick={() => setSelectedColor(color)}
+                        className="flex flex-col items-center gap-2"
+                        title={color}
                       >
                         <div
-                          className={`w-14 h-14 lg:w-16 lg:h-16 rounded-full border-2 transition-all relative ${isSelected ? 'ring-2 ring-offset-2 ring-primary scale-105' : ''}`}
+                          className="w-14 h-14 lg:w-16 lg:h-16 rounded-full border-2"
                           style={{
                             backgroundColor: colorHex,
                             border: colorHex === "#FFFFFF" ? "2px solid hsl(var(--border))" : undefined
                           }}
-                          title={color}
                         >
-
                         </div>
-                        {/* <span className={`text-xs font-medium transition-colors ${
-                          isSelected ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground'
-                        }`}>
-                          {color}
-                        </span> */}
                       </div>
                     );
                   })}
