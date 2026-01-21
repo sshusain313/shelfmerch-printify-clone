@@ -113,6 +113,11 @@ const ManageCatalogueFields = () => {
       });
 
       if (response.success) {
+        // Optimistically append the newly created field so the list updates immediately
+        if (response.data) {
+          setFields((prev) => [...prev, response.data as unknown as CatalogueField]);
+        }
+
         toast({
           title: 'Success',
           description: 'Catalogue field created successfully',
@@ -134,12 +139,14 @@ const ManageCatalogueFields = () => {
         
         // Refresh list
         fetchFields();
-        
-        // Navigate back to previous page or ProductCatalogueSection
-        const returnPath = location.state?.from || '/admin/product-creation';
-        setTimeout(() => {
-          navigate(returnPath);
-        }, 1000); // Small delay to show success message
+
+        // Navigate back to previous page or ProductCatalogueSection only if we were deep-linked from there
+        const returnPath = location.state?.from;
+        if (returnPath) {
+          setTimeout(() => {
+            navigate(returnPath);
+          }, 1000); // Small delay to show success message
+        }
       }
     } catch (error: any) {
       console.error('Error creating field:', error);
