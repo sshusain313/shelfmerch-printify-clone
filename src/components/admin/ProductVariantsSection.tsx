@@ -480,6 +480,21 @@ export const ProductVariantsSection = ({
             <Label className="text-base font-semibold">
               Generated Variants ({variants.length})
             </Label>
+            {/* DEBUG: Check for duplicate IDs */}
+            {(() => {
+              const ids = variants.map(v => v.id);
+              const uniqueIds = new Set(ids);
+              if (ids.length !== uniqueIds.size) {
+                console.error('[ProductVariantsSection] DUPLICATE VARIANT IDS FOUND!', {
+                  total: ids.length,
+                  unique: uniqueIds.size,
+                  ids
+                });
+              } else {
+                console.log('[ProductVariantsSection] Variant IDs are unique', ids);
+              }
+              return null;
+            })()}
             <Button
               variant="outline"
               size="sm"

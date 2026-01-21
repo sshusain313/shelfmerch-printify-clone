@@ -54,6 +54,8 @@ interface RealisticWebGLPreviewProps {
   // Enable garment tint (default: false) - only set to true if you want to apply color tint
   // When false, real per-color view images from variant.viewImages are used as-is
   enableGarmentTint?: boolean;
+  // Callback when all content (garment + designs) is loaded and rendered
+  onLoad?: () => void;
 }
 
 /**
@@ -85,6 +87,7 @@ export const RealisticWebGLPreview: React.FC<RealisticWebGLPreviewProps> = ({
   canvasPadding = 40,
   PX_PER_INCH = 72,
   enableGarmentTint = false, // Default: disabled - use real variant images as-is
+  onLoad,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const appRef = useRef<Application | null>(null);
@@ -1005,7 +1008,9 @@ export const RealisticWebGLPreview: React.FC<RealisticWebGLPreviewProps> = ({
       }
     };
 
-    loadDesigns();
+    loadDesigns().then(() => {
+      if (onLoad) onLoad();
+    });
 
     return () => {
       cancelled = true;

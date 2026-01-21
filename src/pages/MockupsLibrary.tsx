@@ -52,6 +52,7 @@ const MockupsLibrary = () => {
     const [savingMockups, setSavingMockups] = useState<Record<string, boolean>>({});
     const [allSaved, setAllSaved] = useState(false);
     const [isSavingAll, setIsSavingAll] = useState(false);
+    const [hasAutoSaved, setHasAutoSaved] = useState(false);
 
     // Track which mockups have WebGL ready
     const [webglReadyMap, setWebglReadyMap] = useState<Record<string, boolean>>({});
@@ -906,6 +907,59 @@ const MockupsLibrary = () => {
         setWebglReadyMap(prev => ({ ...prev, [mockupId]: true }));
     }, []);
 
+    // Auto-save previews when data is ready
+    useEffect(() => {
+        if (
+            !hasAutoSaved &&
+            storeProductId &&
+            allColorMockups.length > 0 &&
+            Object.keys(designImagesByView).length > 0 &&
+            catalogPhysicalDimensions &&
+            !isSavingAll &&
+            !isLoadingMockups
+        ) {
+            // Identify mockups that are expected to be rendered with WebGL
+            // Condition matches the render logic: mockup.imageUrl && hasDesignForView && hasPlaceholder && catalogPhysicalDimensions
+            const expectedMockups: string[] = [];
+
+            allColorMockups.forEach(group => {
+                group.mockups.forEach((m: any) => {
+                    const viewKey = (m.viewKey || 'front').toLowerCase();
+                    const hasDesignForView = !!designImagesByView[viewKey];
+                    const hasPlaceholder = Array.isArray(m.placeholders) && m.placeholders.length > 0;
+
+                    if (m.imageUrl && hasDesignForView && hasPlaceholder) {
+                        const mockupKey = `${group.color}:${m.id}`;
+                        expectedMockups.push(mockupKey);
+                    }
+                });
+            });
+
+            // Check if all expected mockups are ready
+            const allReady = expectedMockups.length > 0 && expectedMockups.every(key => webglReadyMap[key]);
+
+            if (allReady) {
+                console.log(`✅ All ${expectedMockups.length} WebGL mockups are ready. Triggering auto-save...`);
+                saveAllMockupPreviews();
+                setHasAutoSaved(true);
+            } else if (expectedMockups.length > 0) {
+                // Optional: Log progress
+                const readyCount = expectedMockups.filter(key => webglReadyMap[key]).length;
+                console.log(`⏳ Waiting for WebGL mockups to load: ${readyCount}/${expectedMockups.length} ready`);
+            }
+        }
+    }, [
+        hasAutoSaved,
+        storeProductId,
+        allColorMockups,
+        designImagesByView,
+        catalogPhysicalDimensions,
+        isSavingAll,
+        isLoadingMockups,
+        saveAllMockupPreviews,
+        webglReadyMap // Added dependency
+    ]);
+
     const previewImagesByView: Record<string, string> = designData.previewImagesByView || {};
 
     // Fallback: derive image previews from designData.elements when previewImagesByView is empty
@@ -1201,7 +1255,7 @@ const MockupsLibrary = () => {
                                                                     {mockup.imageUrl && hasDesignForView && hasPlaceholder && catalogPhysicalDimensions ? (
                                                                         <div
                                                                             ref={(el) => { webglContainerRefs.current[mockupKey] = el; }}
-                                                                            className="relative bg-white flex justify-center items-center"
+                                                                            className="relative flex justify-center items-center"
                                                                             style={{ minHeight: 350 }}
                                                                         >
                                                                             <RealisticWebGLPreview
@@ -1227,6 +1281,7 @@ const MockupsLibrary = () => {
                                                                                 currentView={viewKey}
                                                                                 canvasPadding={40}
                                                                                 PX_PER_INCH={Math.min(720 / catalogPhysicalDimensions.width, 520 / catalogPhysicalDimensions.height)}
+                                                                                onLoad={() => handleWebGLReady(mockupKey)}
                                                                             />
                                                                         </div>
                                                                     ) : mockup.imageUrl ? (

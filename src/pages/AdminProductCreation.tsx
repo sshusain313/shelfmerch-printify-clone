@@ -238,8 +238,20 @@ const AdminProductCreation = () => {
             });
           }
 
-          if (product.variants) {
-            setVariants(product.variants);
+          if (product.variants && Array.isArray(product.variants)) {
+            const rawVariants = product.variants;
+            const seenIds = new Set();
+            const uniqueVariants = rawVariants.map((v: any) => {
+              // Ensure every variant has a unique ID to prevent React rendering bugs
+              let uniqueId = v.id || v._id;
+              if (!uniqueId || seenIds.has(uniqueId)) {
+                // Generate a new temporary ID if missing or duplicate
+                uniqueId = `${v.size}-${v.color}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+              }
+              seenIds.add(uniqueId);
+              return { ...v, id: uniqueId };
+            });
+            setVariants(uniqueVariants);
           }
 
           if (product.availableSizes) {

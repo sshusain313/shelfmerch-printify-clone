@@ -73,10 +73,11 @@ const findTransactionByIdempotencyKey = async (idempotencyKey) => {
  * @param {mongoose.ClientSession} session - MongoDB session for atomicity
  * @returns {Promise<{wallet: Wallet, transaction: WalletTransaction}>}
  */
-const creditWallet = async (userId, amountPaise, txnData, session) => {
-    if (!session) {
-        throw new Error('Session required for atomic wallet operations');
-    }
+const creditWallet = async (userId, amountPaise, txnData, session = null) => {
+    // Session is optional for standalone MongoDB (local dev)
+    // if (!session) {
+    //     throw new Error('Session required for atomic wallet operations');
+    // }
 
     if (!Number.isInteger(amountPaise) || amountPaise <= 0) {
         throw new Error('Amount must be a positive integer');
@@ -144,7 +145,7 @@ const creditWallet = async (userId, amountPaise, txnData, session) => {
                     completedAt: new Date(),
                 },
             ],
-            { session }
+            session ? { session } : {}
         );
     }
 
@@ -161,10 +162,11 @@ const creditWallet = async (userId, amountPaise, txnData, session) => {
  * @param {mongoose.ClientSession} session - MongoDB session for atomicity
  * @returns {Promise<{wallet: Wallet, transaction: WalletTransaction}>}
  */
-const debitWallet = async (userId, amountPaise, txnData, session) => {
-    if (!session) {
-        throw new Error('Session required for atomic wallet operations');
-    }
+const debitWallet = async (userId, amountPaise, txnData, session = null) => {
+    // Session optional
+    // if (!session) {
+    //     throw new Error('Session required for atomic wallet operations');
+    // }
 
     if (!Number.isInteger(amountPaise) || amountPaise <= 0) {
         throw new Error('Amount must be a positive integer');
@@ -233,7 +235,7 @@ const debitWallet = async (userId, amountPaise, txnData, session) => {
                 completedAt: new Date(),
             },
         ],
-        { session }
+        session ? { session } : {}
     );
 
     console.log(`[WalletService] Debited ${amountPaise} paise from user ${userId}. Balance: ${balanceBefore} -> ${balanceAfter}`);

@@ -557,7 +557,8 @@ const ProductDetail = () => {
                   {product.availableSizes.map((size: string) => (
                     <span
                       key={size}
-                      className="px-4 py-2.5 rounded-lg border-2 font-medium text-sm border-border bg-background"
+                      // onClick={() => setSelectedSize(size)}
+                      className="px-4 py-2.5 rounded-lg border-2 font-medium text-sm transition-all"
                     >
                       {size}
                     </span>
@@ -580,11 +581,11 @@ const ProductDetail = () => {
                     return (
                       <div
                         key={color}
-                        className="flex flex-col items-center gap-2"
-                        title={color}
+                        className="flex flex-col items-center gap-2 cursor-pointer group"
+                        // onClick={() => setSelectedColor(color)}
                       >
                         <div
-                          className="w-14 h-14 lg:w-16 lg:h-16 rounded-full border-2"
+                          className="w-14 h-14 lg:w-16 lg:h-16 rounded-full border-2 transition-all relative "
                           style={{
                             backgroundColor: colorHex,
                             border: colorHex === "#FFFFFF" ? "2px solid hsl(var(--border))" : undefined
