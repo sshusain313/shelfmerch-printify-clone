@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useStore } from '@/contexts/StoreContext';
 import { Card } from '@/components/ui/card';
 import { Search } from 'lucide-react';
@@ -10,9 +10,10 @@ import DashboardLayout from '@/components/layout/DashboardLayout';
 
 const Orders = () => {
   const { selectedStore } = useStore();
-  const [orders, setOrders] = useState<Order[]>([]);
+  const [allOrders, setAllOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     let isMounted = true;
@@ -38,7 +39,7 @@ const Orders = () => {
           });
         }
 
-        setOrders(filtered);
+        setAllOrders(filtered);
       } catch (err: any) {
         if (isMounted) {
           setError(err?.message || 'Failed to load orders');
@@ -56,6 +57,27 @@ const Orders = () => {
       isMounted = false;
     };
   }, [selectedStore]);
+
+  // Filter orders based on search query
+  const orders = useMemo(() => {
+    if (!searchQuery.trim()) {
+      return allOrders;
+    }
+
+    const query = searchQuery.toLowerCase().trim();
+    return allOrders.filter((order) => {
+      // Search by customer email
+      const emailMatch = order.customerEmail?.toLowerCase().includes(query);
+      
+      // Search by product name (from order items)
+      const productMatch = order.items?.some((item: any) => {
+        const productName = item.productName || item.name || '';
+        return productName.toLowerCase().includes(query);
+      });
+
+      return emailMatch || productMatch;
+    });
+  }, [allOrders, searchQuery]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -86,6 +108,8 @@ const Orders = () => {
               <Input
                 placeholder="Search orders..."
                 className="pl-10"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
           </div>

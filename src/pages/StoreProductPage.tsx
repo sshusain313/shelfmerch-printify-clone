@@ -416,17 +416,17 @@ const StoreProductPage = () => {
     return Array.from(sizesForColor).sort();
   }, [selectedColor, colorToSizesMap]);
 
-  // Get available colors for the selected size (based on actual variants in database)
+  // Always show all colors (not filtered by size)
   const availableColors = useMemo(() => {
-    if (!selectedSize) return product?.variants.colors || [];
-    const colorsForSize = sizeToColorsMap[selectedSize];
-    if (!colorsForSize || colorsForSize.size === 0) return product?.variants.colors || [];
-    return Array.from(colorsForSize).sort();
-  }, [selectedSize, sizeToColorsMap, product]);
+    return product?.variants.colors || [];
+  }, [product?.variants.colors]);
 
   // Update selected size when color changes (ensure size is available for new color)
   useEffect(() => {
-    if (!selectedColor) return;
+    if (!selectedColor) {
+      setSelectedSize('');
+      return;
+    }
     const sizesForColor = colorToSizesMap[selectedColor];
     if (!sizesForColor || sizesForColor.size === 0) {
       setSelectedSize('');
@@ -444,25 +444,6 @@ const StoreProductPage = () => {
       setSelectedSize('');
     }
   }, [selectedColor, colorToSizesMap, selectedSize]);
-
-  // Update selected color when size changes (ensure color is available for new size)
-  useEffect(() => {
-    if (!selectedSize) return;
-    const colorsForSize = sizeToColorsMap[selectedSize];
-    if (!colorsForSize || colorsForSize.size === 0) {
-      // If no colors available for this size, don't change color (let user choose)
-      return;
-    }
-    const availableColorsArray = Array.from(colorsForSize);
-    if (selectedColor && colorsForSize.has(selectedColor)) {
-      // Current color is still available for this size, keep it
-      return;
-    }
-    // Current color is not available for this size, select first available
-    if (availableColorsArray.length > 0) {
-      setSelectedColor(availableColorsArray[0]);
-    }
-  }, [selectedSize, sizeToColorsMap, selectedColor]);
 
   const handleAddToCart = useCallback(() => {
     if (!product) return;
@@ -898,35 +879,32 @@ const StoreProductPage = () => {
               <span className="text-sm text-muted-foreground">{selectedColor}</span>
             </div>
             <div className="flex flex-wrap gap-2">
-              {product.variants.colors.map((color) => {
+              {availableColors.map((color) => {
                 const hex = getColorHex(color);
                 const isSelected = selectedColor === color;
-                // Check if this color is available for the selected size (or any size if no size selected)
-                const isAvailable = selectedSize 
-                  ? sizeToColorsMap[selectedSize]?.has(color) ?? false
-                  : colorToSizesMap[color]?.size > 0;
-                const isDisabled = !isAvailable;
+                // Check if this color has any available sizes
+                const hasSizes = colorToSizesMap[color]?.size > 0;
                 
                 return (
                   <button
                     key={color}
                     onClick={() => {
-                      if (isAvailable) {
+                      if (hasSizes) {
                         setSelectedColor(color);
                       }
                     }}
-                    disabled={isDisabled}
+                    disabled={!hasSizes}
                     className={cn(
                       "relative w-10 h-10 rounded-full border-2 transition-all",
-                      isDisabled
+                      !hasSizes
                         ? 'opacity-40 cursor-not-allowed grayscale'
                         : isSelected
                           ? 'border-primary ring-2 ring-primary/30 hover:scale-110'
                           : 'border-border hover:border-primary/50 hover:scale-110'
                     )}
                     style={{ backgroundColor: hex }}
-                    title={isDisabled ? `${color} - Not available for selected size` : color}
-                    aria-label={isDisabled ? `${color} color (not available)` : `Select ${color} color`}
+                    title={!hasSizes ? `${color} - No sizes available` : color}
+                    aria-label={!hasSizes ? `${color} color (no sizes available)` : `Select ${color} color`}
                   >
                     {isSelected && (
                       <Check
@@ -937,7 +915,7 @@ const StoreProductPage = () => {
                         strokeWidth={3}
                       />
                     )}
-                    {isDisabled && (
+                    {!hasSizes && (
                       <div className="absolute inset-0 flex items-center justify-center">
                         <span className="text-xs text-muted-foreground">×</span>
                       </div>

@@ -736,20 +736,7 @@ const ListingEditor = () => {
 
           <Separator />
 
-          <Tabs defaultValue="quick" className="w-full">
-            <div className="flex items-center justify-between gap-2">
-              <TabsList>
-                <TabsTrigger value="quick">Quick overview</TabsTrigger>
-                <TabsTrigger value="detailed">Detailed table view</TabsTrigger>
-              </TabsList>
-            </div>
-
-            <TabsContent value="quick" className="mt-4">
-              <p className="text-sm text-muted-foreground">
-                Use the detailed table to adjust pricing per size or variant. Changes here will update your retail price and estimated profit.
-              </p>
-            </TabsContent>
-
+          <Tabs defaultValue="detailed" className="w-full">
             <TabsContent value="detailed" className="mt-4">
               <Table>
                 <TableHeader>
@@ -784,27 +771,71 @@ const ListingEditor = () => {
                               <span className="text-xs text-muted-foreground">USD</span>
                               <Input
                                 className="h-8 w-24"
-                                value={Number.isFinite(variant.retailPrice) ? variant.retailPrice.toFixed(2) : ''}
+                                value={(() => {
+                                  const rowKey = `${variant.size}__${variant.color}`;
+                                  const preserved = retailPriceRef.current[rowKey];
+                                  if (preserved !== undefined && Number.isFinite(preserved)) {
+                                    return preserved.toString();
+                                  }
+                                  return Number.isFinite(variant.retailPrice) && variant.retailPrice > 0
+                                    ? variant.retailPrice.toString()
+                                    : '';
+                                })()}
                                 inputMode="decimal"
                                 onChange={(event) => {
-                                  const value = event.target.value.replace(/[^0-9.]/g, '');
-                                  const parsed = parseFloat(value);
-                                  const newRetailPrice = Number.isNaN(parsed) ? 0 : parseFloat(parsed.toFixed(2));
-
-                                  // Update ref to preserve user entry
+                                  const rawValue = event.target.value;
+                                  // Allow empty string, numbers, and single decimal point
+                                  if (rawValue === '') {
+                                    const rowKey = `${variant.size}__${variant.color}`;
+                                    retailPriceRef.current[rowKey] = 0;
+                                    setVariantRows((rows) =>
+                                      rows.map((row) =>
+                                        row === variant
+                                          ? { ...row, retailPrice: 0 }
+                                          : row,
+                                      ),
+                                    );
+                                    return;
+                                  }
+                                  
+                                  // Only allow numbers and decimal point
+                                  const cleaned = rawValue.replace(/[^0-9.]/g, '');
+                                  // Prevent multiple decimal points
+                                  const parts = cleaned.split('.');
+                                  const sanitized = parts.length > 2 
+                                    ? parts[0] + '.' + parts.slice(1).join('')
+                                    : cleaned;
+                                  
+                                  // Update ref immediately with raw value (preserve user input)
                                   const rowKey = `${variant.size}__${variant.color}`;
-                                  retailPriceRef.current[rowKey] = newRetailPrice;
+                                  const parsed = parseFloat(sanitized);
+                                  const numericValue = Number.isNaN(parsed) ? 0 : parsed;
+                                  retailPriceRef.current[rowKey] = numericValue;
 
+                                  // Update state with numeric value
                                   setVariantRows((rows) =>
                                     rows.map((row) =>
                                       row === variant
-                                        ? {
-                                          ...row,
-                                          retailPrice: newRetailPrice,
-                                        }
+                                        ? { ...row, retailPrice: numericValue }
                                         : row,
                                     ),
                                   );
+                                }}
+                                onBlur={(event) => {
+                                  // Format to 2 decimal places on blur
+                                  const rowKey = `${variant.size}__${variant.color}`;
+                                  const current = retailPriceRef.current[rowKey];
+                                  if (current !== undefined && Number.isFinite(current)) {
+                                    const formatted = parseFloat(current.toFixed(2));
+                                    retailPriceRef.current[rowKey] = formatted;
+                                    setVariantRows((rows) =>
+                                      rows.map((row) =>
+                                        row === variant
+                                          ? { ...row, retailPrice: formatted }
+                                          : row,
+                                      ),
+                                    );
+                                  }
                                 }}
                               />
                             </div>

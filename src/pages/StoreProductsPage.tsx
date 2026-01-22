@@ -51,6 +51,8 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '@/components/ui/sheet';
+import { FilterSidebar } from '@/pages/FilterSidebar';
+import { CategorySidebar } from '@/components/CategorySidebar';
 
 type SortOption = 'name-asc' | 'name-desc' | 'price-asc' | 'price-desc' | 'newest' | 'oldest';
 type ViewMode = 'grid' | 'list';
@@ -77,6 +79,14 @@ const StoreProductsPage: React.FC = () => {
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [sortOption, setSortOption] = useState<SortOption>('newest');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
+  
+  // FilterSidebar state (matching CategoryProducts pattern)
+  const [availableMaterials, setAvailableMaterials] = useState<string[]>([]);
+  const [availableColors, setAvailableColors] = useState<string[]>([]);
+  const [availableSizes, setAvailableSizes] = useState<string[]>([]);
+  const [selectedMaterials, setSelectedMaterials] = useState<string[]>([]);
+  const [selectedColors, setSelectedColors] = useState<string[]>([]);
+  const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
 
   const { isAuthenticated, checkAuth } = useStoreAuth();
 
@@ -232,6 +242,39 @@ const StoreProductsPage: React.FC = () => {
     };
   }, [allProducts]);
 
+  // Extract available colors, sizes, and materials from products (for FilterSidebar)
+  useEffect(() => {
+    const colorsSet = new Set<string>();
+    const sizesSet = new Set<string>();
+    const materialsSet = new Set<string>();
+
+    allProducts.forEach((product) => {
+      // Extract colors from variants
+      if (product.variants?.colors && Array.isArray(product.variants.colors)) {
+        product.variants.colors.forEach((color: string) => {
+          if (color) colorsSet.add(color);
+        });
+      }
+
+      // Extract sizes from variants
+      if (product.variants?.sizes && Array.isArray(product.variants.sizes)) {
+        product.variants.sizes.forEach((size: string) => {
+          if (size) sizesSet.add(size);
+        });
+      }
+
+      // Extract materials from catalogProduct attributes
+      const material = (product.catalogProduct as any)?.attributes?.material;
+      if (material && typeof material === 'string') {
+        materialsSet.add(material);
+      }
+    });
+
+    setAvailableColors(Array.from(colorsSet).sort());
+    setAvailableSizes(Array.from(sizesSet).sort());
+    setAvailableMaterials(Array.from(materialsSet).sort());
+  }, [allProducts]);
+
   // Toggle category selection
   const toggleCategory = (categoryId: string) => {
     setSelectedCategories((prev) => {
@@ -314,6 +357,30 @@ const StoreProductsPage: React.FC = () => {
       });
     }
 
+    // Color filter
+    if (selectedColors.length > 0) {
+      filtered = filtered.filter((product) => {
+        const productColors = product.variants?.colors || [];
+        return productColors.some((color: string) => selectedColors.includes(color));
+      });
+    }
+
+    // Size filter
+    if (selectedSizes.length > 0) {
+      filtered = filtered.filter((product) => {
+        const productSizes = product.variants?.sizes || [];
+        return productSizes.some((size: string) => selectedSizes.includes(size));
+      });
+    }
+
+    // Material filter
+    if (selectedMaterials.length > 0) {
+      filtered = filtered.filter((product) => {
+        const productMaterial = (product.catalogProduct as any)?.attributes?.material;
+        return productMaterial && typeof productMaterial === 'string' && selectedMaterials.includes(productMaterial);
+      });
+    }
+
     // Sort products
     filtered.sort((a, b) => {
       switch (sortOption) {
@@ -335,7 +402,7 @@ const StoreProductsPage: React.FC = () => {
     });
 
     return filtered;
-  }, [allProducts, searchQuery, selectedCategories, selectedSubcategories, sortOption]);
+  }, [allProducts, searchQuery, selectedCategories, selectedSubcategories, selectedColors, selectedSizes, selectedMaterials, sortOption]);
 
   const handleProductClick = (product: Product) => {
     if (!store) return;
@@ -397,179 +464,17 @@ const StoreProductsPage: React.FC = () => {
     setSearchQuery('');
     setSelectedCategories(new Set());
     setSelectedSubcategories(new Set());
+    setSelectedColors([]);
+    setSelectedSizes([]);
+    setSelectedMaterials([]);
     setSortOption('newest');
   };
 
   const hasActiveFilters =
-    searchQuery.trim() !== '' || selectedCategories.size > 0 || selectedSubcategories.size > 0;
+    searchQuery.trim() !== '' || selectedCategories.size > 0 || selectedSubcategories.size > 0 ||
+    selectedColors.length > 0 || selectedSizes.length > 0 || selectedMaterials.length > 0;
 
-  const activeFilterCount = selectedCategories.size + selectedSubcategories.size;
-
-  // Filter Sidebar Content (shared between desktop and mobile)
-  const FilterContent = () => (
-    <div className="space-y-6">
-      {/* Active Filters Summary */}
-      {hasActiveFilters && (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-muted-foreground">Active Filters</span>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={clearFilters}
-              className="h-7 text-xs text-primary hover:text-primary/80"
-            >
-              Clear All
-            </Button>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {Array.from(selectedCategories).map((catId) => {
-              const category = CATEGORIES[catId as CategoryId];
-              if (!category) return null;
-              return (
-                <Badge
-                  key={catId}
-                  variant="secondary"
-                  className="gap-1 pl-2 pr-1 py-1 bg-primary/10 text-primary border-primary/20 hover:bg-primary/20 transition-colors"
-                >
-                  {category.name}
-                  <button
-                    onClick={() => toggleCategory(catId)}
-                    className="ml-1 p-0.5 rounded-full hover:bg-primary/20"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </Badge>
-              );
-            })}
-            {Array.from(selectedSubcategories).map((subcat) => (
-              <Badge
-                key={subcat}
-                variant="secondary"
-                className="gap-1 pl-2 pr-1 py-1 bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors"
-              >
-                {subcat}
-                <button
-                  onClick={() => {
-                    setSelectedSubcategories((prev) => {
-                      const next = new Set(prev);
-                      next.delete(subcat);
-                      return next;
-                    });
-                  }}
-                  className="ml-1 p-0.5 rounded-full hover:bg-background/50"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </Badge>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Categories */}
-      <div className="space-y-3">
-        <h3 className="text-sm font-semibold text-foreground uppercase tracking-wider">Categories</h3>
-        <ScrollArea className="h-auto max-h-[50vh]">
-          <div className="space-y-1 pr-4">
-            {Object.values(CATEGORIES)
-              .filter((category) => availableCategories.includes(category.id))
-              .map((category) => {
-                const isExpanded = expandedCategories.has(category.id);
-                const isCategorySelected = selectedCategories.has(category.id);
-                const categorySubcategories = getSubcategories(category.id as CategoryId);
-                const availableSubs = availableSubcategoriesByCategory[category.id] || [];
-                const hasAvailableSubs = availableSubs.length > 0;
-                const productCount = allProducts.filter(
-                  (p) => p.catalogProduct?.categoryId?.toString() === category.id
-                ).length;
-
-                return (
-                  <div key={category.id} className="space-y-1">
-                    {/* Category Header */}
-                    <div
-                      className={`flex items-center gap-3 p-2.5 rounded-lg cursor-pointer transition-all duration-200 group ${isCategorySelected
-                        ? 'bg-primary/10 border border-primary/20'
-                        : 'hover:bg-muted/80'
-                        }`}
-                      onClick={() => toggleCategory(category.id)}
-                    >
-                      <Checkbox
-                        id={`cat-${category.id}`}
-                        checked={isCategorySelected}
-                        onCheckedChange={() => toggleCategory(category.id)}
-                        className="data-[state=checked]:bg-primary data-[state=checked]:border-primary"
-                      />
-                      <div className="flex-1 flex items-center justify-between min-w-0">
-                        <span className={`text-sm font-medium truncate ${isCategorySelected ? 'text-primary' : 'text-foreground'}`}>
-                          {category.name}
-                        </span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
-                            {productCount}
-                          </span>
-                          {hasAvailableSubs && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                toggleCategoryExpansion(category.id);
-                              }}
-                              className="p-1 hover:bg-background rounded transition-colors"
-                            >
-                              <ChevronDown
-                                className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''
-                                  }`}
-                              />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Subcategories */}
-                    {hasAvailableSubs && isExpanded && (
-                      <div className="ml-4 pl-4 border-l-2 border-border/50 space-y-1 animate-fade-in">
-                        {categorySubcategories
-                          .filter((sub) => availableSubs.includes(sub))
-                          .map((subcategory) => {
-                            const isSubSelected = selectedSubcategories.has(subcategory);
-                            const subProductCount = allProducts.filter(
-                              (p) => p.subcategoryIds?.includes(subcategory) || p.subcategoryId === subcategory
-                            ).length;
-                            return (
-                              <div
-                                key={subcategory}
-                                className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-all duration-200 ${isSubSelected
-                                  ? 'bg-secondary/50'
-                                  : 'hover:bg-muted/50'
-                                  }`}
-                                onClick={() => toggleSubcategory(subcategory, category.id)}
-                              >
-                                <Checkbox
-                                  id={`sub-${category.id}-${subcategory}`}
-                                  checked={isSubSelected}
-                                  onCheckedChange={() => toggleSubcategory(subcategory, category.id)}
-                                  className="data-[state=checked]:bg-secondary-foreground data-[state=checked]:border-secondary-foreground"
-                                />
-                                <span className="text-sm text-muted-foreground flex-1">
-                                  {subcategory}
-                                </span>
-                                <span className="text-xs text-muted-foreground/60">
-                                  {subProductCount}
-                                </span>
-                              </div>
-                            );
-                          })}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-          </div>
-        </ScrollArea>
-      </div>
-    </div>
-  );
+  const activeFilterCount = selectedCategories.size + selectedSubcategories.size + selectedColors.length + selectedSizes.length + selectedMaterials.length;
 
   if (!store && !loading) {
     return (
@@ -657,25 +562,23 @@ const StoreProductsPage: React.FC = () => {
       {/* Main Content */}
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8 lg:py-12">
         <div className="flex gap-8">
-          {/* Desktop Sidebar - Filters */}
-          <aside className="hidden lg:block w-72 flex-shrink-0">
-            <div className="sticky top-24">
-              <div className="bg-card border border-border/50 rounded-2xl p-6 shadow-sm">
-                <div className="flex items-center gap-2 pb-4 border-b border-border/50 mb-6">
-                  <div className="p-2 rounded-lg bg-primary/10">
-                    <SlidersHorizontal className="h-4 w-4 text-primary" />
-                  </div>
-                  <h2 className="text-lg font-semibold">Filters</h2>
-                  {activeFilterCount > 0 && (
-                    <Badge className="ml-auto bg-primary text-primary-foreground">
-                      {activeFilterCount}
-                    </Badge>
-                  )}
-                </div>
-                <FilterContent />
-              </div>
-            </div>
-          </aside>
+          {/* Desktop Sidebar - Category + Filters (stacked like CategoryProducts) */}
+          <div className="hidden lg:flex lg:flex-col w-64 flex-shrink-0 gap-6">
+            <CategorySidebar />
+            <FilterSidebar
+              availableMaterials={availableMaterials}
+              availableColors={availableColors}
+              availableSizes={availableSizes}
+              selectedMaterials={selectedMaterials}
+              selectedColors={selectedColors}
+              selectedSizes={selectedSizes}
+              onFiltersChange={({ materials, colors, sizes }) => {
+                setSelectedMaterials(materials);
+                setSelectedColors(colors);
+                setSelectedSizes(sizes);
+              }}
+            />
+          </div>
 
           {/* Main Content Area */}
           <main className="flex-1 min-w-0">
@@ -725,7 +628,22 @@ const StoreProductsPage: React.FC = () => {
                           Filters
                         </SheetTitle>
                       </SheetHeader>
-                      <FilterContent />
+                      <div className="space-y-6">
+                        <CategorySidebar />
+                        <FilterSidebar
+                          availableMaterials={availableMaterials}
+                          availableColors={availableColors}
+                          availableSizes={availableSizes}
+                          selectedMaterials={selectedMaterials}
+                          selectedColors={selectedColors}
+                          selectedSizes={selectedSizes}
+                          onFiltersChange={({ materials, colors, sizes }) => {
+                            setSelectedMaterials(materials);
+                            setSelectedColors(colors);
+                            setSelectedSizes(sizes);
+                          }}
+                        />
+                      </div>
                     </SheetContent>
                   </Sheet>
 
