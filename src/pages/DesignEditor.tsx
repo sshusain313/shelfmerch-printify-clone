@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { Stage, Layer, Text, TextPath, Image, Rect, Group, Transformer, Line, Shape, Circle, RegularPolygon, Star } from 'react-konva';
 import Konva from 'konva';
 import { Button } from '@/components/ui/button';
@@ -144,6 +144,7 @@ interface Product {
 const DesignEditor: React.FC = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
 
   // Canvas state
@@ -547,6 +548,40 @@ const DesignEditor: React.FC = () => {
 
     fetchProduct();
   }, [id, canvasWidth, canvasHeight, effectiveCanvasWidth, effectiveCanvasHeight, canvasPadding, loadMockupForView]);
+
+  // Restore design state from sessionStorage after product loads
+  useEffect(() => {
+    if (!id || !product) return;
+
+    try {
+      const savedState = sessionStorage.getItem(`designer_state_${id}`);
+      if (savedState) {
+        const designState = JSON.parse(savedState);
+        if (designState.elements && Array.isArray(designState.elements)) {
+          setElements(designState.elements);
+        }
+        if (designState.selectedColors && Array.isArray(designState.selectedColors)) {
+          setSelectedColors(designState.selectedColors);
+        }
+        if (designState.selectedSizes && Array.isArray(designState.selectedSizes)) {
+          setSelectedSizes(designState.selectedSizes);
+        }
+        if (designState.selectedSizesByColor && typeof designState.selectedSizesByColor === 'object') {
+          setSelectedSizesByColor(designState.selectedSizesByColor);
+        }
+        if (designState.currentView && ['front', 'back', 'sleeves'].includes(designState.currentView)) {
+          setCurrentView(designState.currentView);
+        }
+        if (designState.designUrlsByPlaceholder && typeof designState.designUrlsByPlaceholder === 'object') {
+          setDesignUrlsByPlaceholder(designState.designUrlsByPlaceholder);
+        }
+        // Clear the saved state after restoring
+        sessionStorage.removeItem(`designer_state_${id}`);
+      }
+    } catch (err) {
+      console.error('Failed to restore design state:', err);
+    }
+  }, [id, product]);
 
   // Load mockup when view changes (if not already loaded)
   useEffect(() => {
@@ -1556,7 +1591,31 @@ const DesignEditor: React.FC = () => {
   const handlePublishToStore = useCallback(async () => {
     try {
       if (!user) {
-        toast.error('You must be logged in');
+        // Save current design state to sessionStorage for restoration after login
+        if (id) {
+          try {
+            const designState = {
+              elements,
+              selectedColors,
+              selectedSizes,
+              selectedSizesByColor,
+              currentView,
+              designUrlsByPlaceholder,
+            };
+            sessionStorage.setItem(`designer_state_${id}`, JSON.stringify(designState));
+          } catch (err) {
+            console.error('Failed to save design state:', err);
+          }
+        }
+        
+        // Redirect to auth page with return path
+        navigate('/auth', {
+          state: {
+            from: {
+              pathname: `/designer/${id}`,
+            },
+          },
+        });
         return;
       }
       if (!['merchant', 'superadmin'].includes(user.role)) {

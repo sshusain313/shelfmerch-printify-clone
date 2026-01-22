@@ -130,11 +130,7 @@ const App = () => (
                 )}
                 <Route
                   path="/designer/:id"
-                  element={
-                    <ProtectedRoute>
-                      <DesignerEditor />
-                    </ProtectedRoute>
-                  }
+                  element={<DesignerEditor />}
                 />
                 <Route
                   path="/listing-editor/:id"

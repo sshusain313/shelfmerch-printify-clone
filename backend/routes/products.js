@@ -549,8 +549,8 @@ router.get('/catalog/active', async (req, res) => {
 
 // @route   GET /api/products/:id
 // @desc    Get single product by ID
-// @access  Private
-router.get('/:id', protect, async (req, res) => {
+// @access  Public
+router.get('/:id', async (req, res) => {
   try {
     const product = await CatalogProduct.findById(req.params.id)
       .populate('createdBy', 'name email');
