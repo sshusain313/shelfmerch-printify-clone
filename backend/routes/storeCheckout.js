@@ -323,6 +323,9 @@ router.post('/:subdomain/razorpay/create-order', verifyStoreToken, async (req, r
       return res.status(403).json({ success: false, message: 'Customer does not belong to this store' });
     }
 
+    const keyId = process.env.RAZORPAY_KEY_ID;
+    console.log(`[Checkout] Creating Razorpay order. Key: ${keyId} (Len: ${keyId?.length})`);
+
     // Check if Razorpay is configured
     const razorpay = getRazorpayInstance();
     if (!razorpay) {

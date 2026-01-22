@@ -222,7 +222,7 @@ const StoreCheckoutPage: React.FC = () => {
 
     try {
       setProcessing(true);
-      
+
       // Calculate totals for the order
       const orderSubtotal = cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
       const orderTax = orderSubtotal * 0.08;
@@ -261,7 +261,7 @@ const StoreCheckoutPage: React.FC = () => {
         prefill: {
           name: shippingInfo.fullName,
           email: shippingInfo.email,
-          contact: shippingInfo.phone,
+          contact: shippingInfo.phone.replace(/[^0-9+]/g, ''), // Sanitize phone number
         },
         notes: {
           subdomain: store?.subdomain,
@@ -271,7 +271,7 @@ const StoreCheckoutPage: React.FC = () => {
             // Calculate totals for order creation
             const orderSubtotal = cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
             const orderTax = orderSubtotal * 0.08;
-            
+
             const verifyResp = await checkoutApi.verifyRazorpayPayment(subdomain!, {
               cart,
               shippingInfo,
@@ -311,8 +311,10 @@ const StoreCheckoutPage: React.FC = () => {
 
       const rzp = new (window as any).Razorpay(options);
       rzp.on('payment.failed', (response: any) => {
-        console.error('Payment failed:', response);
-        toast.error(`Payment failed: ${response.error?.description || 'Unknown error'}`);
+        console.error('Payment failed details:', JSON.stringify(response, null, 2));
+        const errorDesc = response.error?.description || response.error?.reason || 'Unknown error';
+        toast.error(`Payment failed: ${errorDesc}`);
+        console.log('Failure Response Object:', response);
         setProcessing(false);
       });
       rzp.open();
