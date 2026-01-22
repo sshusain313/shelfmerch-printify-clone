@@ -247,7 +247,7 @@ const Header = () => {
                       className="flex items-center gap-3 px-4 py-2 text-sm transition-colors text-muted-foreground hover:bg-accent hover:text-foreground"
                     >
                       <Package className="h-4 w-4" />
-                      My Products
+                      Dashboard
                     </Link>
                     <Link
                       to="/stores"
@@ -257,6 +257,15 @@ const Header = () => {
                       <Store className="h-4 w-4" />
                       My Stores
                     </Link>
+                      {isAuthenticated && (
+            <Link
+              to="/profile"
+              className="flex items-center gap-3 px-4 py-2 text-sm transition-colors text-muted-foreground hover:bg-accent hover:text-foreground"
+            >
+              <User className="h-4 w-4" />
+              Profile
+            </Link>
+          )}
                     <Link
                       to="/settings"
                       onClick={() => setIsProfileOpen(false)}
