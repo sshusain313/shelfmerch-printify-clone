@@ -27,8 +27,19 @@ import {
 } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Trash2 } from 'lucide-react';
 
 const ChannelButton = ({ name, icon, isNew }: { name: string; icon?: React.ReactNode; isNew?: boolean }) => (
   <Button variant="outline" className="h-14 justify-start px-4 gap-3 relative hover:border-primary/50 hover:bg-muted/50 transition-all group">
@@ -56,6 +67,9 @@ const Stores = () => {
   const [newStoreName, setNewStoreName] = useState('');
   const [newStoreDescription, setNewStoreDescription] = useState('');
   const [isCreatingStore, setIsCreatingStore] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [storeToDelete, setStoreToDelete] = useState<StoreType | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     const fetchStores = async () => {
@@ -188,6 +202,40 @@ const Stores = () => {
     } finally {
       setIsCreatingStore(false);
     }
+  };
+
+  const handleDeleteClick = (store: StoreType) => {
+    setStoreToDelete(store);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!storeToDelete) return;
+
+    setIsDeleting(true);
+    try {
+      const response = await storeApi.delete(storeToDelete.id);
+      
+      if (response.success) {
+        // Remove the deleted store from the list
+        setStores((prevStores) => prevStores.filter((s) => s.id !== storeToDelete.id));
+        toast.success('Store deleted successfully');
+        setDeleteDialogOpen(false);
+        setStoreToDelete(null);
+      } else {
+        throw new Error(response.message || 'Failed to delete store');
+      }
+    } catch (error: any) {
+      console.error('Error deleting store:', error);
+      toast.error(error.message || 'Failed to delete store');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteDialogOpen(false);
+    setStoreToDelete(null);
   };
 
   return (
@@ -328,7 +376,7 @@ const Stores = () => {
                                 : '-'}
                             </td>
                             <td className="px-6 py-4">
-                              <div className="flex items-center gap-6">
+                              <div className="flex items-center gap-3">
                                 <Button 
                                   variant="outline" 
                                   size="sm" 
@@ -351,6 +399,18 @@ const Stores = () => {
                                 >
                                   <Paintbrush className="w-4 h-4 mr-2" />
                                   Customize Storefront
+                                </Button>
+                                <Button 
+                                  variant="outline" 
+                                  size="sm" 
+                                  className="h-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteClick(store);
+                                  }}
+                                >
+                                  <Trash2 className="w-4 h-4 mr-2" />
+                                  Delete Store
                                 </Button>
                               </div>
                             </td>
@@ -406,6 +466,15 @@ const Stores = () => {
                             >
                               <Paintbrush className="w-4 h-4 mr-2" />
                               Customize Storefront
+                            </Button>
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              className="w-full text-destructive hover:text-destructive hover:bg-destructive/10"
+                              onClick={() => handleDeleteClick(store)}
+                            >
+                              <Trash2 className="w-4 h-4 mr-2" />
+                              Delete Store
                             </Button>
                           </div>
                         </div>
@@ -613,6 +682,37 @@ const Stores = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Store Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Store</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this store? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={handleDeleteCancel} disabled={isDeleting}>
+              No, go back
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteConfirm}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                'Yes'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

@@ -1840,6 +1840,32 @@ export const storeApi = {
     const json = await response.json();
     return json as { success: boolean; message: string; data: any };
   },
+
+  // Delete a store
+  delete: async (storeId: string) => {
+    const token = getToken();
+
+    const response = await fetch(`${API_BASE_URL}/stores/${storeId}`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      credentials: 'include',
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new ApiError(
+        errorData.message || 'Failed to delete store',
+        response.status,
+        errorData.errors
+      );
+    }
+
+    const json = await response.json();
+    return json as { success: boolean; message: string };
+  },
 };
 
 // Store Builder API

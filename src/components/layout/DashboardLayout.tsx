@@ -153,7 +153,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
               Customers
             </Link>
           </Button>
-          <Button
+          {/* <Button
             variant={isActiveRoute('/stores') ? 'secondary' : 'ghost'}
             className="w-full justify-start"
             asChild
@@ -162,7 +162,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
               <Store className="mr-2 h-4 w-4" />
               Manage Stores
             </Link>
-          </Button>
+          </Button> */}
           <Button
             variant={isActiveRoute('/analytics') ? 'secondary' : 'ghost'}
             className="w-full justify-start"
