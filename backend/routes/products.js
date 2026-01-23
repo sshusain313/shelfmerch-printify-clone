@@ -289,10 +289,13 @@ router.get('/', protect, async (req, res) => {
     const skip = (parseInt(String(page)) - 1) * parseInt(String(limit));
 
     // Build query
+    // Base products created by Super Admin should be visible to all users
+    // Only filter by isActive, not by createdBy or ownerId
     const query = {};
     if (isActive !== undefined && isActive !== 'undefined') {
       query.isActive = isActive === 'true';
     }
+    // Note: We don't filter by createdBy here - all products are global base products
 
     // Handle search - use regex for partial matching (new field names)
     let searchQuery;
@@ -319,7 +322,8 @@ router.get('/', protect, async (req, res) => {
     // Fetch variants for all products in one query
     const productIds = products.map(p => p._id);
     const allVariants = await CatalogProductVariant.find({
-      catalogProductId: { $in: productIds }
+      catalogProductId: { $in: productIds },
+      isActive: true
     }).sort({ size: 1, color: 1 });
 
     // Group variants by product ID
@@ -434,15 +438,33 @@ router.get('/catalog/active', async (req, res) => {
     }
 
     // Add subcategory filter if provided (searches in subcategoryIds array) - new field name
+    // Normalize subcategory matching to handle:
+    // 1. Hyphenated slugs (tote-bag, tote-bags) vs spaced names (Tote Bag)
+    // 2. Singular vs plural variations (bag vs bags)
     if (subcategory && String(subcategory).trim()) {
       const subcategoryTerm = String(subcategory).trim();
       const escapedTerm = subcategoryTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      
+      // Create regex patterns that match both hyphenated and spaced versions
+      // e.g., "tote-bag" or "tote-bags" should match "Tote Bag" in database
+      // Convert hyphens to optional space/hyphen pattern: "tote-bag" -> "tote[- ]bag"
+      const normalizedPattern = escapedTerm.replace(/-/g, '[- ]');
+      
+      // Also handle singular/plural variations by making the last word optional
+      // e.g., "tote-bags" should match "Tote Bag" (singular in DB)
+      // Remove trailing 's' and make it optional: "tote-bags" -> "tote[- ]bag(s)?"
+      const singularPattern = normalizedPattern.replace(/s\?$/, '').replace(/s$/, '(s)?');
+      
       andConditions.push({
         subcategoryIds: {
-          $in: [new RegExp(`^${escapedTerm}$`, 'i')]
+          $in: [
+            new RegExp(`^${normalizedPattern}$`, 'i'),     // Match hyphenated or spaced (exact)
+            new RegExp(`^${singularPattern}$`, 'i'),      // Match with optional plural
+            new RegExp(`^${escapedTerm}$`, 'i')           // Also try exact match
+          ]
         }
       });
-      console.log('Applied subcategory filter:', subcategoryTerm);
+      console.log('Applied subcategory filter:', subcategoryTerm, 'with patterns:', { normalizedPattern, singularPattern });
     }
 
     // Handle search text matching - add to andConditions if search term exists (new field names)
@@ -478,7 +500,8 @@ router.get('/catalog/active', async (req, res) => {
     // Fetch variants for all products in one query
     const productIds = products.map(p => p._id);
     const allVariants = await CatalogProductVariant.find({
-      catalogProductId: { $in: productIds }
+      catalogProductId: { $in: productIds },
+      isActive: true
     }).sort({ size: 1, color: 1 });
 
     // Group variants by product ID
@@ -562,9 +585,11 @@ router.get('/:id', async (req, res) => {
       });
     }
 
-    // Fetch variants from separate collection
-    const variants = await CatalogProductVariant.find({ catalogProductId: product._id })
-      .sort({ size: 1, color: 1 });
+    // Fetch variants from separate collection - only active variants
+    const variants = await CatalogProductVariant.find({ 
+      catalogProductId: product._id,
+      isActive: true
+    }).sort({ size: 1, color: 1 });
 
     // Transform to old structure for backward compatibility
     const productResponse = product.toObject();
@@ -695,9 +720,11 @@ router.put('/:id', protect, authorize('superadmin'), async (req, res) => {
         }
       }
     } else {
-      // Fetch existing variants if not updating them
-      updatedVariants = await CatalogProductVariant.find({ catalogProductId: product._id })
-        .sort({ size: 1, color: 1 });
+      // Fetch existing variants if not updating them - only active variants
+      updatedVariants = await CatalogProductVariant.find({ 
+        catalogProductId: product._id,
+        isActive: true
+      }).sort({ size: 1, color: 1 });
     }
 
     // Transform to old structure for backward compatibility

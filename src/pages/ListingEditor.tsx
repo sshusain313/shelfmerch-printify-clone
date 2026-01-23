@@ -491,62 +491,72 @@ const ListingEditor = () => {
         const selectedStoreIdsArray = Array.from(selectedStoreIds);
         console.log('[ListingEditor] Publishing to stores:', selectedStoreIdsArray);
 
+        if (selectedStoreIdsArray.length === 0) {
+          toast.error('Please select at least one store to publish to.');
+          return;
+        }
+
+        const catalogProductId = draftData?.catalogProductId || state?.productId;
+        if (!catalogProductId) {
+          toast.error('No catalog product ID available. Cannot publish.');
+          return;
+        }
+
         // Track success/failure
         let successCount = 0;
         const errors: string[] = [];
 
-        // 1. Update the existing draft for the FIRST selected store
-        if (selectedStoreIdsArray.length > 0) {
-          const firstStoreId = selectedStoreIdsArray[0];
+        // For each selected store, upsert (create or update) the StoreProduct
+        // The backend API handles upsert logic, so we can use create for all stores
+        // If a StoreProduct already exists for a store, the backend will update it
+        for (const storeId of selectedStoreIdsArray) {
           try {
-            const updates = { ...basePayload, storeId: firstStoreId };
-            const resp = await storeProductsApi.update(storeProductId, updates);
-            if (resp && resp.success) {
-              successCount++;
-              console.log('[ListingEditor] Updated existing draft for store:', firstStoreId);
+            // Check if this is the store with the existing draft (storeProductId)
+            const isExistingDraft = storeProductId && 
+              draftData?.storeId && 
+              String(draftData.storeId) === String(storeId);
+
+            if (isExistingDraft && storeProductId) {
+              // Update existing draft
+              const updates = { 
+                ...basePayload, 
+                storeId,
+                status: 'published' as const,
+              };
+              const resp = await storeProductsApi.update(storeProductId, updates);
+              if (resp && resp.success) {
+                successCount++;
+                console.log('[ListingEditor] Updated existing draft for store:', storeId);
+              } else {
+                errors.push(`Failed to update store ${storeId}`);
+              }
             } else {
-              errors.push(`Failed to update for first store`);
-            }
-          } catch (err: any) {
-            errors.push(err?.message || 'Failed to update first store');
-          }
-        }
+              // Create or update StoreProduct for this store
+              // The backend POST /api/store-products endpoint uses upsert logic
+              const createPayload = {
+                storeId,
+                catalogProductId,
+                sellingPrice: basePayload.sellingPrice || 0,
+                title: basePayload.title,
+                description: basePayload.description,
+                designData: basePayload.designData,
+                galleryImages: basePayload.galleryImages,
+                variants: basePayload.variants,
+                status: 'published' as const,
+              };
 
-        // 2. CREATE new StoreProducts for remaining selected stores
-        if (selectedStoreIdsArray.length > 1) {
-          const catalogProductId = draftData?.catalogProductId || state?.productId;
-          if (!catalogProductId) {
-            console.warn('[ListingEditor] No catalogProductId available for creating copies');
-          } else {
-            for (let i = 1; i < selectedStoreIdsArray.length; i++) {
-              const storeId = selectedStoreIdsArray[i];
-              try {
-                // Create a new StoreProduct for this store
-                const createPayload = {
-                  storeId,
-                  catalogProductId,
-                  sellingPrice: basePayload.sellingPrice || 0,
-                  title: basePayload.title,
-                  description: basePayload.description,
-                  designData: basePayload.designData,
-                  galleryImages: basePayload.galleryImages,
-                  variants: basePayload.variants,
-                  status: 'published' as const,
-                };
-
-                console.log('[ListingEditor] Creating new StoreProduct for store:', storeId);
-                const resp = await storeProductsApi.create(createPayload);
-                if (resp && resp.success) {
-                  successCount++;
-                  console.log('[ListingEditor] Created product for store:', storeId);
-                } else {
-                  errors.push(`Failed to create for store ${storeId}`);
-                }
-              } catch (err: any) {
-                console.error('[ListingEditor] Error creating for store', storeId, err);
-                errors.push(err?.message || `Failed for store ${storeId}`);
+              console.log('[ListingEditor] Upserting StoreProduct for store:', storeId);
+              const resp = await storeProductsApi.create(createPayload);
+              if (resp && resp.success) {
+                successCount++;
+                console.log('[ListingEditor] Published product to store:', storeId);
+              } else {
+                errors.push(`Failed to publish to store ${storeId}`);
               }
             }
+          } catch (err: any) {
+            console.error('[ListingEditor] Error publishing to store', storeId, err);
+            errors.push(err?.message || `Failed for store ${storeId}`);
           }
         }
 

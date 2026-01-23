@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { X, Palette, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
+import { getColorHex } from "@/utils/colorMap";
 
 export interface Product {
   id: string;
@@ -93,14 +94,18 @@ export const ProductCard = ({ product }: ProductCardProps) => {
                 </p>
                 {/* Color swatches beside price */}
                 <div className="flex items-center gap-1">
-                  {product.colors.slice(0, 4).map((color) => (
-                    <div
-                      key={color}
-                      className="w-4 h-4 rounded-full border border-border"
-                      style={{ backgroundColor: color }}
-                      title={color}
-                    />
-                  ))}
+                  {product.colors.slice(0, 4).map((color) => {
+                    // Ensure color is a hex value, not a color name
+                    const colorHex = color.startsWith('#') ? color : getColorHex(color);
+                    return (
+                      <div
+                        key={color}
+                        className="w-4 h-4 rounded-full border border-border"
+                        style={{ backgroundColor: colorHex }}
+                        title={typeof color === 'string' && !color.startsWith('#') ? color : undefined}
+                      />
+                    );
+                  })}
                   {product.colors.length > 4 && (
                     <span className="text-xs text-muted-foreground ml-1">
                       +{product.colors.length - 4}
@@ -215,14 +220,19 @@ export const ProductCard = ({ product }: ProductCardProps) => {
               <div>
                 <p className="text-sm font-semibold mb-2">Available Colors</p>
                 <div className="flex flex-wrap gap-2">
-                  {product.colors.map((color) => (
-                    <div
-                      key={color}
-                      className="w-8 h-8 rounded-full border-2 border-border hover:border-accent cursor-pointer transition-colors"
-                      style={{ backgroundColor: color }}
-                      title={color}
-                    />
-                  ))}
+                  {product.colors.map((color) => {
+                    // Ensure color is a hex value, not a color name
+                    const colorHex = color.startsWith('#') ? color : getColorHex(color);
+                    const colorName = typeof color === 'string' && !color.startsWith('#') ? color : undefined;
+                    return (
+                      <div
+                        key={color}
+                        className="w-8 h-8 rounded-full border-2 border-border hover:border-accent cursor-pointer transition-colors"
+                        style={{ backgroundColor: colorHex }}
+                        title={colorName}
+                      />
+                    );
+                  })}
                 </div>
               </div>
 
@@ -236,9 +246,9 @@ export const ProductCard = ({ product }: ProductCardProps) => {
 
               {/* Customize button */}
               <Button
-                variant="green"
+                variant="default"
                 size="lg"
-                className="w-full gap-2"
+                className="w-full gap-2 bg-green-500 hover:bg-green-600 text-white"
               >
                 <Palette className="w-5 h-5" />
                 Customize This Product

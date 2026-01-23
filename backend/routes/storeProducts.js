@@ -23,7 +23,8 @@ router.post('/', protect, authorize('merchant', 'superadmin'), async (req, res) 
       tags,             // optional
       galleryImages,    // optional
       designData,       // optional object from editor
-      variants          // optional: [{ catalogProductVariantId, sku, sellingPrice, isActive }]
+      variants,         // optional: [{ catalogProductVariantId, sku, sellingPrice, isActive }]
+      status            // optional: 'draft' | 'published'
     } = req.body;
 
     if (!catalogProductId || sellingPrice === undefined) {
@@ -67,6 +68,14 @@ router.post('/', protect, authorize('merchant', 'superadmin'), async (req, res) 
         ...(Array.isArray(galleryImages) ? { galleryImages } : {}),
         ...(designData ? { designData } : {}),
         isActive: true,
+        // Handle status: if provided, set it and publishedAt accordingly
+        ...(status === 'published' ? { 
+          status: 'published',
+          publishedAt: new Date()
+        } : status === 'draft' ? {
+          status: 'draft',
+          publishedAt: undefined
+        } : {}),
       },
     };
 

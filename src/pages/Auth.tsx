@@ -48,7 +48,7 @@ const Auth = () => {
   const [resetPasswordErrors, setResetPasswordErrors] = useState<string[]>([]);
   const [resetConfirmPasswordError, setResetConfirmPasswordError] = useState('');
 
-  const from = (location.state as any)?.from?.pathname || '/dashboard';
+  const from = (location.state as any)?.from?.pathname || '/';
 
   // Password validation rules
   const passwordRules: PasswordRule[] = [

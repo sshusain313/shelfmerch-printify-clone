@@ -37,6 +37,9 @@ const categorySlugToSubcategory: Record<string, string> = {
 
   // Accessories
   'tote-bag': 'Tote Bag',
+  'tote-bags': 'Tote Bag',
+  'tote bag' : 'Tote Bag', 
+  'tote bags': 'Tote Bag', // Handle plural slug
   'caps': 'Cap',
   'phone-covers': 'Phone Cover',
   'gaming-pads': 'Gaming Pad',
@@ -78,6 +81,7 @@ const categorySlugToSubcategory: Record<string, string> = {
   // Tech
   'iphone-cases': 'IPhone',
   'laptop-skins': 'Lap Top',
+  'lap-top-cases': 'Lap Top', 
   'ipad-cases': 'IPad',
   'macbook-cases': 'Macbook',
   'phone-cases': 'Phone',
@@ -102,6 +106,8 @@ const categorySlugToParentCategory: Record<string, any> = {
 
   // Accessories
   'tote-bag': 'accessories',
+  'tote-bags': 'accessories',
+  'tote bags': 'accessories', // Handle plural slug
   'caps': 'accessories',
   'phone-covers': 'accessories',
   'gaming-pads': 'accessories',
@@ -410,20 +416,6 @@ const CategoryProducts = () => {
 
           console.log('API response for subcategory:', subcategory, response);
 
-          // Build available colors with hex from variants returned by backend
-          const variants: Array<any> = Array.isArray(response.data.variants) ? response.data.variants : [];
-          const colorMapUnique: Record<string, string | undefined> = {};
-          variants.forEach((v) => {
-            if (v && typeof v.color === 'string') {
-              const key = v.color;
-              if (colorMapUnique[key] === undefined) {
-                colorMapUnique[key] = v.colorHex || undefined;
-              }
-            }
-          });
-          const colorsArr = Object.entries(colorMapUnique).map(([value, hex]) => ({ value, colorHex: hex || getColorHex(value) }));
-          setColorsWithHex(colorsArr);
-
           if (response && response.success && Array.isArray(response.data)) {
             setProducts(response.data);
           } else {
@@ -579,37 +571,64 @@ const CategoryProducts = () => {
         const productId = product._id || product.id;
         const productColorMap: Record<string, string> = {};
 
-        // Extract colors from product variants (with colorHex) or availableColors
+        // Extract colors: prioritize availableColors (backend deduplicated), use variants for colorHex mapping
+        // First, build a map of color -> colorHex from variants (prioritize backend colorHex)
+        const variantColorHexMap: Record<string, string> = {};
         if (product.variants && Array.isArray(product.variants)) {
           product.variants.forEach((variant: any) => {
-            if (variant.color) {
+            if (variant.color && typeof variant.color === 'string') {
+              // Prioritize colorHex from backend, fallback to getColorHex
               const colorHex = variant.colorHex || getColorHex(variant.color);
-              // Store in product-specific map
+              variantColorHexMap[variant.color] = colorHex;
+              // Store in product-specific map for later use
               productColorMap[variant.color] = colorHex;
+            }
+          });
+        }
+        
+        // Process availableColors (this is the source of truth for what colors a product has)
+        // Use colorHex from variants if available, otherwise use getColorHex
+        if (Array.isArray(product.availableColors)) {
+          product.availableColors.forEach((colorName: string) => {
+            if (colorName && typeof colorName === 'string') {
+              // Normalize color name (trim whitespace)
+              const normalizedColorName = colorName.trim();
+              if (!normalizedColorName) return; // Skip empty strings
+              
+              // Use colorHex from variant if available, otherwise use getColorHex
+              const colorHex = variantColorHexMap[normalizedColorName] || getColorHex(normalizedColorName);
+              
+              // Store in product-specific map using normalized name
+              productColorMap[normalizedColorName] = colorHex;
 
-              // Also add to global colorsMap for filters
-              if (!colorsMap.has(variant.color)) {
-                colorsMap.set(variant.color, {
-                  id: variant.color,
-                  value: variant.color,
+              // Add to global colorsMap for filters (deduplicated by Map key - normalized name)
+              if (!colorsMap.has(normalizedColorName)) {
+                colorsMap.set(normalizedColorName, {
+                  id: normalizedColorName,
+                  value: normalizedColorName,
                   colorHex: colorHex,
                 });
               }
             }
           });
-        } else if (Array.isArray(product.availableColors)) {
-          product.availableColors.forEach((colorName: string) => {
-            const colorHex = getColorHex(colorName);
-            // Store in product-specific map
-            productColorMap[colorName] = colorHex;
+        } else if (product.variants && Array.isArray(product.variants)) {
+          // Fallback: if no availableColors, extract from variants
+          product.variants.forEach((variant: any) => {
+            if (variant.color && typeof variant.color === 'string') {
+              const normalizedColorName = variant.color.trim();
+              if (!normalizedColorName) return; // Skip empty strings
+              
+              const colorHex = variant.colorHex || getColorHex(normalizedColorName);
+              productColorMap[normalizedColorName] = colorHex;
 
-            // Also add to global colorsMap for filters
-            if (!colorsMap.has(colorName)) {
-              colorsMap.set(colorName, {
-                id: colorName,
-                value: colorName,
+              // Add to global colorsMap for filters
+              if (!colorsMap.has(normalizedColorName)) {
+                colorsMap.set(normalizedColorName, {
+                  id: normalizedColorName,
+                  value: normalizedColorName,
                 colorHex: colorHex,
               });
+              }
             }
           });
         }
@@ -753,20 +772,55 @@ const CategoryProducts = () => {
     setAvailableTags(tags);
     setAvailableAttributes(processedAttributes);
     setAvailableMaterials(materials);
-  }, [products, slug, subcategory, isMainCategory]);
+  }, [products, slug, subcategory, isMainCategory, colorOptionsFromDB]);
 
   // Format product data for display in ProductCard
   const formatProductForCard = (product: any): Product => {
     // Get brand from attributes (dynamic) or fallback to ShelfMerch
     const brand = product.catalogue?.attributes?.brand || 'ShelfMerch';
 
-    // Resolve colors: use availableColors and map to hex if possible from productColorHexMap
-    // or just use getColorHex
+    // Resolve colors: use availableColors as single source of truth (backend already deduplicates)
+    // Only use variants as fallback if availableColors is missing
     const productId = product._id || product.id;
     const colorMap = productColorHexMap[productId] || {};
 
-    const colors = (product.availableColors || []).map((c: string) => {
-      return colorMap[c] || getColorHex(c);
+    // Use availableColors as the single source of truth (backend already handles deduplication)
+    // Only fallback to variants if availableColors is missing
+    let colorNames: string[] = [];
+    
+    if (Array.isArray(product.availableColors) && product.availableColors.length > 0) {
+      // Use availableColors directly - backend already handles deduplication
+      // Normalize: trim whitespace and filter out empty strings
+      const normalized = product.availableColors
+        .filter((c: string) => c && typeof c === 'string')
+        .map((c: string) => c.trim())
+        .filter(Boolean);
+      
+      // Deduplicate by normalized name (case-sensitive to preserve exact color names)
+      const uniqueColors = new Set<string>();
+      normalized.forEach((c: string) => {
+        if (c) uniqueColors.add(c);
+      });
+      colorNames = Array.from(uniqueColors);
+    } else if (product.variants && Array.isArray(product.variants)) {
+      // Fallback: extract unique colors from variants only if availableColors is missing
+      const variantColors = new Set<string>();
+      product.variants.forEach((variant: any) => {
+        if (variant.color && typeof variant.color === 'string') {
+          const trimmed = variant.color.trim();
+          if (trimmed) variantColors.add(trimmed);
+        }
+      });
+      colorNames = Array.from(variantColors);
+    }
+    
+    // Map color names to hex values using productColorHexMap (from variants) or getColorHex
+    // Ensure exact count matches availableColors length - no duplicates, no extra colors
+    const colors = colorNames.map((c: string) => {
+      // Normalize color name for lookup (trim whitespace)
+      const normalized = c.trim();
+      // Use colorHex from productColorHexMap if available (from variants), otherwise use getColorHex
+      return colorMap[normalized] || getColorHex(normalized);
     });
 
     const imageUrl = product.galleryImages?.find((img: any) => img.isPrimary)?.url ||
@@ -930,10 +984,10 @@ const CategoryProducts = () => {
         <div className="flex flex-col lg:flex-row gap-8">
           {/* Left: Category sidebar + Filters (stacked) */}
           <div className="hidden lg:flex lg:flex-col w-64 flex-shrink-0 gap-6">
-            <CategorySidebar />
+           <CategorySidebar />
             <FilterSidebar
               availableMaterials={availableMaterials}
-              availableColors={availableColors.map((c: any) => c.value ?? c)}
+              availableColors={availableColors}
               availableSizes={availableSizes.map((s: any) => s.value ?? s.id ?? s)}
               selectedMaterials={selectedMaterials}
               selectedColors={selectedColors}

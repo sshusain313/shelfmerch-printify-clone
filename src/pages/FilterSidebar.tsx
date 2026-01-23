@@ -1,6 +1,7 @@
 
 import { useState } from "react";
 import { ChevronDown, X } from "lucide-react";
+import { getColorHex } from "@/utils/colorMap";
 
 // const productTypes = [
 //   { name: "T-shirt" },
@@ -28,18 +29,7 @@ const printMethods = [
   { name: "AOP" },
 ];
 
-const colorsPalette = [
-  { name: "White", hex: "#FFFFFF" },
-  { name: "Black", hex: "#000000" },
-  { name: "Navy", hex: "#1e3a5f" },
-  { name: "Grey", hex: "#6b7280" },
-  { name: "Red", hex: "#ef4444" },
-  { name: "Green", hex: "#22c55e" },
-  { name: "Blue", hex: "#3b82f6" },
-  { name: "green", hex: "#eab308" },
-  { name: "Pink", hex: "#ec4899" },
-  { name: "Orange", hex: "#f97316" },
-];
+// colorsPalette removed - using getColorHex from colorMap utility instead
 
 const sizeOrder = ["XS", "S", "M", "L", "XL", "XXL"];
 
@@ -124,7 +114,7 @@ const FilterChip = ({ label, onRemove }: FilterChipProps) => (
 
 interface FilterSidebarProps {
   availableMaterials: string[];
-  availableColors: string[];
+  availableColors: string[] | Array<{ value: string; colorHex?: string }>;
   availableSizes: string[];
   selectedMaterials: string[];
   selectedColors: string[];
@@ -337,11 +327,12 @@ export const FilterSidebar = ({
           {availableColors.length > 0 && (
             <FilterSection title="Colors">
               <div className="flex flex-wrap gap-2">
-                {availableColors.map((colorName) => {
-                  const colorConfig = colorsPalette.find(
-                    (c) => c.name.toLowerCase() === colorName.toLowerCase()
-                  );
-                  const hex = colorConfig?.hex || "#e5e7eb";
+                {availableColors.map((colorItem) => {
+                  // Handle both string (legacy) and object (with colorHex) formats
+                  const colorName = typeof colorItem === 'string' ? colorItem : colorItem.value;
+                  const colorHex = typeof colorItem === 'string' 
+                    ? getColorHex(colorItem) 
+                    : (colorItem.colorHex || getColorHex(colorItem.value));
                   const isActive = selectedColors.includes(colorName);
 
                   return (
@@ -353,7 +344,7 @@ export const FilterSidebar = ({
                           ? "border-foreground scale-110 ring-2 ring-green-500 ring-offset-2"
                           : "border-border hover:border-foreground"
                       }`}
-                      style={{ backgroundColor: hex }}
+                      style={{ backgroundColor: colorHex }}
                       title={colorName}
                     />
                   );

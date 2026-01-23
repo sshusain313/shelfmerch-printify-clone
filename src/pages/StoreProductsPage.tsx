@@ -248,11 +248,16 @@ const StoreProductsPage: React.FC = () => {
     const sizesSet = new Set<string>();
     const materialsSet = new Set<string>();
 
-    allProducts.forEach((product) => {
-      // Extract colors from variants
-      if (product.variants?.colors && Array.isArray(product.variants.colors)) {
+    allProducts.forEach((product: any) => {
+      // Extract colors: prioritize availableColors (backend deduplicated), fallback to variants
+      if (product.availableColors && Array.isArray(product.availableColors)) {
+        product.availableColors.forEach((color: string) => {
+          if (color && typeof color === 'string') colorsSet.add(color.trim());
+        });
+      } else if (product.variants?.colors && Array.isArray(product.variants.colors)) {
+        // Fallback: extract from variants only if availableColors is missing
         product.variants.colors.forEach((color: string) => {
-          if (color) colorsSet.add(color);
+          if (color && typeof color === 'string') colorsSet.add(color.trim());
         });
       }
 
