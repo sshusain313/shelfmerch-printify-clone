@@ -915,7 +915,7 @@ const ListingEditor = () => {
                       ? 'bg-green-100 text-green-700'
                       : 'bg-yellow-100 text-yellow-700'
                       }`}>
-                      {store.status === 'active' ? 'Connected' : store.status || 'Draft'}
+                      {store.status === 'active' ? 'Connected' : store.status || 'Publish'}
                     </span>
                   </label>
                 );
