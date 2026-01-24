@@ -349,7 +349,7 @@ const ProductCreation = () => {
               <div className="rounded-lg border bg-muted/30 p-4">
                 <div className="text-sm text-muted-foreground">Costs</div>
                 <div className="text-2xl font-semibold mt-2">
-                  {product ? `$${product.price.toFixed(2)}` : '—'}
+                  {product ? `₹${product.price.toFixed(2)}` : '—'}
                 </div>
                 <p className="text-xs text-muted-foreground mt-2">
                   This is the base cost from your selected provider.
@@ -358,7 +358,7 @@ const ProductCreation = () => {
               <div className="rounded-lg border bg-muted/30 p-4">
                 <div className="text-sm text-muted-foreground">Estimated profit</div>
                 <div className="text-2xl font-semibold mt-2">
-                  {profitRange ? `$${profitRange.min} - $${profitRange.max}` : '—'}
+                  {profitRange ? `₹${profitRange.min} - ₹${profitRange.max}` : '—'}
                 </div>
                 <p className="text-xs text-muted-foreground mt-2">
                   Based on your retail price minus production costs.
@@ -417,16 +417,16 @@ const ProductCreation = () => {
           <Card className="p-6 space-y-4">
             <div>
               <h4 className="text-sm font-semibold uppercase text-muted-foreground">Summary</h4>
-              <p className="text-3xl font-bold">${retailPrice || product.price.toFixed(2)}</p>
+              <p className="text-3xl font-bold">₹{retailPrice || product.price.toFixed(2)}</p>
             </div>
             <div className="space-y-2 text-sm text-muted-foreground">
               <div className="flex items-center justify-between">
                 <span>Base cost</span>
-                <span>${product.price.toFixed(2)}</span>
+                <span>₹{product.price.toFixed(2)}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span>Estimated profit</span>
-                <span>{profitRange ? `$${profitRange.min} - $${profitRange.max}` : '—'}</span>
+                <span>{profitRange ? `₹${profitRange.min} - ₹${profitRange.max}` : '—'}</span>
               </div>
             </div>
             <Separator />

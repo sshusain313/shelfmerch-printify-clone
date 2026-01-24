@@ -59,8 +59,8 @@ const AdminProductDetail = () => {
   };
 
   const formatPrice = (price?: number) => {
-    if (price === undefined || price === null) return '$0.00';
-    return `$${price.toFixed(2)}`;
+    if (price === undefined || price === null) return '₹0.00';
+    return `₹${price.toFixed(2)}`;
   };
 
   const getStatus = (product: any): 'active' | 'draft' | 'archived' | 'inactive' => {

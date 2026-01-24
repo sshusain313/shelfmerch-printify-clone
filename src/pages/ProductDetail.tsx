@@ -444,7 +444,7 @@ const ProductDetail = () => {
             <div className="flex items-baseline gap-3 pb-4 border-b">
               <span className="text-sm text-muted-foreground font-medium">From</span>
               <span className="text-4xl lg:text-5xl font-bold">
-                ${product.catalogue?.basePrice?.toFixed(2) || '0.00'}
+                ₹{product.catalogue?.basePrice?.toFixed(2) || '0.00'}
               </span>
             </div>
 
@@ -611,9 +611,9 @@ const ProductDetail = () => {
                   Start Designing
                 </Link>
               </Button>
-              <Button variant="outline" size="lg" className="h-12 w-12 p-0">
+              {/* <Button variant="outline" size="lg" className="h-12 w-12 p-0">
                 <Heart className="w-5 h-5" />
-              </Button>
+              </Button> */}
               <Button
                 variant="outline"
                 size="lg"
@@ -746,7 +746,7 @@ const ProductDetail = () => {
                             </p>
                             <div className="flex items-center justify-between">
                               <p className="font-semibold text-lg">
-                                ${relatedProduct.catalogue?.basePrice?.toFixed(2) || '0.00'}
+                                ₹{relatedProduct.catalogue?.basePrice?.toFixed(2) || '0.00'}
                               </p>
                               {relatedProduct.availableSizes && relatedProduct.availableColors && (
                                 <p className="text-xs text-muted-foreground hidden sm:inline">
@@ -815,7 +815,7 @@ const ProductDetail = () => {
               <div className="flex items-center gap-3">
                 <div className="flex-1">
                   <p className="text-sm text-muted-foreground">From</p>
-                  <p className="text-xl font-bold">${product.catalogue?.basePrice?.toFixed(2) || '0.00'}</p>
+                  <p className="text-xl font-bold">₹{product.catalogue?.basePrice?.toFixed(2) || '0.00'}</p>
                 </div>
                 <Button
                   size="lg"

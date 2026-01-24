@@ -298,7 +298,7 @@ const StoreCustomerAccountPage: React.FC = () => {
                           <Badge className="mb-1 text-xs">{order.status}</Badge>
                           <p className="font-semibold">
                             {typeof order.total === 'number'
-                              ? `$${order.total.toFixed(2)}`
+                              ? `₹${order.total.toFixed(2)}`
                               : '-'}
                           </p>
                         </div>
@@ -361,7 +361,7 @@ const StoreCustomerAccountPage: React.FC = () => {
                             </td>
                             <td className="px-3 py-2 text-right font-semibold">
                               {typeof order.total === 'number'
-                                ? `$${order.total.toFixed(2)}`
+                                ? `₹${order.total.toFixed(2)}`
                                 : '-'}
                             </td>
                           </tr>

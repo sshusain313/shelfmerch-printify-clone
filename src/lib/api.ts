@@ -524,6 +524,27 @@ export const walletApi = {
       body: JSON.stringify({ amountPaise }),
     });
   },
+
+  // Verify payment and credit wallet (call after Razorpay success)
+  verifyTopup: async (
+    razorpayOrderId: string,
+    razorpayPaymentId: string,
+    razorpaySignature: string
+  ) => {
+    return apiRequest<{
+      credited: boolean;
+      amountPaise: number;
+      balancePaise: number;
+      balanceRupees: string;
+    }>('/wallet/topup/verify', {
+      method: 'POST',
+      body: JSON.stringify({
+        razorpayOrderId,
+        razorpayPaymentId,
+        razorpaySignature,
+      }),
+    });
+  },
 };
 
 // Admin Wallet API

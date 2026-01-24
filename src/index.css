@@ -340,4 +340,26 @@
     scrollbar-width: none;
     /* Firefox */
   }
+
+  /* Smooth scroll highlight effect */
+  .scroll-highlight {
+    animation: highlight-pulse 2s ease-in-out;
+  }
+
+  @keyframes highlight-pulse {
+    0% {
+      background-color: transparent;
+    }
+    20% {
+      background-color: hsl(var(--primary) / 0.1);
+    }
+    100% {
+      background-color: transparent;
+    }
+  }
+
+  /* Scroll margin for sections to account for sticky headers */
+  .scroll-mt-24 {
+    scroll-margin-top: 6rem;
+  }
 }

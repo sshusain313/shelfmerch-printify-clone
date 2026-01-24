@@ -71,7 +71,7 @@ const Index = () => {
             </div>
             <div className="bg-primary/10 rounded-xl p-6 md:p-8 shadow-card">
               <div className="text-sm text-emerald-100/80">Earnings in the last 30 days</div>
-              <div className="mt-2 text-4xl md:text-5xl font-extrabold tracking-tight">$28,921.86</div>
+              <div className="mt-2 text-4xl md:text-5xl font-extrabold tracking-tight">₹28,921.86</div>
               <div className="mt-4 inline-flex items-center gap-2 text-emerald-100">
                 <TrendingUp className="h-5 w-5" />
                 <span>+12.4% vs previous period</span>
@@ -196,7 +196,7 @@ const Index = () => {
                 <div className="p-4">
                   <div className="flex items-center justify-between">
                     <p className="font-medium">Premium Tee</p>
-                    <p className="text-sm text-muted-foreground">From $14.99</p>
+                    <p className="text-sm text-muted-foreground">From ₹14.99</p>
                   </div>
                 </div>
               </div>

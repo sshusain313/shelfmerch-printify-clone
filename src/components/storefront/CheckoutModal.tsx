@@ -304,7 +304,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({
                     Processing...
                   </>
                 ) : (
-                  `Place Order - $${total.toFixed(2)}`
+                  `Place Order - ₹${total.toFixed(2)}`
                 )}
               </Button>
             </div>

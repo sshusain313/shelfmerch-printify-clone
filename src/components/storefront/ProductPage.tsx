@@ -371,7 +371,7 @@ const ProductPage = () => {
                   </div>
                   <div>
                     <p className="font-medium text-foreground text-sm">Free Shipping</p>
-                    <p className="text-xs text-muted-foreground">On orders over $50</p>
+                    <p className="text-xs text-muted-foreground">On orders over ₹50</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3 bg-gradient-to-br from-muted to-transparent p-4 rounded-2xl border border-border/50">
