@@ -350,8 +350,8 @@ const SectionRenderer: React.FC<SectionRendererProps> = ({
               <div
                 className={cn(
                   "grid gap-6",
-                  // Mobile: 2 columns for most cases, 1 for single column
-                  columns === 1 ? "grid-cols-1" : "grid-cols-2",
+                  // Mobile: Always 1 column for consistent mobile experience
+                  "grid-cols-1",
                   // Tablet/Desktop: Use configured columns
                   columns === 2 && "md:grid-cols-2",
                   columns === 3 && "md:grid-cols-3",
@@ -505,7 +505,7 @@ const SectionRenderer: React.FC<SectionRendererProps> = ({
                       />
                     ) : (
                       // Grid layout
-                      <div className="grid gap-6 grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+                      <div className="grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                         {collectionProducts.map((product) => (
                           <ProductCard
                             key={product.id}
@@ -915,7 +915,7 @@ const SectionRenderer: React.FC<SectionRendererProps> = ({
               />
             ) : (
               // Grid layout (default)
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
                 {displayProducts.map((product) => (
                   <ProductCard
                     key={product.id}

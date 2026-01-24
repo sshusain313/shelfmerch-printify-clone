@@ -1409,9 +1409,9 @@ const Admin = () => {
                   onEdit={(id) => {
                     window.location.href = `/admin/products/${id}/edit`;
                   }}
-                  onDuplicate={(id) => {
-                    toast.info('Duplicate functionality coming soon');
-                  }}
+                  // onDuplicate={(id) => {
+                  //   toast.info('Duplicate functionality coming soon');
+                  // }}
                   onArchive={async (id) => {
                     try {
                       const response = await productApi.delete(id);

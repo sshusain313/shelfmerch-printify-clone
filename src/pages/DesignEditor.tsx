@@ -54,6 +54,7 @@ interface CanvasElement {
   letterSpacing?: number;
   curved?: boolean;
   curveRadius?: number;
+  curveShape?: 'arch-down' | 'arch-up' | 'circle';
   // Image specific
   imageUrl?: string;
   placeholderId?: string; // Store which placeholder this image belongs to
@@ -767,7 +768,7 @@ const DesignEditor: React.FC = () => {
 
   // Attach transformer to selected element
   useEffect(() => {
-    if (selectedIds.length === 1 && transformerRef.current && stageRef.current) {
+    if (selectedIds.length === 1 && transformerRef.current && stageRef.current && !previewMode) {
       const stage = stageRef.current;
       const selectedId = selectedIds[0];
       const selectedNode = stage.findOne(`#${selectedId}`);
@@ -779,7 +780,7 @@ const DesignEditor: React.FC = () => {
     } else if (transformerRef.current) {
       transformerRef.current.nodes([]);
     }
-  }, [selectedIds]);
+  }, [selectedIds, previewMode, elements]); // Add elements to dependency to update transformer when text changes
 
   // Auto-open Properties panel when element (image/text) is selected in edit mode
   useEffect(() => {
@@ -878,8 +879,24 @@ const DesignEditor: React.FC = () => {
             setZoom(prev => Math.max(10, prev - 10));
             break;
         }
-      } else if (e.key === 'Delete' || e.key === 'Backspace') {
+      } else if (e.key === 'Delete') {
+        // Only Delete key deletes layers, not Backspace
+        // Backspace is reserved for text editing
         deleteSelected();
+      } else if (e.key === 'Backspace') {
+        // Backspace should only work for text editing, not layer deletion
+        // Check if user is in an input field - if so, don't delete layer
+        const activeElement = document.activeElement;
+        const isInInput = activeElement && (
+          activeElement.tagName === 'INPUT' ||
+          activeElement.tagName === 'TEXTAREA' ||
+          (activeElement as HTMLElement).isContentEditable
+        );
+        // Only delete layer if NOT in an input field
+        // This prevents accidental deletion when editing text
+        if (!isInInput) {
+          deleteSelected();
+        }
       } else if (e.key.startsWith('Arrow')) {
         e.preventDefault();
         nudgeSelected(e.key);
@@ -918,11 +935,101 @@ const DesignEditor: React.FC = () => {
     return newElement.id;
   };
 
+  // Helper to constrain text element to print area when properties change
+  const constrainTextToPrintArea = (element: CanvasElement, updates: Partial<CanvasElement>): Partial<CanvasElement> => {
+    // Only constrain text elements (allow empty text)
+    if (element.type !== 'text') return updates;
+
+    // Find the placeholder for this element
+    const placeholder = element.placeholderId
+      ? placeholders.find((p) => p.id === element.placeholderId)
+      : undefined;
+    
+    if (!placeholder) return updates;
+
+    const printArea = {
+      x: placeholder.x,
+      y: placeholder.y,
+      width: placeholder.width,
+      height: placeholder.height,
+    };
+
+    // Calculate new text bounds with updated properties
+    const newFontSize = updates.fontSize !== undefined ? updates.fontSize : element.fontSize || 24;
+    const newLetterSpacing = updates.letterSpacing !== undefined ? updates.letterSpacing : element.letterSpacing || 0;
+    const newRotation = updates.rotation !== undefined ? updates.rotation : element.rotation || 0;
+    const newText = updates.text !== undefined ? updates.text : (element.text || '');
+
+    // Calculate bounds - use minimum for empty text
+    let rotatedWidth: number;
+    let rotatedHeight: number;
+
+    if (newText) {
+      // Create a temporary canvas to measure text
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return updates;
+
+      ctx.font = `${newFontSize}px ${updates.fontFamily || element.fontFamily || 'Arial'}`;
+      const metrics = ctx.measureText(newText);
+      // Add letter spacing to width (approximate: letterSpacing * (charCount - 1))
+      const textWidth = metrics.width + (newLetterSpacing * Math.max(0, newText.length - 1));
+      const textHeight = newFontSize * 1.2;
+
+      // Account for rotation - calculate bounding box of rotated text
+      const rad = (newRotation * Math.PI) / 180;
+      const cos = Math.abs(Math.cos(rad));
+      const sin = Math.abs(Math.sin(rad));
+      rotatedWidth = textWidth * cos + textHeight * sin;
+      rotatedHeight = textWidth * sin + textHeight * cos;
+    } else {
+      // Minimum bounds for empty text
+      const minWidth = newFontSize * 0.5;
+      const minHeight = newFontSize;
+      const rad = (newRotation * Math.PI) / 180;
+      const cos = Math.abs(Math.cos(rad));
+      const sin = Math.abs(Math.sin(rad));
+      rotatedWidth = minWidth * cos + minHeight * sin;
+      rotatedHeight = minWidth * sin + minHeight * cos;
+    }
+
+    // Constrain position if it would overflow
+    const currentX = updates.x !== undefined ? updates.x : element.x;
+    const currentY = updates.y !== undefined ? updates.y : element.y;
+
+    let constrainedX = currentX;
+    let constrainedY = currentY;
+
+    // Only constrain if position is being updated or if size-affecting properties changed
+    const sizeChanged = updates.fontSize !== undefined || updates.letterSpacing !== undefined || 
+                       updates.rotation !== undefined || updates.text !== undefined || updates.fontFamily !== undefined;
+
+    if (sizeChanged) {
+      constrainedX = Math.max(printArea.x, Math.min(currentX, printArea.x + printArea.width - rotatedWidth));
+      constrainedY = Math.max(printArea.y, Math.min(currentY, printArea.y + printArea.height - rotatedHeight));
+    } else {
+      // Just constrain position if it's being moved
+      if (updates.x !== undefined || updates.y !== undefined) {
+        constrainedX = Math.max(printArea.x, Math.min(currentX, printArea.x + printArea.width - rotatedWidth));
+        constrainedY = Math.max(printArea.y, Math.min(currentY, printArea.y + printArea.height - rotatedHeight));
+      }
+    }
+
+    // Return updates with constrained position if needed
+    if (constrainedX !== currentX || constrainedY !== currentY) {
+      return { ...updates, x: constrainedX, y: constrainedY };
+    }
+
+    return updates;
+  };
+
   const updateElement = (id: string, updates: Partial<CanvasElement>) => {
     setElements(prev => {
       const updated = prev.map(el => {
         if (el.id === id) {
-          const updatedEl = { ...el, ...updates };
+          // Apply constraints for text elements
+          const constrainedUpdates = el.type === 'text' ? constrainTextToPrintArea(el, updates) : updates;
+          const updatedEl = { ...el, ...constrainedUpdates };
           // Mark views as dirty: if element has no view, it appears on all views
           if (updatedEl.view) {
             setDirtyViewsForDesign(prevDirty => new Set([...prevDirty, updatedEl.view!]));
@@ -940,6 +1047,19 @@ const DesignEditor: React.FC = () => {
       return updated;
     });
     setHasUnsavedChanges(true); // Mark as having unsaved changes
+    
+    // Force transformer to update when text changes (for proper bounding box)
+    if (updates.text !== undefined && selectedIds.includes(id) && transformerRef.current) {
+      setTimeout(() => {
+        if (transformerRef.current && stageRef.current) {
+          const selectedNode = stageRef.current.findOne(`#${id}`);
+          if (selectedNode) {
+            transformerRef.current.nodes([selectedNode]);
+            transformerRef.current.getLayer()?.batchDraw();
+          }
+        }
+      }, 0);
+    }
   };
 
   const deleteSelected = () => {
@@ -1242,11 +1362,22 @@ const DesignEditor: React.FC = () => {
       return;
     }
 
-    // Use selected placeholder if available, otherwise use first placeholder or printArea
+    // Require a placeholder - text must be created within a print area
     const targetPlaceholder = selectedPlaceholderIdRef.current
       ? placeholders.find(p => p.id === selectedPlaceholderIdRef.current)
       : (placeholders.length > 0 ? placeholders[0] : null);
-    const targetArea = targetPlaceholder || printArea;
+    
+    if (!targetPlaceholder) {
+      toast.error('Please select a print area (placeholder) before adding text');
+      return;
+    }
+
+    const targetArea = {
+      x: targetPlaceholder.x,
+      y: targetPlaceholder.y,
+      width: targetPlaceholder.width,
+      height: targetPlaceholder.height,
+    };
 
     addElement({
       type: 'text',
@@ -1258,7 +1389,7 @@ const DesignEditor: React.FC = () => {
       fill: textColor,
       align: 'center',
       view: currentView,
-      placeholderId: targetPlaceholder?.id || undefined
+      placeholderId: targetPlaceholder.id
     });
     setTextInput('');
     toast.success('Text added');
@@ -1268,11 +1399,22 @@ const DesignEditor: React.FC = () => {
   const handleAddTextWithParams = (text: string, font: string) => {
     if (!text.trim()) return;
 
-    // Use selected placeholder if available, otherwise use first placeholder or printArea
+    // Require a placeholder - text must be created within a print area
     const targetPlaceholder = selectedPlaceholderIdRef.current
       ? placeholders.find(p => p.id === selectedPlaceholderIdRef.current)
       : (placeholders.length > 0 ? placeholders[0] : null);
-    const targetArea = targetPlaceholder || printArea;
+    
+    if (!targetPlaceholder) {
+      toast.error('Please select a print area (placeholder) before adding text');
+      return;
+    }
+
+    const targetArea = {
+      x: targetPlaceholder.x,
+      y: targetPlaceholder.y,
+      width: targetPlaceholder.width,
+      height: targetPlaceholder.height,
+    };
 
     addElement({
       type: 'text',
@@ -1284,7 +1426,7 @@ const DesignEditor: React.FC = () => {
       fill: '#000000',
       align: 'center',
       view: currentView,
-      placeholderId: targetPlaceholder?.id || undefined
+      placeholderId: targetPlaceholder.id
     });
 
     // Select the newly added text and show properties
@@ -2397,8 +2539,43 @@ const DesignEditor: React.FC = () => {
                           );
                         })()}
 
-                        {/* Transformer for selected element */}
-                        {/* <Transformer ref={transformerRef} rotateEnabled={true} /> */}
+                        {/* Transformer for selected element - always visible when selected */}
+                        {selectedIds.length === 1 && !previewMode && (
+                          <Transformer
+                            ref={transformerRef}
+                            rotateEnabled={true}
+                            borderEnabled={true}
+                            borderStroke="#22c55e"
+                            borderStrokeWidth={2}
+                            anchorFill="#22c55e"
+                            anchorStroke="#16a34a"
+                            anchorStrokeWidth={1}
+                            anchorSize={8}
+                            keepRatio={false}
+                            boundBoxFunc={(oldBox, newBox) => {
+                              // Constrain transformer to print area if element has placeholder
+                              const selectedElement = elements.find(e => e.id === selectedIds[0]);
+                              if (selectedElement && selectedElement.placeholderId) {
+                                const placeholder = placeholders.find(p => p.id === selectedElement.placeholderId);
+                                if (placeholder) {
+                                  const minX = placeholder.x;
+                                  const minY = placeholder.y;
+                                  const maxX = placeholder.x + placeholder.width;
+                                  const maxY = placeholder.y + placeholder.height;
+                                  
+                                  return {
+                                    ...newBox,
+                                    x: Math.max(minX, Math.min(newBox.x, maxX - newBox.width)),
+                                    y: Math.max(minY, Math.min(newBox.y, maxY - newBox.height)),
+                                    width: Math.min(newBox.width, maxX - Math.max(minX, newBox.x)),
+                                    height: Math.min(newBox.height, maxY - Math.max(minY, newBox.y)),
+                                  };
+                                }
+                              }
+                              return newBox;
+                            }}
+                          />
+                        )}
                       </Layer>
                     </Stage>
                   </div>
@@ -2491,6 +2668,12 @@ const DesignEditor: React.FC = () => {
                   elements={elements}
                   onElementUpdate={(updates) => {
                     selectedIds.forEach(id => updateElement(id, updates));
+                    saveToHistory();
+                  }}
+                  onElementDelete={(id) => {
+                    setElements(prev => prev.filter(el => el.id !== id));
+                    setSelectedIds(prev => prev.filter(selectedId => selectedId !== id));
+                    setHasUnsavedChanges(true);
                     saveToHistory();
                   }}
                   PX_PER_INCH={PX_PER_INCH}
@@ -2843,17 +3026,50 @@ const TextElement: React.FC<{
   printArea?: { x: number; y: number; width: number; height: number; isPolygon?: boolean; polygonPointsPx?: number[] };
   isEditMode?: boolean;
 }> = ({ element, isSelected, onSelect, onUpdate, printArea, isEditMode = true }) => {
+  // Helper to calculate text bounding box considering rotation
+  const getTextBounds = (text: string, fontSize: number, fontFamily: string, letterSpacing: number = 0, rotation: number = 0) => {
+    // Create a temporary canvas to measure text
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return { width: 0, height: 0 };
+    
+    ctx.font = `${fontSize}px ${fontFamily}`;
+    const metrics = ctx.measureText(text);
+    // Add letter spacing to width (approximate: letterSpacing * (charCount - 1))
+    const textWidth = metrics.width + (letterSpacing * Math.max(0, text.length - 1));
+    const textHeight = fontSize * 1.2; // Approximate line height
+    
+    // Account for rotation - calculate bounding box of rotated text
+    const rad = (rotation * Math.PI) / 180;
+    const cos = Math.abs(Math.cos(rad));
+    const sin = Math.abs(Math.sin(rad));
+    const rotatedWidth = textWidth * cos + textHeight * sin;
+    const rotatedHeight = textWidth * sin + textHeight * cos;
+    
+    return { width: rotatedWidth, height: rotatedHeight };
+  };
+
   // Constrain text to print area when dragging
   const handleDragEnd = (e: any) => {
     let newX = e.target.x();
     let newY = e.target.y();
 
-    if (printArea && element.width && element.height) {
+    if (printArea) {
+      const text = element.text || '';
+      const fontSize = element.fontSize || 24;
+      const bounds = text
+        ? getTextBounds(
+            text,
+            fontSize,
+            element.fontFamily || 'Arial',
+            element.letterSpacing || 0,
+            element.rotation || 0
+          )
+        : { width: fontSize * 0.5, height: fontSize }; // Minimum bounds for empty text
+      
       // Constrain position to keep text within print area
-      const textWidth = element.width || 100;
-      const textHeight = element.height || element.fontSize || 24;
-      newX = Math.max(printArea.x, Math.min(newX, printArea.x + printArea.width - textWidth));
-      newY = Math.max(printArea.y, Math.min(newY, printArea.y + printArea.height - textHeight));
+      newX = Math.max(printArea.x, Math.min(newX, printArea.x + printArea.width - bounds.width));
+      newY = Math.max(printArea.y, Math.min(newY, printArea.y + printArea.height - bounds.height));
     }
 
     onUpdate({
@@ -2867,26 +3083,57 @@ const TextElement: React.FC<{
     const node = e.target as any;
     let newX = node.x();
     let newY = node.y();
+    const newRotation = node.rotation();
 
     if (printArea) {
+      const text = element.text || '';
       const newFontSize = (node.fontSize?.() || element.fontSize || 24) * node.scaleY();
-      const textWidth = (element.text?.length || 0) * (newFontSize * 0.6);
-      const textHeight = newFontSize;
+      const bounds = text
+        ? getTextBounds(
+            text,
+            newFontSize,
+            element.fontFamily || 'Arial',
+            element.letterSpacing || 0,
+            newRotation
+          )
+        : { width: newFontSize * 0.5, height: newFontSize }; // Minimum bounds for empty text
 
       // Constrain position
-      newX = Math.max(printArea.x, Math.min(newX, printArea.x + printArea.width - textWidth));
-      newY = Math.max(printArea.y, Math.min(newY, printArea.y + printArea.height - textHeight));
+      newX = Math.max(printArea.x, Math.min(newX, printArea.x + printArea.width - bounds.width));
+      newY = Math.max(printArea.y, Math.min(newY, printArea.y + printArea.height - bounds.height));
     }
 
     onUpdate({
       x: newX,
       y: newY,
-      rotation: node.rotation(),
+      rotation: newRotation,
       fontSize: (node.fontSize?.() || element.fontSize || 24) * node.scaleY(),
     });
     node.scaleX(1);
     node.scaleY(1);
   };
+
+  // Drag boundary function to prevent dragging outside print area
+  // Always allow dragging even if text is empty (use minimum bounds)
+  const dragBoundFunc = printArea
+    ? (pos: { x: number; y: number }) => {
+      const text = element.text || '';
+      const fontSize = element.fontSize || 24;
+      const bounds = text
+        ? getTextBounds(
+            text,
+            fontSize,
+            element.fontFamily || 'Arial',
+            element.letterSpacing || 0,
+            element.rotation || 0
+          )
+        : { width: fontSize * 0.5, height: fontSize }; // Minimum bounds for empty text
+      
+      const constrainedX = Math.max(printArea.x, Math.min(pos.x, printArea.x + printArea.width - bounds.width));
+      const constrainedY = Math.max(printArea.y, Math.min(pos.y, printArea.y + printArea.height - bounds.height));
+      return { x: constrainedX, y: constrainedY };
+    }
+    : undefined;
 
   // Map blend mode to Konva's globalCompositeOperation
   type CompositeOperation = 'source-over' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten' | 'color-dodge' | 'color-burn' | 'hard-light' | 'soft-light' | 'difference' | 'exclusion' | 'hue' | 'saturation' | 'color' | 'luminosity';
@@ -2929,20 +3176,36 @@ const TextElement: React.FC<{
     })()
     : `rgba(0, 0, 0, ${shadowAlpha})`;
 
+  // Parse fontStyle to determine bold/italic
+  const isBold = element.fontStyle?.includes('bold') || false;
+  const isItalic = element.fontStyle?.includes('italic') || false;
+  const fontWeight = isBold ? 'bold' : 'normal';
+  const fontStyle = isItalic ? 'italic' : 'normal';
+
+  // Ensure text always has a value for rendering (empty string shows cursor)
+  const displayText = element.text || '';
+  
+  // Calculate minimum bounding box for empty text
+  const minWidth = element.fontSize ? element.fontSize * 0.5 : 24;
+  const minHeight = element.fontSize || 24;
+
   const commonTextProps: any = {
     id: element.id,
     x: element.x,
     y: element.y,
-    text: element.text,
-    fontSize: element.fontSize,
-    fontFamily: element.fontFamily,
-    fill: element.fill,
+    text: displayText || ' ', // Use space for empty text to maintain cursor
+    fontSize: element.fontSize || 24,
+    fontFamily: element.fontFamily || 'Arial',
+    fontStyle: fontStyle,
+    fontWeight: fontWeight,
+    fill: element.fill || '#000000',
     opacity: element.opacity !== undefined ? element.opacity : 1,
-    rotation: element.rotation,
+    rotation: element.rotation || 0,
     draggable: isEditMode && !element.locked,
     onClick: isEditMode ? onSelect : undefined,
     onDragEnd: isEditMode ? handleDragEnd : undefined,
     onTransformEnd: isEditMode ? handleTransformEnd : undefined,
+    dragBoundFunc: isEditMode ? dragBoundFunc : undefined,
     shadowBlur: element.shadowBlur || 0,
     shadowOffsetX: element.shadowOffsetX || 0,
     shadowOffsetY: element.shadowOffsetY || 0,
@@ -2951,37 +3214,154 @@ const TextElement: React.FC<{
     globalCompositeOperation: compositeOperation as any,
   };
 
-  if (element.curved) {
-    // Calculate path data for curved text (simple arc)
-    // We'll use a simple quadratic bezier curve or arc command
-    // For a simple arc: M startX,startY A radius,radius 0 0,1 endX,endY
-    // But TextPath expects a SVG path string.
+  // Render text with clipping to print area (similar to ImageElement)
+  const renderText = () => {
+    // Only render curved text if curveShape is explicitly set (not just when curved is toggled)
+    if (element.curved && element.curveShape) {
+      const text = element.text || '';
+      const fontSize = element.fontSize || 24;
+      const fontFamily = element.fontFamily || 'Arial';
+      
+      // Calculate text width to determine appropriate radius
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      let textWidth = 100; // Default fallback
+      
+      if (ctx && text) {
+        ctx.font = `${fontSize}px ${fontFamily}`;
+        const metrics = ctx.measureText(text);
+        textWidth = metrics.width + (element.letterSpacing || 0) * Math.max(0, text.length - 1);
+      }
+      
+      // Calculate radius based on text width and available space in placeholder
+      let radius = element.curveRadius || 200;
+      
+      // Ensure curve fits within placeholder bounds
+      if (printArea) {
+        const availableWidth = printArea.width;
+        const availableHeight = printArea.height;
+        
+        // For arch shapes, radius should be at least half text width, but not exceed available space
+        if (element.curveShape === 'arch-down' || element.curveShape === 'arch-up') {
+          const minRadius = textWidth / 2;
+          const maxRadius = Math.min(availableWidth / 2, availableHeight);
+          radius = Math.max(minRadius, Math.min(radius, maxRadius));
+        } else if (element.curveShape === 'circle') {
+          // For circle, radius is limited by both width and height
+          const maxRadius = Math.min(availableWidth / 2, availableHeight / 2);
+          radius = Math.min(radius, maxRadius);
+        }
+      } else {
+        // Fallback: ensure radius is at least half the text width
+        radius = Math.max(radius, textWidth / 2);
+      }
+      
+      let pathData = '';
+      const curveShape = element.curveShape;
+      
+      if (curveShape === 'arch-down') {
+        // Inverted U-shape - path centered at text position
+        pathData = `M -${radius},0 A ${radius},${radius} 0 0,1 ${radius},0`;
+      } else if (curveShape === 'arch-up') {
+        // U-shape (flipped) - path centered at text position
+        pathData = `M -${radius},0 A ${radius},${radius} 0 0,0 ${radius},0`;
+      } else if (curveShape === 'circle') {
+        // Full circle - path centered at text position
+        pathData = `M 0,-${radius} A ${radius},${radius} 0 1,1 0,${radius} A ${radius},${radius} 0 1,1 0,-${radius}`;
+      } else {
+        // Default to arch-down
+        pathData = `M -${radius},0 A ${radius},${radius} 0 0,1 ${radius},0`;
+      }
 
-    const radius = element.curveRadius || 200;
-    const diameter = radius * 2;
-    // Create a path that is a circle segment
-    // We center the path around the element's position
-    // M -radius,0 A radius,radius 0 1,1 radius,0
-    // This creates a semi-circle arc.
-    const pathData = `M -${radius},0 A ${radius},${radius} 0 0,1 ${radius},0`;
+      // TextPath: path is relative to (0,0), positioned at element.x, element.y
+      // This keeps the text at the same position when curved
+      return (
+        <TextPath
+          {...commonTextProps}
+          data={pathData}
+          align={element.align || 'center'}
+          letterSpacing={element.letterSpacing}
+          x={element.x}
+          y={element.y}
+          text={text || ' '} // Ensure text is passed
+        />
+      );
+    }
+
+    // For empty text, show a placeholder with cursor indicator and visible bounding box
+    if (!displayText) {
+      const fontSize = element.fontSize || 24;
+      const cursorX = element.x;
+      const cursorY = element.y + fontSize * 0.2; // Adjust for baseline
+      
+      return (
+        <Group>
+          {/* Visible text placeholder to maintain bounding box and show cursor area */}
+          <Text
+            {...commonTextProps}
+            text=" " // Space to maintain cursor position and bounding box
+            align={element.align || 'left'}
+            letterSpacing={element.letterSpacing}
+            fill={element.fill || '#000000'}
+            opacity={0.3} // Semi-transparent to show it's a placeholder
+          />
+          {/* Visible cursor indicator for empty text */}
+          <Line
+            points={[cursorX, cursorY, cursorX, cursorY + fontSize * 0.8]}
+            stroke={element.fill || '#000000'}
+            strokeWidth={2}
+            dash={[4, 4]}
+            listening={false}
+          />
+        </Group>
+      );
+    }
 
     return (
-      <TextPath
+      <Text
         {...commonTextProps}
-        data={pathData}
-        align={element.align || 'center'}
+        align={element.align}
         letterSpacing={element.letterSpacing}
       />
     );
+  };
+
+  // Apply clipping if printArea is defined
+  if (printArea) {
+    // If polygon clip is available, use it
+    if (printArea.isPolygon && printArea.polygonPointsPx && printArea.polygonPointsPx.length >= 6) {
+      const pts = printArea.polygonPointsPx;
+      return (
+        <Group
+          clipFunc={(ctx) => {
+            ctx.beginPath();
+            ctx.moveTo(pts[0], pts[1]);
+            for (let i = 2; i < pts.length; i += 2) {
+              ctx.lineTo(pts[i], pts[i + 1]);
+            }
+            ctx.closePath();
+          }}
+        >
+          {renderText()}
+        </Group>
+      );
+    }
+
+    // Fallback: rectangular clip
+    return (
+      <Group
+        clipX={printArea.x}
+        clipY={printArea.y}
+        clipWidth={printArea.width}
+        clipHeight={printArea.height}
+      >
+        {renderText()}
+      </Group>
+    );
   }
 
-  return (
-    <Text
-      {...commonTextProps}
-      align={element.align}
-      letterSpacing={element.letterSpacing}
-    />
-  );
+  // No clipping if no printArea
+  return renderText();
 };
 
 const ShapeElement: React.FC<{
@@ -3203,6 +3583,7 @@ const PropertiesPanel: React.FC<{
   selectedElementIds: string[];
   elements: CanvasElement[];
   onElementUpdate: (updates: Partial<CanvasElement>) => void;
+  onElementDelete?: (id: string) => void;
   PX_PER_INCH: number;
   canvasPadding: number;
 }> = ({
@@ -3216,6 +3597,7 @@ const PropertiesPanel: React.FC<{
   selectedElementIds,
   elements,
   onElementUpdate,
+  onElementDelete,
   PX_PER_INCH,
   canvasPadding,
 }) => {
@@ -3505,342 +3887,822 @@ const PropertiesPanel: React.FC<{
       const element = selectedElement;
       const onUpdate = onElementUpdate;
 
+      // Calculate position percentages for text elements
+      const getPositionPercent = (element: CanvasElement, axis: 'x' | 'y') => {
+        if (element.type !== 'text' || !element.placeholderId) return 0;
+        const placeholder = placeholders.find(p => p.id === element.placeholderId);
+        if (!placeholder) return 0;
+        const value = axis === 'x' ? element.x : element.y;
+        const size = axis === 'x' ? placeholder.width : placeholder.height;
+        const offset = axis === 'x' ? placeholder.x : placeholder.y;
+        return Math.round(((value - offset) / size) * 100 * 100) / 100; // Round to 2 decimals
+      };
+
+      const updatePositionPercent = (axis: 'x' | 'y', percent: number) => {
+        if (element.type !== 'text' || !element.placeholderId) return;
+        const placeholder = placeholders.find(p => p.id === element.placeholderId);
+        if (!placeholder) return;
+        const size = axis === 'x' ? placeholder.width : placeholder.height;
+        const offset = axis === 'x' ? placeholder.x : placeholder.y;
+        const newValue = offset + (size * percent / 100);
+        onUpdate({ [axis]: newValue });
+      };
+
       return (
-        <div className="space-y-4">
+        <div className="space-y-6">
           {element.type === 'text' && (
             <>
-              <div>
-                <Label>Text</Label>
-                <Input
-                  value={element.text || ''}
-                  onChange={(e) => onUpdate({ text: e.target.value })}
-                />
-              </div>
+              {/* Layers Section */}
+              <div className="space-y-3 border-t pt-4">
+                <Label className="text-sm font-semibold">Layers</Label>
+                <div className="p-3 border rounded-lg bg-background">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <div className="w-8 h-8 rounded border bg-muted flex items-center justify-center flex-shrink-0">
+                        <Type className="w-4 h-4 text-muted-foreground" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{element.text || 'Text'}</p>
+                        <p className="text-xs text-muted-foreground">{element.fontFamily || 'Arial'}</p>
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6"
+                      onClick={() => {
+                        const elementId = selectedElementIds[0];
+                        if (elementId && onElementDelete) {
+                          onElementDelete(elementId);
+                        }
+                      }}
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </Button>
+                  </div>
+                </div>
 
-              <div>
-                <Label>Font Family</Label>
-                <select
-                  value={element.fontFamily || 'Arial'}
-                  onChange={(e) => onUpdate({ fontFamily: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-md bg-background"
-                >
-                  <option value="Arial">Arial</option>
-                  <option value="Helvetica">Helvetica</option>
-                  <option value="Times New Roman">Times New Roman</option>
-                  <option value="Courier New">Courier New</option>
-                  <option value="Georgia">Georgia</option>
-                  <option value="Verdana">Verdana</option>
-                  {/* Add popular fonts from our list */}
-                  <optgroup label="Google Fonts">
-                    {['ABeeZee', 'Abel', 'Abril Fatface', 'Acme', 'Aladin', 'Alex Brush', 'Anton', 'Bangers', 'Caveat', 'Cinzel', 'Comfortaa', 'Dancing Script', 'Great Vibes', 'Indie Flower', 'Lobster', 'Montserrat', 'Open Sans', 'Oswald', 'Pacifico', 'Playfair Display', 'Poppins', 'Raleway', 'Roboto', 'Rubik'].map(font => (
-                      <option key={font} value={font}>{font}</option>
-                    ))}
-                  </optgroup>
-                </select>
-              </div>
-
-              <div>
-                <Label>Font Size</Label>
-                <Slider
-                  value={[element.fontSize || 24]}
-                  onValueChange={([value]) => onUpdate({ fontSize: value })}
-                  min={8}
-                  max={500}
-                  step={1}
-                />
-              </div>
-
-              <div>
-                <Label>Letter Spacing</Label>
-                <Slider
-                  value={[element.letterSpacing || 0]}
-                  onValueChange={([value]) => onUpdate({ letterSpacing: value })}
-                  min={-10}
-                  max={50}
-                  step={1}
-                />
-              </div>
-
-              <div className="flex items-center justify-between">
-                <Label>Curved Text</Label>
-                <Switch
-                  checked={element.curved || false}
-                  onCheckedChange={(checked) => onUpdate({ curved: checked, curveRadius: checked ? (element.curveRadius || 200) : undefined })}
-                />
-              </div>
-
-              {element.curved && (
+                {/* Text Input */}
                 <div>
-                  <Label>Curve Radius</Label>
+                  <Label className="text-sm">Text</Label>
+                  <Input
+                    value={element.text || ''}
+                    onChange={(e) => onUpdate({ text: e.target.value })}
+                    className="mt-1"
+                  />
+                </div>
+
+                {/* Font Family */}
+                <div>
+                  <Label className="text-sm">Font Family</Label>
+                  <select
+                    value={element.fontFamily || 'Arial'}
+                    onChange={(e) => onUpdate({ fontFamily: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-md bg-background text-sm mt-1"
+                  >
+                    <option value="Arial">Arial</option>
+                    <option value="Helvetica">Helvetica</option>
+                    <option value="Times New Roman">Times New Roman</option>
+                    <option value="Courier New">Courier New</option>
+                    <option value="Georgia">Georgia</option>
+                    <option value="Verdana">Verdana</option>
+                    <optgroup label="Google Fonts">
+                      {['ABeeZee', 'Abel', 'Abril Fatface', 'Acme', 'Aladin', 'Alex Brush', 'Anton', 'Bangers', 'Caveat', 'Cinzel', 'Comfortaa', 'Dancing Script', 'Great Vibes', 'Indie Flower', 'Lobster', 'Montserrat', 'Open Sans', 'Oswald', 'Pacifico', 'Playfair Display', 'Poppins', 'Raleway', 'Roboto', 'Rubik'].map(font => (
+                        <option key={font} value={font}>{font}</option>
+                      ))}
+                    </optgroup>
+                  </select>
+                </div>
+
+                {/* Font Size */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <Label className="text-sm">Font Size</Label>
+                    <span className="text-xs text-muted-foreground">{element.fontSize || 24}</span>
+                  </div>
                   <Slider
-                    value={[element.curveRadius || 200]}
-                    onValueChange={([value]) => onUpdate({ curveRadius: value })}
-                    min={50}
-                    max={1000}
-                    step={10}
+                    value={[element.fontSize || 24]}
+                    onValueChange={([value]) => onUpdate({ fontSize: value })}
+                    min={8}
+                    max={500}
+                    step={1}
                   />
                 </div>
-              )}
 
-              <div>
-                <Label>Color</Label>
-                <div className="flex gap-2">
-                  <Input
-                    type="color"
-                    value={element.fill || '#000000'}
-                    onChange={(e) => onUpdate({ fill: e.target.value })}
-                    className="w-16 h-10"
+                {/* Bold and Italic */}
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant={element.fontStyle?.includes('bold') ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => {
+                      const currentStyle = element.fontStyle || '';
+                      const isBold = currentStyle.includes('bold');
+                      let newStyle = '';
+                      if (isBold) {
+                        // Remove bold, keep italic if present
+                        newStyle = currentStyle.replace(/\bbold\b/g, '').trim();
+                        if (currentStyle.includes('italic')) {
+                          newStyle = newStyle ? newStyle + ' italic' : 'italic';
+                        }
+                      } else {
+                        // Add bold, keep italic if present
+                        newStyle = currentStyle.includes('italic')
+                          ? 'bold italic'
+                          : 'bold';
+                      }
+                      onUpdate({ fontStyle: newStyle || undefined });
+                    }}
+                  >
+                    <Bold className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    variant={element.fontStyle?.includes('italic') ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => {
+                      const currentStyle = element.fontStyle || '';
+                      const isItalic = currentStyle.includes('italic');
+                      let newStyle = '';
+                      if (isItalic) {
+                        // Remove italic, keep bold if present
+                        newStyle = currentStyle.replace(/\bitalic\b/g, '').trim();
+                        if (currentStyle.includes('bold')) {
+                          newStyle = newStyle ? newStyle + ' bold' : 'bold';
+                        }
+                      } else {
+                        // Add italic, keep bold if present
+                        newStyle = currentStyle.includes('bold')
+                          ? 'bold italic'
+                          : 'italic';
+                      }
+                      onUpdate({ fontStyle: newStyle || undefined });
+                    }}
+                  >
+                    <Italic className="w-4 h-4" />
+                  </Button>
+                </div>
+
+                {/* Indentation Controls */}
+                <div className="flex items-center gap-2">
+                  <Label className="text-sm">Indentation</Label>
+                  <div className="flex items-center gap-1 ml-auto">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        // Shift text left (decrease x position)
+                        const currentX = element.x;
+                        const shiftAmount = (element.fontSize || 24) * 0.5; // Shift by half font size
+                        onUpdate({ x: currentX - shiftAmount });
+                      }}
+                    >
+                      <ArrowLeft className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        // Shift text right (increase x position)
+                        const currentX = element.x;
+                        const shiftAmount = (element.fontSize || 24) * 0.5; // Shift by half font size
+                        onUpdate({ x: currentX + shiftAmount });
+                      }}
+                    >
+                      <ArrowRight className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Text Alignment */}
+                {/* <div className="flex items-center gap-2">
+                  <Button
+                    variant={element.align === 'left' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => onUpdate({ align: 'left' })}
+                  >
+                    <AlignLeft className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    variant={element.align === 'center' || !element.align ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => onUpdate({ align: 'center' })}
+                  >
+                    <AlignCenter className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    variant={element.align === 'right' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => onUpdate({ align: 'right' })}
+                  >
+                    <AlignRight className="w-4 h-4" />
+                  </Button>
+                </div> */}
+
+                {/* Color */}
+                <div>
+                  <Label className="text-sm">Color</Label>
+                  <div className="flex gap-2 mt-1">
+                    <Input
+                      type="color"
+                      value={element.fill || '#000000'}
+                      onChange={(e) => onUpdate({ fill: e.target.value })}
+                      className="w-12 h-10 p-1"
+                    />
+                    <Input
+                      value={element.fill || '#000000'}
+                      onChange={(e) => onUpdate({ fill: e.target.value })}
+                      placeholder="#000000"
+                      className="flex-1"
+                    />
+                  </div>
+                </div>
+
+                {/* Letter Spacing */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <Label className="text-sm">Letter Spacing</Label>
+                    <span className="text-xs text-muted-foreground">{element.letterSpacing || 0}</span>
+                  </div>
+                  <Slider
+                    value={[element.letterSpacing || 0]}
+                    onValueChange={([value]) => onUpdate({ letterSpacing: value })}
+                    min={-10}
+                    max={50}
+                    step={1}
                   />
-                  <Input
-                    value={element.fill || '#000000'}
-                    onChange={(e) => onUpdate({ fill: e.target.value })}
-                    placeholder="#000000"
+                </div>
+
+                {/* Curved Text */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm">Curved text</Label>
+                    <Switch
+                      checked={element.curved || false}
+                      onCheckedChange={(checked) => {
+                        // When toggling curved on, don't set curveShape yet - wait for user to choose
+                        // When toggling off, clear both curved and curveShape
+                        if (checked) {
+                          onUpdate({ 
+                            curved: true,
+                            curveRadius: element.curveRadius || 200
+                            // Don't set curveShape - wait for user to select arch up/down/circle
+                          });
+                        } else {
+                          onUpdate({ 
+                            curved: false,
+                            curveShape: undefined,
+                            curveRadius: undefined
+                          });
+                        }
+                      }}
+                    />
+                  </div>
+
+                  {element.curved && (
+                    <>
+                      {/* Curve Shape Options */}
+                      <div className="flex gap-2">
+                        <Button
+                          variant={element.curveShape === 'arch-down' || (!element.curveShape && element.curved) ? 'default' : 'outline'}
+                          size="sm"
+                          className="flex-1"
+                          onClick={() => onUpdate({ curveShape: 'arch-down' })}
+                        >
+                          Arch Down
+                        </Button>
+                        <Button
+                          variant={element.curveShape === 'arch-up' ? 'default' : 'outline'}
+                          size="sm"
+                          className="flex-1"
+                          onClick={() => onUpdate({ curveShape: 'arch-up' })}
+                        >
+                          Arch Up
+                        </Button>
+                        <Button
+                          variant={element.curveShape === 'circle' ? 'default' : 'outline'}
+                          size="sm"
+                          className="flex-1"
+                          onClick={() => onUpdate({ curveShape: 'circle' })}
+                        >
+                          Circle
+                        </Button>
+                      </div>
+
+                      {/* Curve Percentage */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <Label className="text-sm">Curve</Label>
+                          <span className="text-xs text-muted-foreground">
+                            {Math.round(((element.curveRadius || 200) / 1000) * 100)}%
+                          </span>
+                        </div>
+                        <Slider
+                          value={[element.curveRadius || 200]}
+                          onValueChange={([value]) => onUpdate({ curveRadius: value })}
+                          min={50}
+                          max={1000}
+                          step={10}
+                        />
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* Rotation */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <Label className="text-sm">Rotate</Label>
+                    <div className="flex items-center gap-1">
+                      <Input
+                        type="number"
+                        value={Math.round(element.rotation || 0)}
+                        onChange={(e) => onUpdate({ rotation: parseFloat(e.target.value) || 0 })}
+                        className="w-16 h-8 text-sm"
+                      />
+                      <span className="text-xs text-muted-foreground">deg</span>
+                    </div>
+                  </div>
+                  <Slider
+                    value={[element.rotation || 0]}
+                    onValueChange={([value]) => onUpdate({ rotation: value })}
+                    min={-180}
+                    max={180}
+                    step={1}
                   />
+                </div>
+
+                {/* Position */}
+                <div className="space-y-3 border-t pt-3">
+                  <Label className="text-sm">Position</Label>
+                  
+                  {/* Position Left */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <Label className="text-xs">Position left</Label>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={() => {
+                            const current = getPositionPercent(element, 'x');
+                            updatePositionPercent('x', Math.max(0, current - 0.1));
+                          }}
+                        >
+                          <ArrowLeft className="w-3 h-3" />
+                        </Button>
+                        <Input
+                          type="number"
+                          value={getPositionPercent(element, 'x').toFixed(2)}
+                          onChange={(e) => {
+                            const value = parseFloat(e.target.value) || 0;
+                            updatePositionPercent('x', value);
+                          }}
+                          className="w-20 h-7 text-xs text-center"
+                          step="0.1"
+                        />
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={() => {
+                            const current = getPositionPercent(element, 'x');
+                            updatePositionPercent('x', Math.min(100, current + 0.1));
+                          }}
+                        >
+                          <ArrowRight className="w-3 h-3" />
+                        </Button>
+                        <span className="text-xs text-muted-foreground">%</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Position Top */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <Label className="text-xs">Position top</Label>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={() => {
+                            const current = getPositionPercent(element, 'y');
+                            updatePositionPercent('y', Math.max(0, current - 0.1));
+                          }}
+                        >
+                          <ArrowUp className="w-3 h-3" />
+                        </Button>
+                        <Input
+                          type="number"
+                          value={getPositionPercent(element, 'y').toFixed(2)}
+                          onChange={(e) => {
+                            const value = parseFloat(e.target.value) || 0;
+                            updatePositionPercent('y', value);
+                          }}
+                          className="w-20 h-7 text-xs text-center"
+                          step="0.1"
+                        />
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={() => {
+                            const current = getPositionPercent(element, 'y');
+                            updatePositionPercent('y', Math.min(100, current + 0.1));
+                          }}
+                        >
+                          <ArrowDown className="w-3 h-3" />
+                        </Button>
+                        <span className="text-xs text-muted-foreground">%</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </>
           )}
 
-          {element.type === 'image' && (
+          {/* Graphics/Image/Shape Elements - Unified Controls */}
+          {(element.type === 'image' || element.type === 'shape') && (
             <>
-              {/* Size Section */}
-              {/* <div className="space-y-4">
-            <h3 className="text-sm font-semibold">Size</h3>
-            <div className="space-y-2">
-              <div>
-                <Label className="text-xs">Width: {Math.round(element.width || 0)}px</Label>
-                <input
-                  type="number"
-                  className="w-full px-3 py-2 border rounded-md bg-background text-sm"
-                  value={element.width || 0}
-                  onChange={(e) => {
-                    const value = parseInt(e.target.value) || 0;
-                    if (element.lockAspectRatio && element.width && element.height) {
-                      const aspectRatio = element.width / element.height;
-                      onUpdate({ width: value, height: value / aspectRatio });
-                    } else {
-                      onUpdate({ width: value });
-                    }
-                  }}
-                />
-              </div>
-              <div>
-                <Label className="text-xs">Height: {Math.round(element.height || 0)}px</Label>
-                <input
-                  type="number"
-                  className="w-full px-3 py-2 border rounded-md bg-background text-sm"
-                  value={element.height || 0}
-                  onChange={(e) => {
-                    const value = parseInt(e.target.value) || 0;
-                    if (element.lockAspectRatio && element.width && element.height) {
-                      const aspectRatio = element.width / element.height;
-                      onUpdate({ height: value, width: value * aspectRatio });
-                    } else {
-                      onUpdate({ height: value });
-                    }
-                  }}
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="lockAspect"
-                  className="w-4 h-4"
-                  checked={element.lockAspectRatio !== false}
-                  onChange={(e) => onUpdate({ lockAspectRatio: e.target.checked })}
-                />
-                <Label htmlFor="lockAspect" className="text-xs cursor-pointer">
-                  🔒 Lock aspect ratio
-                </Label>
-              </div>
-            </div>
-          </div> */}
-
-              {/* Position Section */}
-              {/* <div className="space-y-4">
-            <h3 className="text-sm font-semibold">Position</h3>
-            <div className="space-y-2">
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <Label className="text-xs">X: {Math.round(element.x)}px</Label>
-                </div>
-                <Slider
-                  value={[element.x]}
-                  onValueChange={([value]) => onUpdate({ x: value })}
-                  min={0}
-                  max={1000}
-                  step={1}
-                />
-              </div>
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <Label className="text-xs">Y: {Math.round(element.y)}px</Label>
-                </div>
-                <Slider
-                  value={[element.y]}
-                  onValueChange={([value]) => onUpdate({ y: value })}
-                  min={0}
-                  max={1000}
-                  step={1}
-                />
-              </div>
-            </div>
-          </div> */}
-
-              {/* Flip Section */}
-              <div className="space-y-4">
-                <h3 className="text-sm font-semibold">Flip</h3>
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      id="flipH"
-                      className="w-4 h-4"
-                      checked={element.flipX || false}
-                      onChange={(e) => onUpdate({ flipX: e.target.checked })}
-                    />
-                    <Label htmlFor="flipH" className="text-xs cursor-pointer">
-                      ↔️ Horizontal
-                    </Label>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      id="flipV"
-                      className="w-4 h-4"
-                      checked={element.flipY || false}
-                      onChange={(e) => onUpdate({ flipY: e.target.checked })}
-                    />
-                    <Label htmlFor="flipV" className="text-xs cursor-pointer">
-                      ↕️ Vertical
-                    </Label>
+              {/* Layers Section */}
+              <div className="space-y-3 border-t pt-4">
+                <Label className="text-sm font-semibold">Layers</Label>
+                <div className="p-3 border rounded-lg bg-background">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <div className="w-8 h-8 rounded border bg-muted flex items-center justify-center flex-shrink-0">
+                        {element.type === 'image' ? (
+                          <ImageIcon className="w-4 h-4 text-muted-foreground" />
+                        ) : (
+                          <Square className="w-4 h-4 text-muted-foreground" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">
+                          {element.type === 'image' ? 'Image' : element.shapeType || 'Shape'}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {element.width ? `${Math.round(element.width)}×${Math.round(element.height || 0)}` : 'Element'}
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6"
+                      onClick={() => {
+                        const elementId = selectedElementIds[0];
+                        if (elementId && onElementDelete) {
+                          onElementDelete(elementId);
+                        }
+                      }}
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </Button>
                   </div>
                 </div>
-              </div>
 
-              {/* Opacity Section */}
-              {/* <div className="space-y-4">
-            <h3 className="text-sm font-semibold">Opacity</h3>
-            <div className="space-y-2">
-              <div>
-                <Label className="text-xs">Opacity: {((element.opacity !== undefined ? element.opacity : 1) * 100).toFixed(0)}%</Label>
-                <Slider
-                  value={[element.opacity !== undefined ? element.opacity * 100 : 100]}
-                  onValueChange={([value]) => onUpdate({ opacity: value / 100 })}
-                  min={0}
-                  max={100}
-                  step={1}
-                />
-              </div>
-            </div>
-          </div> */}
+                {/* Transform Controls - Grid Layout */}
+                <div className="grid grid-cols-2 gap-4">
+                  {/* Width */}
+                  <div>
+                    <Label className="text-sm">Width</Label>
+                    <div className="flex items-center gap-1 mt-1">
+                      <Input
+                        type="number"
+                        value={element.width ? (element.width / PX_PER_INCH).toFixed(2) : '0'}
+                        onChange={(e) => {
+                          const inches = parseFloat(e.target.value) || 0;
+                          const pixels = inches * PX_PER_INCH;
+                          if (element.lockAspectRatio && element.width && element.height) {
+                            const aspectRatio = element.width / element.height;
+                            onUpdate({ width: pixels, height: pixels / aspectRatio });
+                          } else {
+                            onUpdate({ width: pixels });
+                          }
+                        }}
+                        className="w-full h-8 text-sm"
+                        step="0.01"
+                      />
+                      <span className="text-xs text-muted-foreground">in</span>
+                    </div>
+                  </div>
 
-              {/* Blend Mode Section */}
-              {/* <div className="space-y-4">
-            <h3 className="text-sm font-semibold">Blend Mode</h3>
-            <select
-              className="w-full px-3 py-2 border rounded-md bg-background text-sm"
-              value={element.blendMode || 'normal'}
-              onChange={(e) => onUpdate({ blendMode: e.target.value as any })}
-            >
-              <option value="normal">Normal</option>
-              <option value="multiply">Multiply</option>
-              <option value="screen">Screen</option>
-              <option value="overlay">Overlay</option>
-              <option value="darken">Darken</option>
-              <option value="lighten">Lighten</option>
-            </select>
-            <p className="text-xs text-muted-foreground">
-              Adjusts how the design blends with the mockup
-            </p>
-          </div> */}
+                  {/* Height */}
+                  <div>
+                    <Label className="text-sm">Height</Label>
+                    <div className="flex items-center gap-1 mt-1">
+                      <Input
+                        type="number"
+                        value={element.height ? (element.height / PX_PER_INCH).toFixed(2) : '0'}
+                        onChange={(e) => {
+                          const inches = parseFloat(e.target.value) || 0;
+                          const pixels = inches * PX_PER_INCH;
+                          if (element.lockAspectRatio && element.width && element.height) {
+                            const aspectRatio = element.width / element.height;
+                            onUpdate({ height: pixels, width: pixels * aspectRatio });
+                          } else {
+                            onUpdate({ height: pixels });
+                          }
+                        }}
+                        className="w-full h-8 text-sm"
+                        step="0.01"
+                      />
+                      <span className="text-xs text-muted-foreground">in</span>
+                    </div>
+                  </div>
 
-              {/* Tune Realism (Displacement Settings) */}
-              {/* <div className="space-y-4">
-            <h3 className="text-sm font-semibold">Tune Realism</h3>
-            <div className="space-y-2">
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <Label className="text-xs">Displacement X</Label>
-                  <span className="text-xs">{displacementSettings.scaleX}</span>
+                  {/* Rotate */}
+                  <div>
+                    <Label className="text-sm">Rotate</Label>
+                    <div className="flex items-center gap-1 mt-1">
+                      <Input
+                        type="number"
+                        value={Math.round(element.rotation || 0)}
+                        onChange={(e) => onUpdate({ rotation: parseFloat(e.target.value) || 0 })}
+                        className="w-full h-8 text-sm"
+                        step="1"
+                      />
+                      <span className="text-xs text-muted-foreground">deg</span>
+                    </div>
+                  </div>
+
+                  {/* Scale */}
+                  <div>
+                    <Label className="text-sm">Scale</Label>
+                    <div className="flex items-center gap-1 mt-1">
+                      <Input
+                        type="number"
+                        value={element.scaleX ? Math.round(element.scaleX * 100 * 100) / 100 : '100'}
+                        onChange={(e) => {
+                          const scale = parseFloat(e.target.value) || 100;
+                          const scaleValue = scale / 100;
+                          // Update scale while preserving current dimensions
+                          const currentWidth = element.width || 100;
+                          const currentHeight = element.height || 100;
+                          onUpdate({ 
+                            scaleX: scaleValue, 
+                            scaleY: scaleValue,
+                            width: currentWidth * scaleValue,
+                            height: currentHeight * scaleValue
+                          });
+                        }}
+                        className="w-full h-8 text-sm"
+                        step="0.01"
+                      />
+                      <span className="text-xs text-muted-foreground">%</span>
+                    </div>
+                  </div>
                 </div>
-                <Slider
-                  value={[displacementSettings.scaleX]}
-                  onValueChange={([value]) => {
-                    onDisplacementSettingsChange({
-                      ...displacementSettings,
-                      scaleX: value
-                    });
-                  }}
-                  min={0}
-                  max={100}
-                  step={1}
-                />
-              </div>
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <Label className="text-xs">Displacement Y</Label>
-                  <span className="text-xs">{displacementSettings.scaleY}</span>
+
+                {/* Position Controls */}
+                <div className="space-y-3 border-t pt-3">
+                  {/* Position Left */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <Label className="text-xs">Position left</Label>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={() => {
+                            const placeholder = element.placeholderId
+                              ? placeholders.find(p => p.id === element.placeholderId)
+                              : null;
+                            if (placeholder) {
+                              const current = ((element.x - placeholder.x) / placeholder.width) * 100;
+                              const newPercent = Math.max(0, current - 0.1);
+                              const newValue = placeholder.x + (placeholder.width * newPercent / 100);
+                              onUpdate({ x: newValue });
+                            }
+                          }}
+                        >
+                          <ArrowLeft className="w-3 h-3" />
+                        </Button>
+                        <Input
+                          type="number"
+                          value={(() => {
+                            const placeholder = element.placeholderId
+                              ? placeholders.find(p => p.id === element.placeholderId)
+                              : null;
+                            if (placeholder) {
+                              return (((element.x - placeholder.x) / placeholder.width) * 100).toFixed(2);
+                            }
+                            return '0';
+                          })()}
+                          onChange={(e) => {
+                            const placeholder = element.placeholderId
+                              ? placeholders.find(p => p.id === element.placeholderId)
+                              : null;
+                            if (placeholder) {
+                              const percent = parseFloat(e.target.value) || 0;
+                              const newValue = placeholder.x + (placeholder.width * percent / 100);
+                              onUpdate({ x: newValue });
+                            }
+                          }}
+                          className="w-20 h-7 text-xs text-center"
+                          step="0.1"
+                        />
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={() => {
+                            const placeholder = element.placeholderId
+                              ? placeholders.find(p => p.id === element.placeholderId)
+                              : null;
+                            if (placeholder) {
+                              const current = ((element.x - placeholder.x) / placeholder.width) * 100;
+                              const newPercent = Math.min(100, current + 0.1);
+                              const newValue = placeholder.x + (placeholder.width * newPercent / 100);
+                              onUpdate({ x: newValue });
+                            }
+                          }}
+                        >
+                          <ArrowRight className="w-3 h-3" />
+                        </Button>
+                        <span className="text-xs text-muted-foreground">%</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Position Top */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <Label className="text-xs">Position top</Label>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={() => {
+                            const placeholder = element.placeholderId
+                              ? placeholders.find(p => p.id === element.placeholderId)
+                              : null;
+                            if (placeholder) {
+                              const current = ((element.y - placeholder.y) / placeholder.height) * 100;
+                              const newPercent = Math.max(0, current - 0.1);
+                              const newValue = placeholder.y + (placeholder.height * newPercent / 100);
+                              onUpdate({ y: newValue });
+                            }
+                          }}
+                        >
+                          <ArrowUp className="w-3 h-3" />
+                        </Button>
+                        <Input
+                          type="number"
+                          value={(() => {
+                            const placeholder = element.placeholderId
+                              ? placeholders.find(p => p.id === element.placeholderId)
+                              : null;
+                            if (placeholder) {
+                              return (((element.y - placeholder.y) / placeholder.height) * 100).toFixed(2);
+                            }
+                            return '0';
+                          })()}
+                          onChange={(e) => {
+                            const placeholder = element.placeholderId
+                              ? placeholders.find(p => p.id === element.placeholderId)
+                              : null;
+                            if (placeholder) {
+                              const percent = parseFloat(e.target.value) || 0;
+                              const newValue = placeholder.y + (placeholder.height * percent / 100);
+                              onUpdate({ y: newValue });
+                            }
+                          }}
+                          className="w-20 h-7 text-xs text-center"
+                          step="0.1"
+                        />
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={() => {
+                            const placeholder = element.placeholderId
+                              ? placeholders.find(p => p.id === element.placeholderId)
+                              : null;
+                            if (placeholder) {
+                              const current = ((element.y - placeholder.y) / placeholder.height) * 100;
+                              const newPercent = Math.min(100, current + 0.1);
+                              const newValue = placeholder.y + (placeholder.height * newPercent / 100);
+                              onUpdate({ y: newValue });
+                            }
+                          }}
+                        >
+                          <ArrowDown className="w-3 h-3" />
+                        </Button>
+                        <span className="text-xs text-muted-foreground">%</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Alignment Buttons */}
+                  <div className="space-y-2 pt-2">
+                    {/* Horizontal Alignment */}
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => {
+                          const placeholder = element.placeholderId
+                            ? placeholders.find(p => p.id === element.placeholderId)
+                            : null;
+                          if (placeholder && element.width) {
+                            onUpdate({ x: placeholder.x });
+                          }
+                        }}
+                      >
+                        <AlignLeft className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => {
+                          const placeholder = element.placeholderId
+                            ? placeholders.find(p => p.id === element.placeholderId)
+                            : null;
+                          if (placeholder && element.width) {
+                            onUpdate({ x: placeholder.x + (placeholder.width / 2) - (element.width / 2) });
+                          }
+                        }}
+                      >
+                        <AlignCenter className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => {
+                          const placeholder = element.placeholderId
+                            ? placeholders.find(p => p.id === element.placeholderId)
+                            : null;
+                          if (placeholder && element.width) {
+                            onUpdate({ x: placeholder.x + placeholder.width - element.width });
+                          }
+                        }}
+                      >
+                        <AlignRight className="w-4 h-4" />
+                      </Button>
+                    </div>
+
+                    {/* Vertical Alignment */}
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => {
+                          const placeholder = element.placeholderId
+                            ? placeholders.find(p => p.id === element.placeholderId)
+                            : null;
+                          if (placeholder) {
+                            onUpdate({ y: placeholder.y });
+                          }
+                        }}
+                      >
+                        <ArrowUp className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => {
+                          const placeholder = element.placeholderId
+                            ? placeholders.find(p => p.id === element.placeholderId)
+                            : null;
+                          if (placeholder && element.height) {
+                            onUpdate({ y: placeholder.y + (placeholder.height / 2) - (element.height / 2) });
+                          }
+                        }}
+                      >
+                        <ArrowUp className="w-4 h-4" />
+                        <ArrowDown className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => {
+                          const placeholder = element.placeholderId
+                            ? placeholders.find(p => p.id === element.placeholderId)
+                            : null;
+                          if (placeholder && element.height) {
+                            onUpdate({ y: placeholder.y + placeholder.height - element.height });
+                          }
+                        }}
+                      >
+                        <ArrowDown className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
                 </div>
-                <Slider
-                  value={[displacementSettings.scaleY]}
-                  onValueChange={([value]) => {
-                    onDisplacementSettingsChange({
-                      ...displacementSettings,
-                      scaleY: value
-                    });
-                  }}
-                  min={0}
-                  max={100}
-                  step={1}
-                />
               </div>
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <Label className="text-xs">Fold Contrast</Label>
-                  <span className="text-xs">{displacementSettings.contrastBoost.toFixed(1)}</span>
-                </div>
-                <Slider
-                  value={[displacementSettings.contrastBoost]}
-                  onValueChange={([value]) => {
-                    onDisplacementSettingsChange({
-                      ...displacementSettings,
-                      contrastBoost: value
-                    });
-                  }}
-                  min={1}
-                  max={5}
-                  step={0.1}
-                />
-              </div>
-            </div>
-          </div> */}
             </>
           )}
-
-          {/* Common properties for elements */}
-
-          {/* <div>
-        <Label>Opacity</Label>
-        <Slider
-          value={[element.opacity || 1]}
-          onValueChange={([value]) => onUpdate({ opacity: value })}
-          min={0}
-          max={1}
-          step={0.01}
-        />
-      </div> */}
-
-          <div>
-            <Label>Rotation</Label>
-            <Slider
-              value={[element.rotation || 0]}
-              onValueChange={([value]) => onUpdate({ rotation: value })}
-              min={-180}
-              max={180}
-              step={1}
-            />
-          </div>
         </div>
       );
     }

@@ -78,23 +78,23 @@ const TextPanel: React.FC<TextPanelProps> = ({ onAddText, onClose }) => {
                         />
                     </div>
 
-                    {/* Curved Text Feature */}
+                    {/* Curved Text Feature
                         <div className="flex items-center gap-2 justify-between">
                             <Label className="text-sm font-medium">Curved Text</Label>
                             <span className="text-xs text-primary cursor-pointer hover:underline">Show more</span>
-                        </div>
+                        </div> */}
 
                     {/* Template Fonts */}
-                    <div className="grid grid-cols-3 gap-2">
+                    {/* <div className="grid grid-cols-3 gap-2">
                         <Button
                             variant="outline"
                             className="h-20 p-1 flex flex-col items-center justify-center gap-1 hover:border-primary hover:bg-primary/5"
                             onClick={() => onAddText('WYZ', 'Inter')}
-                        >
+                        > */}
                             {/* <div className="w-10 h-10 rounded-full border-2 border-current flex items-center justify-center text-xs font-bold">
                                 WYZ
                             </div> */}
-                            <img src="/images/texts/progress.png" alt="progress" className="w-20 h-20" />
+                            {/* <img src="/images/texts/progress.png" alt="progress" className="w-20 h-20" />
                         </Button>
                         <Button
                             variant="outline"
@@ -118,7 +118,7 @@ const TextPanel: React.FC<TextPanelProps> = ({ onAddText, onClose }) => {
                                 <div className="text-[10px]">boutique</div>
                             </div>
                         </Button>
-                    </div>
+                    </div> */}
 
                     {/* My Fonts */}
                     <div className="space-y-3">

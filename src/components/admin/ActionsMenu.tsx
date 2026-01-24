@@ -55,12 +55,12 @@ export const ActionsMenu = ({
               Edit base product
             </DropdownMenuItem>
           )}
-          {onDuplicate && (
+          {/* {onDuplicate && (
             <DropdownMenuItem onClick={() => onDuplicate(productId)}>
               <Copy className="mr-2 h-4 w-4" />
               Duplicate
             </DropdownMenuItem>
-          )}
+          )} */}
           {(onArchive || onDelete) && <DropdownMenuSeparator />}
           {onArchive && (
             <DropdownMenuItem

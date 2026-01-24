@@ -673,7 +673,10 @@ const ProductDetail = () => {
           />
 
           {/* Size Chart Section */}
-          <SizeChart />
+          <SizeChart 
+            availableSizes={product.availableSizes}
+            categoryId={product.catalogue?.categoryId}
+          />
 
           {/* Key Features Section */}
           <KeyFeatures />
@@ -682,7 +685,10 @@ const ProductDetail = () => {
           <CareInstructions />
 
           {/* Print Areas Section */}
-          <PrintAreas />
+          <PrintAreas 
+            design={product.design}
+            placeholderImage={product.galleryImages?.find((img: any) => img.isPrimary)?.url || product.galleryImages?.[0]?.url}
+          />
         </div>
 
         {/* You May Also Like */}
