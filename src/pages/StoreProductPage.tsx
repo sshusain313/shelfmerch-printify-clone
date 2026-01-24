@@ -854,15 +854,15 @@ const StoreProductPage = () => {
             className="text-3xl font-bold"
             style={{ color: theme.colors.primary }}
           >
-            ${effectivePrice.toFixed(2)}
+            ₹{effectivePrice.toFixed(2)}
           </span>
           {product.compareAtPrice && product.compareAtPrice > effectivePrice && (
             <>
               <span className="text-xl text-muted-foreground line-through">
-                ${product.compareAtPrice.toFixed(2)}
+                ₹{product.compareAtPrice.toFixed(2)}
               </span>
               <Badge variant="destructive" className="font-semibold">
-                Save ${(product.compareAtPrice - effectivePrice).toFixed(2)}
+                Save ₹{(product.compareAtPrice - effectivePrice).toFixed(2)}
               </Badge>
             </>
           )}
@@ -1095,7 +1095,7 @@ const StoreProductPage = () => {
                         {item.name}
                       </h3>
                       <p className="text-sm font-semibold" style={{ color: theme.colors.primary }}>
-                        ${item.price.toFixed(2)}
+                        ₹{item.price.toFixed(2)}
                       </p>
                     </div>
                   </Card>
@@ -1558,7 +1558,7 @@ const StoreProductPage = () => {
           </div>
           <div className="flex items-center gap-3">
             <span className="text-xl font-bold hidden sm:block" style={{ color: theme.colors.primary }}>
-              ${effectivePrice.toFixed(2)}
+              ₹{effectivePrice.toFixed(2)}
             </span>
             <Button size="lg" onClick={handleAddToCart} className="gap-2">
               <ShoppingCart className="h-4 w-4" />

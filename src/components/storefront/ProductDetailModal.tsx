@@ -74,11 +74,11 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
             <div>
               <div className="flex items-baseline gap-3 mb-2">
                 <span className="text-3xl font-bold text-primary">
-                  ${product.price.toFixed(2)}
+                  ₹{product.price.toFixed(2)}
                 </span>
                 {product.compareAtPrice && product.compareAtPrice > product.price && (
                   <span className="text-xl text-muted-foreground line-through">
-                    ${product.compareAtPrice.toFixed(2)}
+                    ₹{product.compareAtPrice.toFixed(2)}
                   </span>
                 )}
               </div>
@@ -155,7 +155,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
               onClick={handleAddToCart}
             >
               <ShoppingCart className="mr-2 h-5 w-5" />
-              Add to Cart - ${(product.price * quantity).toFixed(2)}
+              Add to Cart - ₹{(product.price * quantity).toFixed(2)}
             </Button>
 
             {/* Product Info */}

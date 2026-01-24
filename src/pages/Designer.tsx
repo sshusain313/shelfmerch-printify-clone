@@ -442,13 +442,13 @@ const Designer = () => {
                 <div className="p-3 bg-muted rounded-lg">
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-sm font-medium">Customer pays:</span>
-                    <span className="text-lg font-bold">${price || '0.00'}</span>
+                    <span className="text-lg font-bold">₹{price || '0.00'}</span>
                   </div>
                   {compareAtPrice && parseFloat(compareAtPrice) > parseFloat(price || '0') && (
                     <div className="flex items-center justify-between text-xs text-muted-foreground">
                       <span>You save:</span>
                       <span className="font-semibold text-green-600">
-                        ${(parseFloat(compareAtPrice) - parseFloat(price || '0')).toFixed(2)}
+                        ₹{(parseFloat(compareAtPrice) - parseFloat(price || '0')).toFixed(2)}
                       </span>
                     </div>
                   )}

@@ -50,7 +50,7 @@ const AdminOrderDetail = () => {
 
   const formatCurrency = (value?: number) => {
     if (typeof value !== 'number') return '-';
-    return `$${value.toFixed(2)}`;
+    return `₹${value.toFixed(2)}`;
   };
 
   const formatDateTime = (value?: string) => {

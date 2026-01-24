@@ -129,6 +129,7 @@ const getProductRoute = (product: Product): string => {
 
 interface SectionProps {
   products: Product[];
+  id?: string;
 }
 
 const ProductCard = ({ product, index }: { product: Product; index: number }) => {
@@ -190,9 +191,9 @@ const MobileShowAll = () => (
   </div>
 );
 
-const BestProducts = ({ products }: SectionProps) => {
+const BestProducts = ({ products, id }: SectionProps) => {
   return (
-    <section className="py-10">
+    <section id={id} className="py-10 scroll-mt-24">
       <SectionHeader
         title="Explore ShelfMerch's Best"
         description="Here are some of the most popular product categories in our catalog."
@@ -207,9 +208,9 @@ const BestProducts = ({ products }: SectionProps) => {
   );
 };
 
-const HotNewProducts = ({ products }: SectionProps) => {
+const HotNewProducts = ({ products, id }: SectionProps) => {
   return (
-    <section className="py-10">
+    <section id={id} className="py-10 scroll-mt-24">
       <SectionHeader
         title="Hot New Products"
         description="Get ahead of the game with our newest offering of products that just hit our catalog."
@@ -224,9 +225,9 @@ const HotNewProducts = ({ products }: SectionProps) => {
   );
 };
 
-const StarterEssentials = ({ products }: SectionProps) => {
+const StarterEssentials = ({ products, id }: SectionProps) => {
   return (
-    <section className="py-10">
+    <section id={id} className="py-10 scroll-mt-24">
       <SectionHeader
         title="Starter Essentials"
         description="Perfect for beginners - essential products to kickstart your custom merchandise journey."
@@ -241,9 +242,9 @@ const StarterEssentials = ({ products }: SectionProps) => {
   );
 };
 
-const ExclusiveKits = ({ products }: SectionProps) => {
+const ExclusiveKits = ({ products, id }: SectionProps) => {
   return (
-    <section className="py-10">
+    <section id={id} className="py-10 scroll-mt-24">
       <SectionHeader
         title="Exclusive Kits"
         description="Curated product bundles designed for maximum impact and convenience."

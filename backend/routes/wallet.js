@@ -173,4 +173,108 @@ router.post('/topup/create-order', protect, async (req, res) => {
     }
 });
 
+// @route   POST /api/wallet/topup/verify
+// @desc    Verify Razorpay payment and credit wallet (called from frontend after success)
+// @access  Private
+router.post('/topup/verify', protect, async (req, res) => {
+    try {
+        const { razorpayOrderId, razorpayPaymentId, razorpaySignature } = req.body;
+
+        if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature) {
+            return res.status(400).json({
+                success: false,
+                message: 'Missing razorpayOrderId, razorpayPaymentId, or razorpaySignature',
+            });
+        }
+
+        if (!razorpayService.verifyPaymentSignature(razorpayOrderId, razorpayPaymentId, razorpaySignature)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid payment signature',
+            });
+        }
+
+        const payment = await razorpayService.fetchPayment(razorpayPaymentId);
+        if (!payment || payment.status !== 'captured') {
+            return res.status(400).json({
+                success: false,
+                message: 'Payment not captured yet',
+            });
+        }
+
+        const amountPaise = payment.amount;
+        const orderId = payment.order_id;
+
+        if (orderId !== razorpayOrderId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Order ID mismatch',
+            });
+        }
+
+        const pendingTxn = await walletService.findTransactionByIdempotencyKey(`topup_${razorpayOrderId}`);
+        if (!pendingTxn) {
+            return res.status(404).json({
+                success: false,
+                message: 'Top-up order not found',
+            });
+        }
+
+        if (pendingTxn.userId.toString() !== req.user.id) {
+            return res.status(403).json({
+                success: false,
+                message: 'This payment does not belong to you',
+            });
+        }
+
+        const mongoose = require('mongoose');
+        const session = await mongoose.startSession();
+        session.startTransaction();
+
+        try {
+            const txnData = {
+                type: 'TOPUP',
+                source: 'RAZORPAY',
+                referenceType: 'RAZORPAY_PAYMENT',
+                referenceId: razorpayPaymentId,
+                idempotencyKey: `topup_${razorpayOrderId}`,
+                description: 'Wallet top-up via Razorpay',
+                meta: {
+                    razorpayOrderId,
+                    razorpayPaymentId,
+                    verifiedVia: 'frontend_callback',
+                },
+            };
+
+            const result = await walletService.creditWallet(req.user.id, amountPaise, txnData, session);
+            await session.commitTransaction();
+
+            const balance = await walletService.getBalance(req.user.id);
+
+            console.log(`[Wallet] Top-up verified and credited: ${amountPaise} paise for user ${req.user.id}`);
+
+            res.json({
+                success: true,
+                data: {
+                    credited: true,
+                    amountPaise,
+                    balancePaise: balance.balancePaise,
+                    balanceRupees: (balance.balancePaise / 100).toFixed(2),
+                },
+            });
+        } catch (err) {
+            await session.abortTransaction();
+            throw err;
+        } finally {
+            session.endSession();
+        }
+    } catch (error) {
+        console.error('[Wallet] Verify topup error:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message || 'Failed to verify and credit payment',
+        });
+    }
+});
+
 module.exports = router;

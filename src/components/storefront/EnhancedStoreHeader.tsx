@@ -31,7 +31,7 @@ const EnhancedStoreHeader = ({
     <>
       {/* Announcement Bar */}
       <div className="bg-foreground text-background text-center py-2.5 text-sm font-medium tracking-wide">
-        <span className="opacity-90">Free shipping on orders over $75</span>
+        <span className="opacity-90">Free shipping on orders over ₹75</span>
         <span className="mx-3 opacity-50">•</span>
         <span className="opacity-90">Powered by ShelfMerch</span>
       </div>

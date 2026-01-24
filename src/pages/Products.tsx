@@ -203,9 +203,9 @@ const Products = () => {
             <main className="container pb-16">
                 <CategoryTabs />
 
-                {/* Sections */}
-                <BestProducts products={bestProducts} />
-                <HotNewProducts products={newProducts} />
+                {/* Sections with IDs for smooth scrolling */}
+                <BestProducts products={bestProducts} id="section-best-products" />
+                <HotNewProducts products={newProducts} id="section-hot-new" />
                 {/* <StarterEssentials products={starterProducts} /> */}
                 {/* <ExclusiveKits products={kitProducts} /> */}
             </main>

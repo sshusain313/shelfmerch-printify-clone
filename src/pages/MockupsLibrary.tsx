@@ -1023,7 +1023,7 @@ const MockupsLibrary = () => {
                                 </div>
                                 <div>
                                     <p className="text-muted-foreground">Price</p>
-                                    <p className="font-medium">{storeProduct.sellingPrice ? `$${storeProduct.sellingPrice.toFixed(2)}` : '-'}</p>
+                                    <p className="font-medium">{storeProduct.sellingPrice ? `₹${storeProduct.sellingPrice.toFixed(2)}` : '-'}</p>
                                 </div>
                                 <div>
                                     <p className="text-muted-foreground">Store product ID</p>

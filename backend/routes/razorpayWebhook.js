@@ -88,15 +88,29 @@ async function handlePaymentCaptured(payload) {
 
     console.log(`[Webhook] Processing payment.captured: orderId=${orderId}, paymentId=${paymentId}, amount=${amount}`);
 
-    // Check if this is a wallet top-up
-    if (notes?.type === 'WALLET_TOPUP') {
+    // Check if this is a wallet top-up (notes may be on order, not payment - resolve userId from our DB)
+    if (notes?.type === 'WALLET_TOPUP' && notes?.userId) {
         await processWalletTopup(orderId, paymentId, amount, notes);
-    } else if (notes?.type === 'INVOICE_PAYMENT') {
-        await processInvoicePayment(orderId, paymentId, amount, notes);
-    } else {
-        // Could be a customer order payment - check the order
-        console.log(`[Webhook] Unknown payment type, checking order notes:`, notes);
+        return;
     }
+    if (notes?.type === 'INVOICE_PAYMENT') {
+        await processInvoicePayment(orderId, paymentId, amount, notes);
+        return;
+    }
+
+    // Fallback: look up our pending top-up transaction by orderId (Razorpay often omits order notes on payment entity)
+    const pendingTxn = await WalletTransaction.findOne({
+        referenceId: orderId,
+        type: 'TOPUP',
+        status: 'PENDING',
+    });
+    if (pendingTxn) {
+        const notesFromDb = { userId: pendingTxn.userId.toString(), type: 'WALLET_TOPUP' };
+        await processWalletTopup(orderId, paymentId, amount, notesFromDb);
+        return;
+    }
+
+    console.log(`[Webhook] Unknown payment type, skipping. orderId=${orderId} notes=`, notes);
 }
 
 /**
@@ -113,11 +127,23 @@ async function handleOrderPaid(payload) {
 
     console.log(`[Webhook] Processing order.paid: orderId=${orderId}, amount=${amount}`);
 
-    // Similar processing to payment.captured
-    if (notes?.type === 'WALLET_TOPUP') {
+    if (notes?.type === 'WALLET_TOPUP' && notes?.userId) {
         await processWalletTopup(orderId, null, amount, notes);
-    } else if (notes?.type === 'INVOICE_PAYMENT') {
+        return;
+    }
+    if (notes?.type === 'INVOICE_PAYMENT') {
         await processInvoicePayment(orderId, null, amount, notes);
+        return;
+    }
+
+    const pendingTxn = await WalletTransaction.findOne({
+        referenceId: orderId,
+        type: 'TOPUP',
+        status: 'PENDING',
+    });
+    if (pendingTxn) {
+        const notesFromDb = { userId: pendingTxn.userId.toString(), type: 'WALLET_TOPUP' };
+        await processWalletTopup(orderId, null, amount, notesFromDb);
     }
 }
 

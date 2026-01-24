@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 // Category images
 import apparelImg from "@/assets/category-apparel.jpg";
 import accessoriesImg from "@/assets/category-accessories.jpg";
@@ -164,12 +164,35 @@ const CategoryTabs = () => {
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const categoryRef = useRef<HTMLDivElement>(null);
   const subcategoryRef = useRef<HTMLDivElement>(null);
+  const location = useLocation();
 
-  const handleCategoryClick = (categoryId: string) => {
+  const SUBCATEGORIES_SECTION_ID = 'section-subcategories';
+
+  const scrollToSubcategoriesSection = () => {
+    const element = document.getElementById(SUBCATEGORIES_SECTION_ID);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      element.classList.add('scroll-highlight');
+      setTimeout(() => element.classList.remove('scroll-highlight'), 2000);
+    }
+  };
+
+  const handleCategoryClick = (categoryId: string, e: React.MouseEvent) => {
+    const isSelecting = activeCategory !== categoryId;
+
+    // Toggle active category for subcategories display (do this first so section renders)
     if (activeCategory === categoryId) {
       setActiveCategory(null);
     } else {
       setActiveCategory(categoryId);
+    }
+
+    // On products page: scroll to "Apparel Categories" (subcategory) section, not "Explore ShelfMerch's Best"
+    if (location.pathname === '/products' && isSelecting) {
+      e.preventDefault();
+      e.stopPropagation();
+      // Delay so React can render the subcategory block before we scroll
+      setTimeout(scrollToSubcategoriesSection, 200);
     }
   };
 
@@ -227,8 +250,8 @@ const CategoryTabs = () => {
           {categories.map((category) => (
             <button
               key={category.id}
-              onClick={() => handleCategoryClick(category.id)}
-              className={`category-card group relative flex-shrink-0 aspect-[3/4] w-44 sm:w-56 rounded-2xl overflow-hidden snap-start transition-all duration-300 hover:shadow-xl ${activeCategory === category.id ? "ring-2 ring-primary ring-offset-2" : ""
+              onClick={(e) => handleCategoryClick(category.id, e)}
+              className={`category-card group relative flex-shrink-0 aspect-[3/4] w-44 sm:w-56 rounded-2xl overflow-hidden snap-start transition-all duration-300 hover:shadow-xl cursor-pointer ${activeCategory === category.id ? "ring-2 ring-primary ring-offset-2" : ""
                 }`}
             >
               <img
@@ -257,9 +280,9 @@ const CategoryTabs = () => {
         </button>
       </div>
 
-      {/* Subcategory Sliding Bar - Kept for functionality but styled better */}
+      {/* Subcategory Sliding Bar - "Apparel Categories" etc. Scroll target for category clicks */}
       {activeCategory && (
-        <div className="mt-8 slide-enter overflow-hidden">
+        <div id={SUBCATEGORIES_SECTION_ID} className="mt-8 slide-enter overflow-hidden scroll-mt-24">
           <div className="relative">
             <h3 className="text-lg font-semibold mb-4 px-1">
               {categories.find(c => c.id === activeCategory)?.name} Categories

@@ -1042,7 +1042,7 @@ const Admin = () => {
                             </div>
                           </TableCell>
                           <TableCell>{product.sales} units</TableCell>
-                          <TableCell>${product.revenue.toLocaleString()}</TableCell>
+                          <TableCell>₹{product.revenue.toLocaleString()}</TableCell>
                           <TableCell>
                             <Badge variant="secondary">
                               {product.userId 
@@ -1329,7 +1329,7 @@ const Admin = () => {
                             </div>
                           </TableCell>
                           <TableCell>{1} store</TableCell>
-                          <TableCell>$0</TableCell>
+                          <TableCell>₹0</TableCell>
                           <TableCell>
                             <Badge variant="secondary" className="bg-green-500/10 text-green-500">
                               Active
@@ -1645,7 +1645,7 @@ const Admin = () => {
                                 </Badge>
                               </TableCell>
                               <TableCell>{order.items?.length ?? 0}</TableCell>
-                              <TableCell>${order.total?.toFixed(2) ?? '0.00'}</TableCell>
+                              <TableCell>₹{order.total?.toFixed(2) ?? '0.00'}</TableCell>
                               <TableCell>
                                 <Select
                                   value={currentStatus}
@@ -2073,7 +2073,7 @@ const Admin = () => {
                     <div>
                       <p className="text-sm text-muted-foreground">Avg. Order Value</p>
                       <p className="text-2xl font-bold mt-1">
-                        ${(totalRevenue / (platformOrders.length || 1)).toFixed(2)}
+                        ₹{(totalRevenue / (platformOrders.length || 1)).toFixed(2)}
                       </p>
                     </div>
                     <div>
@@ -2134,7 +2134,7 @@ const Admin = () => {
                         <p className="font-medium">Transaction Fee</p>
                         <p className="text-sm text-muted-foreground">Fixed fee per transaction</p>
                       </div>
-                      <Input className="w-24" defaultValue="$0.30" />
+                      <Input className="w-24" defaultValue="₹0.30" />
                     </div>
                   </CardContent>
                 </Card>
@@ -2150,14 +2150,14 @@ const Admin = () => {
                         <p className="font-medium">Domestic Shipping</p>
                         <p className="text-sm text-muted-foreground">Base rate for domestic orders</p>
                       </div>
-                      <Input className="w-24" defaultValue="$5.99" />
+                      <Input className="w-24" defaultValue="₹5.99" />
                     </div>
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="font-medium">International Shipping</p>
                         <p className="text-sm text-muted-foreground">Base rate for international orders</p>
                       </div>
-                      <Input className="w-24" defaultValue="$12.99" />
+                      <Input className="w-24" defaultValue="₹12.99" />
                     </div>
                   </CardContent>
                 </Card>

@@ -339,7 +339,7 @@ const Orders = () => {
                           </Badge>
                         </td>
                         <td className="px-6 py-4 text-sm font-semibold">
-                          {order.total !== undefined ? `$${order.total.toFixed(2)}` : '-'}
+                          {order.total !== undefined ? `₹${order.total.toFixed(2)}` : '-'}
                         </td>
                       </tr>
                     ))}

@@ -275,11 +275,11 @@ const Dashboard = () => {
     { label: 'Products', value: `${storeProducts.length}`, icon: Package, color: 'text-blue-500' },
     {
       label: 'Revenue',
-      value: `$${orders.reduce((sum, order) => sum + (order.total || 0), 0).toFixed(2)}`,
+      value: `₹${orders.reduce((sum, order) => sum + (order.total || 0), 0).toFixed(2)}`,
       icon: DollarSign,
       color: 'text-green-500',
     },
-    { label: 'Profit', value: '$0', icon: TrendingUp, color: 'text-purple-500' },
+    { label: 'Profit', value: '₹0', icon: TrendingUp, color: 'text-purple-500' },
   ];
 
   return (
@@ -406,7 +406,7 @@ const Dashboard = () => {
                             {new Date(sp.createdAt).toLocaleDateString()}
                           </td>
                           <td className="px-2 py-4 align-middle hidden lg:table-cell text-muted-foreground">
-                            ${(sp.sellingPrice ?? 0).toFixed(2)}
+                            ₹{(sp.sellingPrice ?? 0).toFixed(2)}
                           </td>
                           <td className="px-2 py-4 align-middle hidden lg:table-cell text-muted-foreground">
                             {mockup ? 'Preview saved' : 'No mockup'}

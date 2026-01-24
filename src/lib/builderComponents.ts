@@ -30,7 +30,7 @@ export const componentLibrary: ComponentDefinition[] = [
     category: 'layout',
     availableOn: ['home', 'product'],
     defaultSettings: {
-      message: 'Free shipping on orders over $75',
+      message: 'Free shipping on orders over ₹75',
       linkLabel: '',
       linkUrl: '',
       showClose: true,

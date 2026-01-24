@@ -47,7 +47,7 @@ const OrderConfirmation = () => {
             </div>
             <div>
               <p className="text-sm text-muted-foreground mb-1">Total</p>
-              <p className="font-semibold text-primary">${orderData.total?.toFixed(2)}</p>
+              <p className="font-semibold text-primary">₹{orderData.total?.toFixed(2)}</p>
             </div>
           </div>
 
@@ -65,7 +65,7 @@ const OrderConfirmation = () => {
                       {item.variant?.color} / {item.variant?.size} × {item.quantity}
                     </p>
                   </div>
-                  <p className="font-semibold">${(item.price * item.quantity).toFixed(2)}</p>
+                  <p className="font-semibold">₹{(item.price * item.quantity).toFixed(2)}</p>
                 </div>
               ))}
             </div>

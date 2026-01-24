@@ -66,13 +66,13 @@ const DashboardNew = () => {
     },
     {
       label: 'Revenue',
-      value: `$${stats.totalRevenue}`,
+      value: `₹${stats.totalRevenue}`,
       icon: DollarSign,
       color: 'text-green-500',
     },
     {
       label: 'Profit',
-      value: `$${stats.totalProfit}`,
+      value: `₹${stats.totalProfit}`,
       icon: TrendingUp,
       color: 'text-purple-500',
     },
@@ -208,7 +208,7 @@ const DashboardNew = () => {
                           <Badge className={getStatusColor(order.status)}>
                             {getStatusLabel(order.status)}
                           </Badge>
-                          <span className="font-semibold">${order.total.toFixed(2)}</span>
+                          <span className="font-semibold">₹{order.total.toFixed(2)}</span>
                         </div>
                       </div>
                     ))
@@ -256,11 +256,11 @@ const DashboardNew = () => {
                         <h3 className="font-semibold mb-1 truncate">{product.name}</h3>
                         <div className="flex items-center justify-between">
                           <span className="text-lg font-bold text-primary">
-                            ${product.price.toFixed(2)}
+                            ₹{product.price.toFixed(2)}
                           </span>
                           {product.compareAtPrice && (
                             <span className="text-sm text-muted-foreground line-through">
-                              ${product.compareAtPrice.toFixed(2)}
+                              ₹{product.compareAtPrice.toFixed(2)}
                             </span>
                           )}
                         </div>
@@ -320,7 +320,7 @@ const DashboardNew = () => {
                               </Badge>
                             </td>
                             <td className="px-6 py-4 text-sm font-semibold">
-                              ${order.total.toFixed(2)}
+                              ₹{order.total.toFixed(2)}
                             </td>
                           </tr>
                         ))}
@@ -396,7 +396,7 @@ const DashboardNew = () => {
                         <p className="text-sm text-muted-foreground">Total Orders</p>
                       </div>
                       <div className="text-center p-4 bg-muted rounded-lg">
-                        <p className="text-2xl font-bold text-green-600">${stats.totalRevenue}</p>
+                        <p className="text-2xl font-bold text-green-600">₹{stats.totalRevenue}</p>
                         <p className="text-sm text-muted-foreground">Revenue</p>
                       </div>
                       <div className="text-center p-4 bg-muted rounded-lg">

@@ -81,19 +81,24 @@ const WalletTopUp = () => {
             // Convert to paise
             const amountPaise = Math.round(numAmount * 100);
 
-            // Create Razorpay order
-            const orderData = await walletApi.createTopupOrder(amountPaise);
+            // Create Razorpay order (API returns { data: { ... } })
+            const res = await walletApi.createTopupOrder(amountPaise) as any;
+            const orderData = res?.data ?? res;
+
+            if (!orderData?.razorpayOrderId || !orderData?.razorpayKeyId) {
+                throw new Error('Invalid create-order response');
+            }
 
             // Open Razorpay Checkout
             openRazorpayCheckout(
                 orderData.razorpayOrderId,
                 orderData.razorpayKeyId,
-                orderData.amountPaise,
-                orderData.currency
+                orderData.amountPaise ?? amountPaise,
+                orderData.currency ?? 'INR'
             );
         } catch (error: any) {
             console.error('Top-up error:', error);
-            toast.error(error.message || 'Failed to create payment order');
+            toast.error(error?.message || 'Failed to create payment order');
             setPaymentStatus('failed');
             setIsProcessing(false);
         }
@@ -113,22 +118,41 @@ const WalletTopUp = () => {
             description: 'Wallet Top-up',
             order_id: orderId,
             handler: async function (response: any) {
-                // Payment successful on frontend
-                // The actual credit happens via webhook
                 setPaymentStatus('success');
-                toast.success('Payment successful! Your wallet will be credited shortly.');
+                const orderId = response.razorpay_order_id;
+                const paymentId = response.razorpay_payment_id;
+                const signature = response.razorpay_signature;
 
-                // Wait a moment for webhook to process, then refresh balance
-                setTimeout(async () => {
-                    try {
-                        await loadWalletBalance();
-                    } catch (e) {
-                        console.error('Failed to refresh balance:', e);
-                    }
+                if (!orderId || !paymentId || !signature) {
+                    toast.error('Invalid payment response');
                     setIsProcessing(false);
                     setAmount('');
                     setPaymentStatus('idle');
-                }, 3000);
+                    return;
+                }
+
+                try {
+                    const verified = await walletApi.verifyTopup(orderId, paymentId, signature) as any;
+                    const data = verified?.data ?? verified;
+                    if (data?.credited) {
+                        toast.success('Payment successful! Wallet updated.');
+                        if (typeof data.balanceRupees === 'string') {
+                            setWalletBalance({ balancePaise: data.balancePaise ?? 0, balanceRupees: data.balanceRupees });
+                        }
+                    } else {
+                        toast.success('Payment successful! Your wallet will be credited shortly.');
+                    }
+                } catch (e: any) {
+                    console.error('Verify top-up error:', e);
+                    toast.success('Payment successful! Your wallet will be credited shortly.');
+                    // Webhook may still credit; refresh balance after a short delay
+                    setTimeout(() => loadWalletBalance(), 2000);
+                } finally {
+                    await loadWalletBalance();
+                    setIsProcessing(false);
+                    setAmount('');
+                    setPaymentStatus('idle');
+                }
             },
             prefill: {
                 email: user?.email || ''
