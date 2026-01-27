@@ -318,7 +318,7 @@ export const RealisticWebGLPreview: React.FC<RealisticWebGLPreviewProps> = ({
             console.error('RealisticWebGLPreview: Failed to load mockup image:', currentUrl, err);
             reject(new Error(`Failed to load image: ${currentUrl}`));
           };
-          img.src = currentUrl;
+          img.src = `${currentUrl}?t=${Date.now()}`;
         });
 
         if (cancelled) return;
@@ -336,7 +336,7 @@ export const RealisticWebGLPreview: React.FC<RealisticWebGLPreviewProps> = ({
 
         // Now load as PixiJS texture
         console.log('RealisticWebGLPreview: Loading texture via PixiJS Assets...');
-        const garmentTexture = await Assets.load(mockupImageUrl);
+        const garmentTexture = await Assets.load(`${mockupImageUrl}?t=${Date.now()}`);
         if (cancelled) return;
 
         console.log('RealisticWebGLPreview: Texture loaded:', garmentTexture.width, 'x', garmentTexture.height);

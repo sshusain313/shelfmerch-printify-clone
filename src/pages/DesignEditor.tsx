@@ -489,7 +489,7 @@ const DesignEditor: React.FC = () => {
           [viewKey]: { width: 0, height: 0, x: 0, y: 0 }
         }));
       };
-      img.src = view.mockupImageUrl;
+      img.src = `${view.mockupImageUrl}?t=${Date.now()}`;
     } else {
       // No mockup available for this view
       console.warn(`No mockup image found for ${viewKey} view`);
@@ -557,52 +557,41 @@ const DesignEditor: React.FC = () => {
   useEffect(() => {
     if (!id || !product) return;
 
-      try {
-        const savedState = sessionStorage.getItem(`designer_state_${id}`);
-        if (savedState) {
-          const designState = JSON.parse(savedState);
-          if (designState.elements && Array.isArray(designState.elements)) {
-            setElements(designState.elements);
-        // Initialize history with restored elements (filter by current view)
-        const currentViewElements = designState.elements.filter((el: CanvasElement) => !el.view || el.view === currentView);
-        const initialState: HistoryState = {
-          elements: JSON.parse(JSON.stringify(currentViewElements)),
-          view: currentView,
-          timestamp: Date.now()
-        };
-        setUndoStack([initialState]);
-        setRedoStack([]);
-          }
-          if (designState.selectedColors && Array.isArray(designState.selectedColors)) {
-            setSelectedColors(designState.selectedColors);
-          }
-          if (designState.selectedSizes && Array.isArray(designState.selectedSizes)) {
-            setSelectedSizes(designState.selectedSizes);
-          }
-          if (designState.selectedSizesByColor && typeof designState.selectedSizesByColor === 'object') {
-            setSelectedSizesByColor(designState.selectedSizesByColor);
-          }
-          if (designState.currentView && ['front', 'back', 'sleeves'].includes(designState.currentView)) {
-            setCurrentView(designState.currentView);
-          }
-          if (designState.designUrlsByPlaceholder && typeof designState.designUrlsByPlaceholder === 'object') {
-            setDesignUrlsByPlaceholder(designState.designUrlsByPlaceholder);
-          }
-          // Clear the saved state after restoring
-          sessionStorage.removeItem(`designer_state_${id}`);
-        } else {
-          // Initialize history with empty elements if no saved state
+    try {
+      const savedState = sessionStorage.getItem(`designer_state_${id}`);
+      if (savedState) {
+        const designState = JSON.parse(savedState);
+        if (designState.elements && Array.isArray(designState.elements)) {
+          setElements(designState.elements);
+          // Initialize history with restored elements (filter by current view)
+          const currentViewElements = designState.elements.filter((el: CanvasElement) => !el.view || el.view === currentView);
           const initialState: HistoryState = {
-            elements: [],
+            elements: JSON.parse(JSON.stringify(currentViewElements)),
             view: currentView,
             timestamp: Date.now()
           };
           setUndoStack([initialState]);
           setRedoStack([]);
         }
-      } catch (err) {
-        console.error('Failed to restore design state:', err);
-        // Initialize history even on error
+        if (designState.selectedColors && Array.isArray(designState.selectedColors)) {
+          setSelectedColors(designState.selectedColors);
+        }
+        if (designState.selectedSizes && Array.isArray(designState.selectedSizes)) {
+          setSelectedSizes(designState.selectedSizes);
+        }
+        if (designState.selectedSizesByColor && typeof designState.selectedSizesByColor === 'object') {
+          setSelectedSizesByColor(designState.selectedSizesByColor);
+        }
+        if (designState.currentView && ['front', 'back', 'sleeves'].includes(designState.currentView)) {
+          setCurrentView(designState.currentView);
+        }
+        if (designState.designUrlsByPlaceholder && typeof designState.designUrlsByPlaceholder === 'object') {
+          setDesignUrlsByPlaceholder(designState.designUrlsByPlaceholder);
+        }
+        // Clear the saved state after restoring
+        sessionStorage.removeItem(`designer_state_${id}`);
+      } else {
+        // Initialize history with empty elements if no saved state
         const initialState: HistoryState = {
           elements: [],
           view: currentView,
@@ -611,6 +600,17 @@ const DesignEditor: React.FC = () => {
         setUndoStack([initialState]);
         setRedoStack([]);
       }
+    } catch (err) {
+      console.error('Failed to restore design state:', err);
+      // Initialize history even on error
+      const initialState: HistoryState = {
+        elements: [],
+        view: currentView,
+        timestamp: Date.now()
+      };
+      setUndoStack([initialState]);
+      setRedoStack([]);
+    }
   }, [id, product]);
 
   // Load mockup when view changes (if not already loaded)
@@ -879,10 +879,10 @@ const DesignEditor: React.FC = () => {
   const undo = useCallback(() => {
     setUndoStack(prev => {
       if (prev.length === 0) return prev;
-      
+
       const stateToRestore = prev[prev.length - 1];
       const newUndoStack = prev.slice(0, -1);
-      
+
       // Push current state to redo stack before restoring
       const currentViewElements = getCurrentViewElements();
       const currentState: HistoryState = {
@@ -890,12 +890,12 @@ const DesignEditor: React.FC = () => {
         view: currentView,
         timestamp: Date.now()
       };
-      
+
       setRedoStack(prevRedo => [...prevRedo, currentState]);
-      
+
       // Restore the state
       isRestoringHistoryRef.current = true;
-      
+
       // Merge restored elements with elements from other views
       setElements(prevElements => {
         const otherViewElements = prevElements.filter(el => el.view && el.view !== stateToRestore.view);
@@ -905,11 +905,11 @@ const DesignEditor: React.FC = () => {
         }));
         return [...otherViewElements, ...restoredElements];
       });
-      
+
       setTimeout(() => {
         isRestoringHistoryRef.current = false;
       }, 0);
-      
+
       return newUndoStack;
     });
   }, [currentView, getCurrentViewElements]);
@@ -918,10 +918,10 @@ const DesignEditor: React.FC = () => {
   const redo = useCallback(() => {
     setRedoStack(prev => {
       if (prev.length === 0) return prev;
-      
+
       const stateToRestore = prev[prev.length - 1];
       const newRedoStack = prev.slice(0, -1);
-      
+
       // Push current state to undo stack before restoring
       const currentViewElements = getCurrentViewElements();
       const currentState: HistoryState = {
@@ -929,12 +929,12 @@ const DesignEditor: React.FC = () => {
         view: currentView,
         timestamp: Date.now()
       };
-      
+
       setUndoStack(prevUndo => [...prevUndo, currentState]);
-      
+
       // Restore the state
       isRestoringHistoryRef.current = true;
-      
+
       // Merge restored elements with elements from other views
       setElements(prevElements => {
         const otherViewElements = prevElements.filter(el => el.view && el.view !== stateToRestore.view);
@@ -944,11 +944,11 @@ const DesignEditor: React.FC = () => {
         }));
         return [...otherViewElements, ...restoredElements];
       });
-      
+
       setTimeout(() => {
         isRestoringHistoryRef.current = false;
       }, 0);
-      
+
       return newRedoStack;
     });
   }, [currentView, getCurrentViewElements]);
@@ -1072,7 +1072,7 @@ const DesignEditor: React.FC = () => {
     const placeholder = element.placeholderId
       ? placeholders.find((p) => p.id === element.placeholderId)
       : undefined;
-    
+
     if (!placeholder) return updates;
 
     const printArea = {
@@ -1129,8 +1129,8 @@ const DesignEditor: React.FC = () => {
     let constrainedY = currentY;
 
     // Only constrain if position is being updated or if size-affecting properties changed
-    const sizeChanged = updates.fontSize !== undefined || updates.letterSpacing !== undefined || 
-                       updates.rotation !== undefined || updates.text !== undefined || updates.fontFamily !== undefined;
+    const sizeChanged = updates.fontSize !== undefined || updates.letterSpacing !== undefined ||
+      updates.rotation !== undefined || updates.text !== undefined || updates.fontFamily !== undefined;
 
     if (sizeChanged) {
       constrainedX = Math.max(printArea.x, Math.min(currentX, printArea.x + printArea.width - rotatedWidth));
@@ -1175,12 +1175,12 @@ const DesignEditor: React.FC = () => {
       return updated;
     });
     setHasUnsavedChanges(true); // Mark as having unsaved changes
-    
+
     // Save to history (debounced for rapid updates like dragging)
     if (saveHistory) {
       saveToHistory(false); // Use debounced save for property updates
     }
-    
+
     // Force transformer to update when text changes (for proper bounding box)
     if (updates.text !== undefined && selectedIds.includes(id) && transformerRef.current) {
       setTimeout(() => {
@@ -1499,7 +1499,7 @@ const DesignEditor: React.FC = () => {
     const targetPlaceholder = selectedPlaceholderIdRef.current
       ? placeholders.find(p => p.id === selectedPlaceholderIdRef.current)
       : (placeholders.length > 0 ? placeholders[0] : null);
-    
+
     if (!targetPlaceholder) {
       toast.error('Please select a print area (placeholder) before adding text');
       return;
@@ -1536,7 +1536,7 @@ const DesignEditor: React.FC = () => {
     const targetPlaceholder = selectedPlaceholderIdRef.current
       ? placeholders.find(p => p.id === selectedPlaceholderIdRef.current)
       : (placeholders.length > 0 ? placeholders[0] : null);
-    
+
     if (!targetPlaceholder) {
       toast.error('Please select a print area (placeholder) before adding text');
       return;
@@ -1882,7 +1882,7 @@ const DesignEditor: React.FC = () => {
             console.error('Failed to save design state:', err);
           }
         }
-        
+
         // Redirect to auth page with return path
         navigate('/auth', {
           state: {
@@ -2705,7 +2705,7 @@ const DesignEditor: React.FC = () => {
                                   const minY = placeholder.y;
                                   const maxX = placeholder.x + placeholder.width;
                                   const maxY = placeholder.y + placeholder.height;
-                                  
+
                                   return {
                                     ...newBox,
                                     x: Math.max(minX, Math.min(newBox.x, maxX - newBox.width)),
@@ -3177,20 +3177,20 @@ const TextElement: React.FC<{
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     if (!ctx) return { width: 0, height: 0 };
-    
+
     ctx.font = `${fontSize}px ${fontFamily}`;
     const metrics = ctx.measureText(text);
     // Add letter spacing to width (approximate: letterSpacing * (charCount - 1))
     const textWidth = metrics.width + (letterSpacing * Math.max(0, text.length - 1));
     const textHeight = fontSize * 1.2; // Approximate line height
-    
+
     // Account for rotation - calculate bounding box of rotated text
     const rad = (rotation * Math.PI) / 180;
     const cos = Math.abs(Math.cos(rad));
     const sin = Math.abs(Math.sin(rad));
     const rotatedWidth = textWidth * cos + textHeight * sin;
     const rotatedHeight = textWidth * sin + textHeight * cos;
-    
+
     return { width: rotatedWidth, height: rotatedHeight };
   };
 
@@ -3204,14 +3204,14 @@ const TextElement: React.FC<{
       const fontSize = element.fontSize || 24;
       const bounds = text
         ? getTextBounds(
-            text,
-            fontSize,
-            element.fontFamily || 'Arial',
-            element.letterSpacing || 0,
-            element.rotation || 0
-          )
+          text,
+          fontSize,
+          element.fontFamily || 'Arial',
+          element.letterSpacing || 0,
+          element.rotation || 0
+        )
         : { width: fontSize * 0.5, height: fontSize }; // Minimum bounds for empty text
-      
+
       // Constrain position to keep text within print area
       newX = Math.max(printArea.x, Math.min(newX, printArea.x + printArea.width - bounds.width));
       newY = Math.max(printArea.y, Math.min(newY, printArea.y + printArea.height - bounds.height));
@@ -3235,12 +3235,12 @@ const TextElement: React.FC<{
       const newFontSize = (node.fontSize?.() || element.fontSize || 24) * node.scaleY();
       const bounds = text
         ? getTextBounds(
-            text,
-            newFontSize,
-            element.fontFamily || 'Arial',
-            element.letterSpacing || 0,
-            newRotation
-          )
+          text,
+          newFontSize,
+          element.fontFamily || 'Arial',
+          element.letterSpacing || 0,
+          newRotation
+        )
         : { width: newFontSize * 0.5, height: newFontSize }; // Minimum bounds for empty text
 
       // Constrain position
@@ -3268,14 +3268,14 @@ const TextElement: React.FC<{
       const fontSize = element.fontSize || 24;
       const bounds = text
         ? getTextBounds(
-            text,
-            fontSize,
-            element.fontFamily || 'Arial',
-            element.letterSpacing || 0,
-            element.rotation || 0
-          )
+          text,
+          fontSize,
+          element.fontFamily || 'Arial',
+          element.letterSpacing || 0,
+          element.rotation || 0
+        )
         : { width: fontSize * 0.5, height: fontSize }; // Minimum bounds for empty text
-      
+
       const constrainedX = Math.max(printArea.x, Math.min(pos.x, printArea.x + printArea.width - bounds.width));
       const constrainedY = Math.max(printArea.y, Math.min(pos.y, printArea.y + printArea.height - bounds.height));
       return { x: constrainedX, y: constrainedY };
@@ -3331,7 +3331,7 @@ const TextElement: React.FC<{
 
   // Ensure text always has a value for rendering (empty string shows cursor)
   const displayText = element.text || '';
-  
+
   // Calculate minimum bounding box for empty text
   const minWidth = element.fontSize ? element.fontSize * 0.5 : 24;
   const minHeight = element.fontSize || 24;
@@ -3368,26 +3368,26 @@ const TextElement: React.FC<{
       const text = element.text || '';
       const fontSize = element.fontSize || 24;
       const fontFamily = element.fontFamily || 'Arial';
-      
+
       // Calculate text width to determine appropriate radius
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
       let textWidth = 100; // Default fallback
-      
+
       if (ctx && text) {
         ctx.font = `${fontSize}px ${fontFamily}`;
         const metrics = ctx.measureText(text);
         textWidth = metrics.width + (element.letterSpacing || 0) * Math.max(0, text.length - 1);
       }
-      
+
       // Calculate radius based on text width and available space in placeholder
       let radius = element.curveRadius || 200;
-      
+
       // Ensure curve fits within placeholder bounds
       if (printArea) {
         const availableWidth = printArea.width;
         const availableHeight = printArea.height;
-        
+
         // For arch shapes, radius should be at least half text width, but not exceed available space
         if (element.curveShape === 'arch-down' || element.curveShape === 'arch-up') {
           const minRadius = textWidth / 2;
@@ -3402,10 +3402,10 @@ const TextElement: React.FC<{
         // Fallback: ensure radius is at least half the text width
         radius = Math.max(radius, textWidth / 2);
       }
-      
+
       let pathData = '';
       const curveShape = element.curveShape;
-      
+
       if (curveShape === 'arch-down') {
         // Inverted U-shape - path centered at text position
         pathData = `M -${radius},0 A ${radius},${radius} 0 0,1 ${radius},0`;
@@ -3440,7 +3440,7 @@ const TextElement: React.FC<{
       const fontSize = element.fontSize || 24;
       const cursorX = element.x;
       const cursorY = element.y + fontSize * 0.2; // Adjust for baseline
-      
+
       return (
         <Group>
           {/* Visible text placeholder to maintain bounding box and show cursor area */}
@@ -4288,13 +4288,13 @@ const PropertiesPanel: React.FC<{
                         // When toggling curved on, don't set curveShape yet - wait for user to choose
                         // When toggling off, clear both curved and curveShape
                         if (checked) {
-                          onUpdate({ 
+                          onUpdate({
                             curved: true,
                             curveRadius: element.curveRadius || 200
                             // Don't set curveShape - wait for user to select arch up/down/circle
                           });
                         } else {
-                          onUpdate({ 
+                          onUpdate({
                             curved: false,
                             curveShape: undefined,
                             curveRadius: undefined
@@ -4380,7 +4380,7 @@ const PropertiesPanel: React.FC<{
                 {/* Position */}
                 <div className="space-y-3 border-t pt-3">
                   <Label className="text-sm">Position</Label>
-                  
+
                   {/* Position Left */}
                   <div>
                     <div className="flex items-center justify-between mb-1">
@@ -4588,8 +4588,8 @@ const PropertiesPanel: React.FC<{
                           // Update scale while preserving current dimensions
                           const currentWidth = element.width || 100;
                           const currentHeight = element.height || 100;
-                          onUpdate({ 
-                            scaleX: scaleValue, 
+                          onUpdate({
+                            scaleX: scaleValue,
                             scaleY: scaleValue,
                             width: currentWidth * scaleValue,
                             height: currentHeight * scaleValue
