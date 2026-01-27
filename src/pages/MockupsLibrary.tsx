@@ -1221,9 +1221,36 @@ const MockupsLibrary = () => {
                                                             const mockupDisplacement: DisplacementSettings =
                                                                 mockup.displacementSettings || displacementSettings || defaultDisplacementSettings;
 
-                                                            // Build designUrlsByPlaceholder for this mockup's view
+                                                            // Build per-mockup canvas elements from persisted designData.elements.
+                                                            // CRITICAL: This preserves the full multi-layer design (all graphics per placeholder)
+                                                            // with exact x/y/width/height/rotation as set in the DesignEditor.
+                                                            const allElements: any[] = Array.isArray(designData.elements)
+                                                                ? designData.elements
+                                                                : [];
+
+                                                            const placeholderIdsForMockup = new Set(
+                                                                (mockup.placeholders || [])
+                                                                    .map((p: any) => p.id)
+                                                                    .filter(Boolean),
+                                                            );
+
+                                                            const mockupCanvasElements = allElements
+                                                                .filter((el: any) => {
+                                                                    if (!el || el.type !== 'image' || !el.imageUrl || el.visible === false) {
+                                                                        return false;
+                                                                    }
+                                                                    const elView = (el.view || 'front').toLowerCase();
+                                                                    if (elView !== viewKey) return false;
+                                                                    if (!el.placeholderId) return false;
+                                                                    return placeholderIdsForMockup.has(el.placeholderId);
+                                                                })
+                                                                // Respect stacking order exactly as stored
+                                                                .sort((a: any, b: any) => (a.zIndex || 0) - (b.zIndex || 0));
+
+                                                            // Legacy single-image-per-placeholder mapping kept for backward compatibility,
+                                                            // but RealisticWebGLPreview will ignore this when canvasElements are present.
                                                             const mockupDesignUrls: Record<string, string> = {};
-                                                            if (hasDesignForView && hasPlaceholder) {
+                                                            if (hasDesignForView && hasPlaceholder && !mockupCanvasElements.length) {
                                                                 mockup.placeholders.forEach((ph: any) => {
                                                                     if (ph.id && designImagesByView[viewKey]) {
                                                                         mockupDesignUrls[ph.id] = designImagesByView[viewKey];
@@ -1288,6 +1315,8 @@ const MockupsLibrary = () => {
                                                                                 }}
                                                                                 designUrlsByPlaceholder={mockupDesignUrls}
                                                                                 previewMode={true}
+                                                                                // Pass full per-layer design so WebGL preview matches the editor exactly
+                                                                                canvasElements={mockupCanvasElements}
                                                                                 currentView={viewKey}
                                                                                 canvasPadding={40}
                                                                                 PX_PER_INCH={Math.min(720 / catalogPhysicalDimensions.width, 520 / catalogPhysicalDimensions.height)}

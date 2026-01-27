@@ -136,7 +136,7 @@ const Admin = () => {
   const [platformOrders, setPlatformOrders] = useState<Order[]>([]);
   const [isLoadingOrders, setIsLoadingOrders] = useState(false);
   const [ordersError, setOrdersError] = useState<string | null>(null);
-  
+
   // Orders filter states
   const [ordersSearchQuery, setOrdersSearchQuery] = useState('');
   const [ordersStatusFilter, setOrdersStatusFilter] = useState<string>('all');
@@ -522,19 +522,19 @@ const Admin = () => {
         const response = await storeApi.update(suspendingStoreId, {
           // Note: This may need to be adjusted based on actual API structure
         });
-        if (response.success) {
-          toast.success(response.message || 'Store status updated successfully');
-          setSuspendingStoreId(null);
-          // Reload stores list
-          const updatedResponse = await storeApi.listAllStores({
-            page: storesPage,
-            limit: storesLimit,
-            search: searchQuery,
-            sortBy: storesSortBy,
-            sortOrder: storesSortOrder
-          });
-          if (updatedResponse.success) {
-            setStores(updatedResponse.data || []);
+      if (response.success) {
+        toast.success(response.message || 'Store status updated successfully');
+        setSuspendingStoreId(null);
+        // Reload stores list
+        const updatedResponse = await storeApi.listAllStores({
+          page: storesPage,
+          limit: storesLimit,
+          search: searchQuery,
+          sortBy: storesSortBy,
+          sortOrder: storesSortOrder
+        });
+        if (updatedResponse.success) {
+          setStores(updatedResponse.data || []);
           }
         }
       }
@@ -1526,7 +1526,7 @@ const Admin = () => {
                     value={ordersSearchQuery}
                     onChange={(e) => setOrdersSearchQuery(e.target.value)}
                   />
-                </div>
+                    </div>
 
                 {/* Filters Row */}
                 <div className="flex flex-wrap gap-3 items-center">
@@ -1534,17 +1534,17 @@ const Admin = () => {
                   <Select value={ordersStatusFilter} onValueChange={setOrdersStatusFilter}>
                     <SelectTrigger className="w-[140px]">
                       <SelectValue placeholder="All Status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Status</SelectItem>
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Status</SelectItem>
                       <SelectItem value="on-hold">On-hold</SelectItem>
                       <SelectItem value="in-production">In Production</SelectItem>
-                      <SelectItem value="shipped">Shipped</SelectItem>
+                          <SelectItem value="shipped">Shipped</SelectItem>
                       <SelectItem value="delivered">Delivered</SelectItem>
                       <SelectItem value="refunded">Refunded</SelectItem>
                       <SelectItem value="cancelled">Cancelled</SelectItem>
-                    </SelectContent>
-                  </Select>
+                        </SelectContent>
+                      </Select>
 
                   {/* Amount Sort */}
                   <Select value={ordersAmountSort} onValueChange={setOrdersAmountSort}>
@@ -1571,7 +1571,7 @@ const Admin = () => {
                       <SelectItem value="email-za">Email (Z → A)</SelectItem>
                     </SelectContent>
                   </Select>
-                </div>
+                    </div>
               </div>
 
               <Card>

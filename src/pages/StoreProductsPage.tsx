@@ -583,7 +583,7 @@ const StoreProductsPage: React.FC = () => {
                 setSelectedSizes(sizes);
               }}
             />
-          </div>
+                  </div>
 
           {/* Main Content Area */}
           <main className="flex-1 min-w-0">

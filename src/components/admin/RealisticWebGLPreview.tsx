@@ -18,6 +18,8 @@ interface CanvasElement {
   zIndex: number;
   view?: string;
   imageUrl?: string;
+  // Optional placeholder affinity so we can render per-placeholder designs
+  placeholderId?: string;
   flipX?: boolean;
   flipY?: boolean;
   blendMode?: string;
@@ -767,6 +769,29 @@ export const RealisticWebGLPreview: React.FC<RealisticWebGLPreviewProps> = ({
       return;
     }
 
+    // CRITICAL: When full canvas elements are provided from the editor,
+    // they already represent the true per-layer design state (including
+    // multiple logos per placeholder, exact x/y, width/height, rotation, etc).
+    // In that case we MUST NOT also render the legacy single-design-per-placeholder
+    // pipeline based on designUrlsByPlaceholder, because it:
+    // - Only supports one design per placeholder
+    // - Auto-centers and auto-fits the design
+    // - Ignores the editor's per-layer transforms
+    //
+    // Skipping this effect when canvasElements are present ensures:
+    // - All designs come from the same source of truth as the editor canvas
+    // - Multiple layers per placeholder are rendered correctly by the
+    //   canvasElements effect below
+    if (canvasElements && canvasElements.length > 0) {
+      if (DEBUG_LOGGING) {
+        console.log('[RealisticWebGLPreview] Skipping legacy placeholder design pipeline because canvasElements are present', {
+          currentView,
+          totalCanvasElements: canvasElements.length,
+        });
+      }
+      return;
+    }
+
     let cancelled = false;
 
     const loadDesigns = async () => {
@@ -1015,7 +1040,7 @@ export const RealisticWebGLPreview: React.FC<RealisticWebGLPreviewProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [appReady, externalDesignUrls, placeholders, mockupImageUrl, activePlaceholder, filterToken, onSelectPlaceholder, previewMode, garmentTintHex, currentView]);
+  }, [appReady, externalDesignUrls, placeholders, mockupImageUrl, activePlaceholder, filterToken, onSelectPlaceholder, previewMode, garmentTintHex, currentView, canvasElements]);
 
   // Garment tint changes are already handled by the design loading effect
   // No additional blend mode updates needed with soft-light approach
@@ -1084,7 +1109,10 @@ export const RealisticWebGLPreview: React.FC<RealisticWebGLPreviewProps> = ({
       // Normalize view matching: case-insensitive and handle !el.view as "all views"
       const normalizedCurrentView = currentView?.toLowerCase() || '';
 
-      // Filter canvas elements for current view and visible image elements
+      // Get all placeholder IDs for the current view
+      const currentPlaceholderIds = new Set(placeholders.map(p => p.id));
+
+      // Filter canvas elements for current view, visible image elements, AND matching placeholder
       const imageElements = canvasElements.filter(
         (el) => {
           if (el.type !== 'image' || !el.imageUrl || el.visible === false) return false;
@@ -1092,8 +1120,19 @@ export const RealisticWebGLPreview: React.FC<RealisticWebGLPreviewProps> = ({
           // Normalize element view for comparison
           const elView = el.view?.toLowerCase() || '';
 
-          // Match if: no view (appears on all), or view matches (case-insensitive)
-          return !el.view || elView === normalizedCurrentView;
+          // Match view: no view (appears on all), or view matches (case-insensitive)
+          const viewMatches = !el.view || elView === normalizedCurrentView;
+          if (!viewMatches) return false;
+
+          // CRITICAL: Filter by placeholderId - only render elements that belong to placeholders in current view
+          if (el.placeholderId) {
+            // Element has a placeholderId - only render if it matches a placeholder in current view
+            return currentPlaceholderIds.has(el.placeholderId);
+          } else {
+            // Element has no placeholderId - this is legacy behavior, skip it to avoid rendering in wrong placeholders
+            // Only render elements that explicitly belong to a placeholder
+            return false;
+          }
         }
       );
 
