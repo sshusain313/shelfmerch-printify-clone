@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { storeOrdersApi } from '@/lib/api';
+import { storeProductsApi } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -15,6 +16,16 @@ const AdminOrderDetail = () => {
   const [order, setOrder] = useState<Order | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [storeProductsById, setStoreProductsById] = useState<Record<string, any>>({});
+  const [storeProductsLoading, setStoreProductsLoading] = useState<Record<string, boolean>>({});
+
+  const getStoreProductIdFromItem = (item: any): string | null => {
+    const sp = item?.storeProductId;
+    if (!sp) return null;
+    if (typeof sp === 'string') return sp;
+    const candidate = sp._id || sp.id;
+    return candidate ? String(candidate) : null;
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -48,6 +59,44 @@ const AdminOrderDetail = () => {
     };
   }, [id]);
 
+  // Fetch latest store product design data (savedPreviewImages + elements) for ordered items
+  useEffect(() => {
+    let isMounted = true;
+
+    const uniqueIds = Array.from(
+      new Set((order?.items || []).map(getStoreProductIdFromItem).filter(Boolean) as string[])
+    );
+
+    const idsToFetch = uniqueIds.filter((spId) => !storeProductsById[spId] && !storeProductsLoading[spId]);
+    if (idsToFetch.length === 0) return () => {
+      isMounted = false;
+    };
+
+    idsToFetch.forEach((spId) => {
+      setStoreProductsLoading((prev) => (prev[spId] ? prev : { ...prev, [spId]: true }));
+      storeProductsApi
+        .getById(spId)
+        .then((resp: any) => {
+          const data = resp?.data ?? resp;
+          if (isMounted && data) {
+            setStoreProductsById((prev) => ({ ...prev, [spId]: data }));
+          }
+        })
+        .catch((err: any) => {
+          console.error('Failed to fetch store product:', spId, err);
+        })
+        .finally(() => {
+          if (isMounted) {
+            setStoreProductsLoading((prev) => ({ ...prev, [spId]: false }));
+          }
+        });
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [order, storeProductsById, storeProductsLoading]);
+
   const formatCurrency = (value?: number) => {
     if (typeof value !== 'number') return '-';
     return `₹${value.toFixed(2)}`;
@@ -65,6 +114,7 @@ const AdminOrderDetail = () => {
     : 'Direct';
 
   const orderId = order ? ((order as any)._id || (order as any).id || '').toString() : id;
+  const hasAnyStoreProductIds = !!order?.items?.some((item: any) => !!getStoreProductIdFromItem(item));
 
   return (
     <div className="min-h-screen bg-background">
@@ -209,7 +259,7 @@ const AdminOrderDetail = () => {
             </Card>
 
             {/* Design and Preview Section */}
-            {order.items && order.items.length > 0 && order.items.some((item: any) => item.storeProductId?.designData) && (
+            {order.items && order.items.length > 0 && hasAnyStoreProductIds && (
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
@@ -220,24 +270,39 @@ const AdminOrderDetail = () => {
                 </CardHeader>
                 <CardContent>
                   {order.items.map((item: any, idx: number) => {
-                    const storeProduct = item.storeProductId;
+                    const storeProductId = getStoreProductIdFromItem(item);
+                    const storeProductFromOrder = item.storeProductId && typeof item.storeProductId === 'object' ? item.storeProductId : null;
+                    const storeProduct = (storeProductId ? storeProductsById[storeProductId] : null) || storeProductFromOrder;
+                    const isLoadingStoreProduct = !!(storeProductId && storeProductsLoading[storeProductId]);
                     const designData = storeProduct?.designData;
-                    
-                    if (!designData) return null;
-                    
-                    const views = designData.views || {};
-                    const previewsByView = designData.previewImagesByView || {};
-                    const elements = designData.elements || [];
-                    const viewKeys = Object.keys(views).length > 0 ? Object.keys(views) : Object.keys(previewsByView);
-                    
+
+                    if (!storeProductId) return null;
+
+                    const views = designData?.views || {};
+                    const previewsByView = designData?.previewImagesByView || {};
+                    const savedPreviewImages = designData?.savedPreviewImages || {};
+                    const elements = designData?.elements || [];
+
+                    const viewKeys = Array.from(
+                      new Set([
+                        // ...Object.keys(views),
+                        // ...Object.keys(previewsByView),
+                        ...Object.keys(savedPreviewImages),
+                      ])
+                    );
+
                     return (
                       <div key={idx} className="mb-6 last:mb-0">
                         <h4 className="font-medium mb-3 flex items-center gap-2">
                           <ShoppingBag className="h-4 w-4" />
                           {item.productName || storeProduct?.title || 'Product'}
                         </h4>
-                        
-                        {viewKeys.length > 0 ? (
+
+                        {!designData ? (
+                          <p className="text-sm text-muted-foreground">
+                            {isLoadingStoreProduct ? 'Loading design data…' : 'No design data available'}
+                          </p>
+                        ) : viewKeys.length > 0 ? (
                           <Tabs defaultValue={viewKeys[0]} className="w-full">
                             <TabsList className="mb-4">
                               {viewKeys.map((viewKey: string) => (
@@ -247,13 +312,25 @@ const AdminOrderDetail = () => {
                                 </TabsTrigger>
                               ))}
                             </TabsList>
-                            
+
                             {viewKeys.map((viewKey: string) => {
-                              const viewData = views[viewKey] || {};
-                              const previewUrl = viewData.previewImageUrl || previewsByView[viewKey];
-                              const viewElements = viewData.elements || elements.filter((el: any) => el.view === viewKey || (!el.view && viewKey === 'front'));
+                              const viewKeyLower = viewKey.toLowerCase();
+                              const viewData = (views && (views[viewKey] || views[viewKeyLower])) || {};
+                              const previewUrl =
+                                viewData.savedPreviewImages ||
+                                viewData.savedPreviewImage ||
+                                savedPreviewImages[viewKey] ||
+                                savedPreviewImages[viewKeyLower] ||
+                                previewsByView[viewKey] ||
+                                previewsByView[viewKeyLower];
+                              const viewElements =
+                                viewData.elements ||
+                                elements.filter((el: any) => {
+                                  const elView = (el?.view || 'front').toLowerCase();
+                                  return elView === viewKeyLower || (!el?.view && viewKeyLower === 'front');
+                                });
                               const designUrls = viewData.designUrlsByPlaceholder || {};
-                              
+
                               return (
                                 <TabsContent key={viewKey} value={viewKey}>
                                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -266,8 +343,8 @@ const AdminOrderDetail = () => {
                                       {previewUrl ? (
                                         <>
                                           <div className="border rounded-lg overflow-hidden bg-muted">
-                                            <img 
-                                              src={previewUrl} 
+                                            <img
+                                              src={previewUrl}
                                               alt={`${viewKey} view preview`}
                                               className="w-full h-auto object-contain max-h-[300px]"
                                             />
@@ -288,7 +365,7 @@ const AdminOrderDetail = () => {
                                         </div>
                                       )}
                                     </div>
-                                    
+
                                     {/* Design Elements */}
                                     <div className="space-y-2">
                                       <h5 className="text-sm font-medium flex items-center gap-2">
@@ -313,8 +390,8 @@ const AdminOrderDetail = () => {
                                                 <p className="mt-1 truncate">{el.text}</p>
                                               )}
                                               {el.type === 'image' && el.imageUrl && (
-                                                <img 
-                                                  src={el.imageUrl} 
+                                                <img
+                                                  src={el.imageUrl}
                                                   alt="Design element"
                                                   className="mt-1 h-12 w-12 object-contain rounded border"
                                                 />
@@ -339,8 +416,8 @@ const AdminOrderDetail = () => {
                                                 </span>
                                               </div>
                                               {url && (
-                                                <img 
-                                                  src={url} 
+                                                <img
+                                                  src={url}
                                                   alt="Design"
                                                   className="mt-1 h-12 w-12 object-contain rounded border"
                                                 />
@@ -368,8 +445,8 @@ const AdminOrderDetail = () => {
                               </h5>
                               <>
                                 <div className="border rounded-lg overflow-hidden bg-muted">
-                                  <img 
-                                    src={designData.previewImageUrl} 
+                                  <img
+                                    src={designData.previewImageUrl}
                                     alt="Product preview"
                                     className="w-full h-auto object-contain max-h-[300px]"
                                   />

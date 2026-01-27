@@ -164,6 +164,33 @@ export const storeProductsApi = {
     return json as { success: boolean; message: string; data: any };
   },
 
+  // Save mockup preview with type separation (flat vs model)
+  saveMockup: async (id: string, payload: {
+    mockupType: 'flat' | 'model';
+    viewKey: string;
+    colorKey?: string;  // Required for model mockups
+    imageUrl: string;
+  }) => {
+    const token = getToken();
+    const response = await fetch(`${API_BASE_URL}/store-products/${id}/mockup`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      credentials: 'include',
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new ApiError(errorData.message || 'Failed to save mockup', response.status, errorData.errors);
+    }
+
+    const json = await response.json();
+    return json as { success: boolean; message: string; data: any };
+  },
+
   // Delete a store product
   delete: async (id: string) => {
     const token = getToken();

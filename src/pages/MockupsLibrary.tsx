@@ -820,22 +820,26 @@ const MockupsLibrary = () => {
             // Find the mockup to get its viewKey
             const mockup = filteredMockups.find((m: any) => m.id === mockupId);
             const viewKey = mockup?.viewKey || 'front';
+            // Use currentPreviewColor for colorKey, normalized to lowercase with dashes
+            const colorKey = currentPreviewColor?.toLowerCase().replace(/\s+/g, '-') || 'default';
 
-            // Save to storeproducts database
-            await storeProductsApi.updateDesignPreview(storeProductId, {
-                viewKey: `mockup-${mockupId}`,
-                previewUrl,
+            // Save to storeproducts database with model type separation
+            await storeProductsApi.saveMockup(storeProductId, {
+                mockupType: 'model',
+                viewKey: viewKey,
+                colorKey: colorKey,
+                imageUrl: previewUrl,
             });
 
             setSavedMockupUrls(prev => ({ ...prev, [mockupId]: previewUrl }));
-            toast.success(`Saved preview for ${viewKey} mockup`);
+            toast.success(`Saved model preview for ${colorKey}/${viewKey}`);
         } catch (error: any) {
             console.error('Failed to save mockup preview:', error);
             toast.error(error?.message || 'Failed to save preview');
         } finally {
             setSavingMockups(prev => ({ ...prev, [mockupId]: false }));
         }
-    }, [storeProductId, captureWebGLPreview, filteredMockups]);
+    }, [storeProductId, captureWebGLPreview, filteredMockups, currentPreviewColor]);
 
     // Save all mockup previews for ALL colors × ALL views
     const saveAllMockupPreviews = useCallback(async () => {
@@ -878,10 +882,16 @@ const MockupsLibrary = () => {
                     savedUrls[mockupKey] = previewUrl;
                     successCount++;
 
-                    // Save to storeproducts with color in viewKey
-                    await storeProductsApi.updateDesignPreview(storeProductId, {
-                        viewKey: `mockup-${color.replace(/\\s+/g, '-')}-${mockup.viewKey || 'front'}`,
-                        previewUrl,
+                    // Normalize color for storage key
+                    const colorKey = color.toLowerCase().replace(/\s+/g, '-');
+                    const viewKey = mockup.viewKey || 'front';
+
+                    // Save to storeproducts with model type separation
+                    await storeProductsApi.saveMockup(storeProductId, {
+                        mockupType: 'model',
+                        viewKey: viewKey,
+                        colorKey: colorKey,
+                        imageUrl: previewUrl,
                     });
                 }
             } catch (error) {
@@ -896,7 +906,7 @@ const MockupsLibrary = () => {
         setIsSavingAll(false);
 
         if (successCount === allMockupsToSave.length) {
-            toast.success(`All ${successCount} mockup previews saved for ${allColorMockups.length} color(s)!`);
+            toast.success(`All ${successCount} model mockups saved for ${allColorMockups.length} color(s)!`);
         } else {
             toast.warning(`Saved ${successCount} of ${allMockupsToSave.length} previews`);
         }

@@ -69,7 +69,7 @@ router.post('/', protect, authorize('merchant', 'superadmin'), async (req, res) 
         ...(designData ? { designData } : {}),
         isActive: true,
         // Handle status: if provided, set it and publishedAt accordingly
-        ...(status === 'published' ? { 
+        ...(status === 'published' ? {
           status: 'published',
           publishedAt: new Date()
         } : status === 'draft' ? {
@@ -483,6 +483,107 @@ router.patch('/:id/design-preview', protect, authorize('merchant', 'superadmin')
   } catch (error) {
     console.error('Error updating design preview:', error);
     return res.status(500).json({ success: false, message: 'Failed to update design preview' });
+  }
+});
+
+// @route   PATCH /api/store-products/:id/mockup
+// @desc    Save a mockup preview (flat or model) with proper type separation
+// @access  Private (merchant, superadmin)
+router.patch('/:id/mockup', protect, authorize('merchant', 'superadmin'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      mockupType,  // 'flat' | 'model'
+      viewKey,     // 'front' | 'back' | 'left' | 'right'
+      colorKey,    // Required for model mockups (e.g., 'cerulean-frost')
+      imageUrl
+    } = req.body;
+
+    // Validation
+    if (!mockupType || !viewKey || !imageUrl) {
+      return res.status(400).json({
+        success: false,
+        message: 'mockupType, viewKey, and imageUrl are required'
+      });
+    }
+
+    if (!['flat', 'model'].includes(mockupType)) {
+      return res.status(400).json({
+        success: false,
+        message: 'mockupType must be "flat" or "model"'
+      });
+    }
+
+    if (mockupType === 'model' && !colorKey) {
+      return res.status(400).json({
+        success: false,
+        message: 'colorKey is required for model mockups'
+      });
+    }
+
+    const sp = await StoreProduct.findById(id);
+    if (!sp) {
+      return res.status(404).json({ success: false, message: 'Store product not found' });
+    }
+
+    const store = await Store.findById(sp.storeId);
+    if (!store) {
+      return res.status(404).json({ success: false, message: 'Store not found' });
+    }
+
+    if (req.user.role !== 'superadmin' && String(store.merchant) !== String(req.user._id)) {
+      return res.status(403).json({ success: false, message: 'Not authorized' });
+    }
+
+    // Initialize designData structures
+    if (!sp.designData) sp.designData = {};
+    if (!sp.designData.previewImagesByView) sp.designData.previewImagesByView = {};
+
+    if (mockupType === 'flat') {
+      // Store flat mockups separately
+      if (!sp.designData.flatMockups) sp.designData.flatMockups = {};
+      sp.designData.flatMockups[viewKey] = imageUrl;
+
+      // Update legacy field for backward compatibility
+      sp.designData.previewImagesByView[viewKey] = imageUrl;
+
+      // Update primary preview if front view
+      if (viewKey === 'front') {
+        sp.designData.previewImageUrl = imageUrl;
+      }
+
+      console.log(`[Mockup] Saved flat mockup for ${viewKey}:`, imageUrl.substring(0, 50) + '...');
+    } else {
+      // Store model mockups separately, keyed by color
+      if (!sp.designData.modelMockups) sp.designData.modelMockups = {};
+      if (!sp.designData.modelMockups[colorKey]) sp.designData.modelMockups[colorKey] = {};
+      sp.designData.modelMockups[colorKey][viewKey] = imageUrl;
+
+      // Update legacy field for backward compatibility with color-prefixed key
+      const legacyKey = `mockup-${colorKey}-${viewKey}`;
+      sp.designData.previewImagesByView[legacyKey] = imageUrl;
+
+      console.log(`[Mockup] Saved model mockup for ${colorKey}/${viewKey}:`, imageUrl.substring(0, 50) + '...');
+    }
+
+    sp.markModified('designData');
+    await sp.save();
+
+    return res.json({
+      success: true,
+      message: `${mockupType} mockup saved for ${mockupType === 'model' ? `${colorKey}/${viewKey}` : viewKey}`,
+      data: {
+        mockupType,
+        viewKey,
+        colorKey: colorKey || null,
+        imageUrl,
+        flatMockups: sp.designData.flatMockups,
+        modelMockups: sp.designData.modelMockups
+      }
+    });
+  } catch (error) {
+    console.error('Error saving mockup:', error);
+    return res.status(500).json({ success: false, message: 'Failed to save mockup' });
   }
 });
 

@@ -1667,6 +1667,8 @@ const DesignEditor: React.FC = () => {
     }
   };
 
+
+
   // Capture preview image from WebGL canvas
   const capturePreviewImage = useCallback(async (viewKey?: string): Promise<string | null> => {
     try {
@@ -1710,7 +1712,6 @@ const DesignEditor: React.FC = () => {
             const fileName = viewKey ? `preview-${viewKey}.png` : 'preview.png';
             formData.append('image', blob, fileName);
 
-            const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
             const token = localStorage.getItem('token');
 
             const headers: HeadersInit = {};
@@ -1718,7 +1719,7 @@ const DesignEditor: React.FC = () => {
               headers['Authorization'] = `Bearer ${token}`;
             }
 
-            const response = await fetch(`${API_BASE_URL}/api/upload/image`, {
+            const response = await fetch(`${RAW_API_URL}/api/upload/image`, {
               method: 'POST',
               headers,
               body: formData,
@@ -1839,16 +1840,15 @@ const DesignEditor: React.FC = () => {
           // Save to backend if we have a storeProductId
           if (storeProductId) {
             try {
-              const viewElements = elements.filter(el => el.view === currentView || (!el.view && currentView === 'front'));
-              await storeProductsApi.updateDesignPreview(storeProductId, {
+              // Use new saveMockup API with 'flat' type to separate from model mockups
+              await storeProductsApi.saveMockup(storeProductId, {
+                mockupType: 'flat',
                 viewKey: currentView,
-                previewUrl,
-                elements: viewElements,
-                designUrlsByPlaceholder: designUrlsByPlaceholder[currentView] || {},
+                imageUrl: previewUrl,
               });
-              console.log(`Preview saved to backend for ${currentView}`);
+              console.log(`Flat mockup saved to backend for ${currentView}`);
             } catch (err) {
-              console.error('Failed to save preview to backend:', err);
+              console.error('Failed to save flat mockup to backend:', err);
             }
           }
         }
@@ -1861,6 +1861,96 @@ const DesignEditor: React.FC = () => {
 
     autoSavePreview();
   }, [previewMode, currentView, getPreviewCacheKey, dirtyViewsForDesign, capturePreviewImage, isSavingPreview, storeProductId, elements, designUrlsByPlaceholder]);
+
+  // Auto-save flat mockups when design images are added (even in Edit mode)
+  // This triggers when elements change and there are image elements with dirty views
+  useEffect(() => {
+    if (previewMode) return; // Skip if already in preview mode (handled by other effect)
+    if (isSavingPreview) return;
+    // Don't require storeProductId for local preview updates/toast
+    if (dirtyViewsForDesign.size === 0) return;
+
+    // Check if there are any image elements in the current view
+    const hasImageElements = elements.some(el =>
+      el.type === 'image' &&
+      (el.view === currentView || !el.view)
+    );
+
+    if (!hasImageElements) return;
+
+    // Debounce: wait 1.5s after last change before saving
+    const timeoutId = setTimeout(async () => {
+      if (isSavingPreview) return;
+
+      console.log(`Auto-saving flat mockup for ${currentView} after design upload...`);
+      setIsSavingPreview(true);
+
+      try {
+        // Wait for canvas to render
+        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise(requestAnimationFrame);
+
+        // Use captured preview from WebGL (same as Export)
+        const previewUrl = await capturePreviewImage(currentView);
+        if (previewUrl) {
+          setSavedPreviewImages(prev => ({
+            ...prev,
+            [currentView]: previewUrl
+          }));
+
+          // Save flat mockup to backend if storeProductId is available
+          if (storeProductId) {
+            await storeProductsApi.saveMockup(storeProductId, {
+              mockupType: 'flat',
+              viewKey: currentView,
+              imageUrl: previewUrl,
+            });
+            console.log(`Flat mockup saved to backend for ${currentView} after design upload`);
+          } else {
+            console.log(`Flat mockup captured locally for ${currentView} (no storeProductId yet)`);
+          }
+
+          // Show toast with image
+          // Show toast with image and link
+          toast.custom((t) => (
+            <div className="flex items-center gap-3 bg-background border border-border rounded-lg shadow-lg p-3 w-full max-w-sm pointer-events-auto">
+              <div className="h-12 w-12 rounded overflow-hidden flex-shrink-0 bg-muted border border-border">
+                <img src={previewUrl} alt="Saved mockup" className="h-full w-full object-cover" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-sm">Mockup Auto-Saved</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-xs text-muted-foreground truncate capitalize flex-1">{currentView} view updated</p>
+                  <a
+                    href={previewUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-primary hover:underline flex items-center gap-1"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    View <ArrowRight className="w-3 h-3" />
+                  </a>
+                </div>
+              </div>
+            </div>
+          ), { duration: 3000 });
+
+          // Clear dirty flag for this view
+          setDirtyViewsForDesign(prev => {
+            const next = new Set(prev);
+            next.delete(currentView);
+            return next;
+          });
+        }
+      } catch (err) {
+        console.error('Error auto-saving flat mockup after upload:', err);
+      } finally {
+        setIsSavingPreview(false);
+      }
+    }, 1500);
+
+    return () => clearTimeout(timeoutId);
+  }, [elements, currentView, storeProductId, dirtyViewsForDesign, previewMode, isSavingPreview, capturePreviewImage]);
 
   // Publish current product + design to the merchant's store
   const handlePublishToStore = useCallback(async () => {
@@ -2062,12 +2152,11 @@ const DesignEditor: React.FC = () => {
             const formData = new FormData();
             formData.append('image', blob, `preview-${currentView}.png`);
 
-            const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
             const token = localStorage.getItem('token');
             const headers: HeadersInit = {};
             if (token) headers['Authorization'] = `Bearer ${token}`;
 
-            const uploadResp = await fetch(`${API_BASE_URL}/api/upload/image`, {
+            const uploadResp = await fetch(`${RAW_API_URL}/api/upload/image`, {
               method: 'POST',
               headers,
               body: formData,
@@ -2079,7 +2168,7 @@ const DesignEditor: React.FC = () => {
               const nextPreviewImages = { ...savedPreviewImages, [currentView]: uploadedUrl } as Record<string, string>;
               setSavedPreviewImages(nextPreviewImages);
 
-              const saveResp = await fetch(`${API_BASE_URL}/api/auth/me/previews/${id}`, {
+              const saveResp = await fetch(`${RAW_API_URL}/api/auth/me/previews/${id}`, {
                 method: 'PUT',
                 headers: {
                   'Content-Type': 'application/json',
@@ -2090,7 +2179,28 @@ const DesignEditor: React.FC = () => {
               });
               const saveJson = await saveResp.json().catch(() => ({}));
               if (saveResp.ok && saveJson?.success) {
-                toast.success('Preview saved');
+                toast.custom((t) => (
+                  <div className="flex items-center gap-3 bg-background border border-border rounded-lg shadow-lg p-3 w-full max-w-sm pointer-events-auto">
+                    <div className="h-12 w-12 rounded overflow-hidden flex-shrink-0 bg-muted border border-border">
+                      <img src={uploadedUrl} alt="Saved preview" className="h-full w-full object-cover" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm">Preview Saved</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-xs text-muted-foreground truncate capitalize flex-1">{currentView} view updated</p>
+                        <a
+                          href={uploadedUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-primary hover:underline flex items-center gap-1"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          View <ArrowRight className="w-3 h-3" />
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+                ), { duration: 3000 });
                 setHasUnsavedChanges(false); // Reset unsaved changes flag after successful save
 
                 // Cache the preview with proper key
