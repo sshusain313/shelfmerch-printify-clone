@@ -950,7 +950,7 @@ const CategoryProducts = () => {
 
           {/* Currency, region, actions */}
           <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-end">
-            <select className="h-10 rounded-full border border-border bg-background px-4 text-sm">
+            {/* <select className="h-10 rounded-full border border-border bg-background px-4 text-sm">
               <option>USD $</option>
               <option>INR ₹</option>
               <option>EUR €</option>
@@ -961,7 +961,7 @@ const CategoryProducts = () => {
               <option>India</option>
               <option>United Kingdom</option>
               <option>Germany</option>
-            </select>
+            </select> */}
             {/* <button
               className="text-sm font-medium px-3 py-2 rounded-full hover:bg-secondary transition-colors"
               onClick={() => (window.location.href = "/my-designs")}
