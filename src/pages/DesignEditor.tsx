@@ -94,6 +94,7 @@ interface CanvasElement {
 
 interface HistoryState {
   elements: CanvasElement[];
+  view: string; // Track which view this history state belongs to
   timestamp: number;
 }
 
@@ -179,10 +180,12 @@ const DesignEditor: React.FC = () => {
     console.log('selectedPlaceholderId updated:', selectedPlaceholderId);
   }, [selectedPlaceholderId]);
 
-  // History
-  const [history, setHistory] = useState<HistoryState[]>([]);
-  const [historyIndex, setHistoryIndex] = useState(-1);
+  // History - proper undo/redo stack pattern
+  const [undoStack, setUndoStack] = useState<HistoryState[]>([]);
+  const [redoStack, setRedoStack] = useState<HistoryState[]>([]);
   const maxHistory = 50;
+  const historySaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isRestoringHistoryRef = useRef(false); // Prevent saving history while restoring
 
   // View state
   const [currentView, setCurrentView] = useState<'front' | 'back' | 'sleeves'>('front');
@@ -554,34 +557,60 @@ const DesignEditor: React.FC = () => {
   useEffect(() => {
     if (!id || !product) return;
 
-    try {
-      const savedState = sessionStorage.getItem(`designer_state_${id}`);
-      if (savedState) {
-        const designState = JSON.parse(savedState);
-        if (designState.elements && Array.isArray(designState.elements)) {
-          setElements(designState.elements);
+      try {
+        const savedState = sessionStorage.getItem(`designer_state_${id}`);
+        if (savedState) {
+          const designState = JSON.parse(savedState);
+          if (designState.elements && Array.isArray(designState.elements)) {
+            setElements(designState.elements);
+        // Initialize history with restored elements (filter by current view)
+        const currentViewElements = designState.elements.filter((el: CanvasElement) => !el.view || el.view === currentView);
+        const initialState: HistoryState = {
+          elements: JSON.parse(JSON.stringify(currentViewElements)),
+          view: currentView,
+          timestamp: Date.now()
+        };
+        setUndoStack([initialState]);
+        setRedoStack([]);
+          }
+          if (designState.selectedColors && Array.isArray(designState.selectedColors)) {
+            setSelectedColors(designState.selectedColors);
+          }
+          if (designState.selectedSizes && Array.isArray(designState.selectedSizes)) {
+            setSelectedSizes(designState.selectedSizes);
+          }
+          if (designState.selectedSizesByColor && typeof designState.selectedSizesByColor === 'object') {
+            setSelectedSizesByColor(designState.selectedSizesByColor);
+          }
+          if (designState.currentView && ['front', 'back', 'sleeves'].includes(designState.currentView)) {
+            setCurrentView(designState.currentView);
+          }
+          if (designState.designUrlsByPlaceholder && typeof designState.designUrlsByPlaceholder === 'object') {
+            setDesignUrlsByPlaceholder(designState.designUrlsByPlaceholder);
+          }
+          // Clear the saved state after restoring
+          sessionStorage.removeItem(`designer_state_${id}`);
+        } else {
+          // Initialize history with empty elements if no saved state
+          const initialState: HistoryState = {
+            elements: [],
+            view: currentView,
+            timestamp: Date.now()
+          };
+          setUndoStack([initialState]);
+          setRedoStack([]);
         }
-        if (designState.selectedColors && Array.isArray(designState.selectedColors)) {
-          setSelectedColors(designState.selectedColors);
-        }
-        if (designState.selectedSizes && Array.isArray(designState.selectedSizes)) {
-          setSelectedSizes(designState.selectedSizes);
-        }
-        if (designState.selectedSizesByColor && typeof designState.selectedSizesByColor === 'object') {
-          setSelectedSizesByColor(designState.selectedSizesByColor);
-        }
-        if (designState.currentView && ['front', 'back', 'sleeves'].includes(designState.currentView)) {
-          setCurrentView(designState.currentView);
-        }
-        if (designState.designUrlsByPlaceholder && typeof designState.designUrlsByPlaceholder === 'object') {
-          setDesignUrlsByPlaceholder(designState.designUrlsByPlaceholder);
-        }
-        // Clear the saved state after restoring
-        sessionStorage.removeItem(`designer_state_${id}`);
+      } catch (err) {
+        console.error('Failed to restore design state:', err);
+        // Initialize history even on error
+        const initialState: HistoryState = {
+          elements: [],
+          view: currentView,
+          timestamp: Date.now()
+        };
+        setUndoStack([initialState]);
+        setRedoStack([]);
       }
-    } catch (err) {
-      console.error('Failed to restore design state:', err);
-    }
   }, [id, product]);
 
   // Load mockup when view changes (if not already loaded)
@@ -761,7 +790,7 @@ const DesignEditor: React.FC = () => {
   // Auto-save
   useEffect(() => {
     const interval = setInterval(() => {
-      saveToHistory();
+      saveToHistory(true); // Immediate save for auto-save
     }, 30000); // Auto-save every 30 seconds
     return () => clearInterval(interval);
   }, [elements]);
@@ -794,37 +823,135 @@ const DesignEditor: React.FC = () => {
     }
   }, [selectedIds, previewMode, elements]);
 
-  // History management
-  const saveToHistory = useCallback(() => {
+  // History management - proper undo/redo stack pattern
+  // Get elements for current view only
+  const getCurrentViewElements = useCallback(() => {
+    return elements.filter(el => !el.view || el.view === currentView);
+  }, [elements, currentView]);
+
+  // Save history state (debounced for rapid updates like dragging)
+  const saveToHistory = useCallback((immediate = false) => {
+    // Don't save if we're currently restoring history
+    if (isRestoringHistoryRef.current) {
+      return;
+    }
+
+    const currentViewElements = getCurrentViewElements();
     const newState: HistoryState = {
-      elements: JSON.parse(JSON.stringify(elements)),
+      elements: JSON.parse(JSON.stringify(currentViewElements)),
+      view: currentView,
       timestamp: Date.now()
     };
 
-    setHistory(prev => {
-      const newHistory = prev.slice(0, historyIndex + 1);
-      newHistory.push(newState);
-      if (newHistory.length > maxHistory) {
-        newHistory.shift();
+    const saveAction = () => {
+      setUndoStack(prev => {
+        const newStack = [...prev, newState];
+        // Limit stack size
+        if (newStack.length > maxHistory) {
+          newStack.shift();
+        }
+        return newStack;
+      });
+      // Clear redo stack when new action is performed
+      setRedoStack([]);
+    };
+
+    if (immediate) {
+      // Clear any pending debounced save
+      if (historySaveTimeoutRef.current) {
+        clearTimeout(historySaveTimeoutRef.current);
+        historySaveTimeoutRef.current = null;
       }
-      return newHistory;
-    });
-    setHistoryIndex(prev => Math.min(prev + 1, maxHistory - 1));
-  }, [elements, historyIndex]);
+      saveAction();
+    } else {
+      // Debounce rapid updates (like dragging)
+      if (historySaveTimeoutRef.current) {
+        clearTimeout(historySaveTimeoutRef.current);
+      }
+      historySaveTimeoutRef.current = setTimeout(() => {
+        saveAction();
+        historySaveTimeoutRef.current = null;
+      }, 300); // 300ms debounce for drag/transform operations
+    }
+  }, [elements, currentView, getCurrentViewElements]);
 
+  // Undo: pop from undoStack, push to redoStack, restore state
   const undo = useCallback(() => {
-    if (historyIndex > 0) {
-      setHistoryIndex(prev => prev - 1);
-      setElements(JSON.parse(JSON.stringify(history[historyIndex - 1].elements)));
-    }
-  }, [history, historyIndex]);
+    setUndoStack(prev => {
+      if (prev.length === 0) return prev;
+      
+      const stateToRestore = prev[prev.length - 1];
+      const newUndoStack = prev.slice(0, -1);
+      
+      // Push current state to redo stack before restoring
+      const currentViewElements = getCurrentViewElements();
+      const currentState: HistoryState = {
+        elements: JSON.parse(JSON.stringify(currentViewElements)),
+        view: currentView,
+        timestamp: Date.now()
+      };
+      
+      setRedoStack(prevRedo => [...prevRedo, currentState]);
+      
+      // Restore the state
+      isRestoringHistoryRef.current = true;
+      
+      // Merge restored elements with elements from other views
+      setElements(prevElements => {
+        const otherViewElements = prevElements.filter(el => el.view && el.view !== stateToRestore.view);
+        const restoredElements = stateToRestore.elements.map((el: CanvasElement) => ({
+          ...el,
+          view: stateToRestore.view
+        }));
+        return [...otherViewElements, ...restoredElements];
+      });
+      
+      setTimeout(() => {
+        isRestoringHistoryRef.current = false;
+      }, 0);
+      
+      return newUndoStack;
+    });
+  }, [currentView, getCurrentViewElements]);
 
+  // Redo: pop from redoStack, push to undoStack, restore state
   const redo = useCallback(() => {
-    if (historyIndex < history.length - 1) {
-      setHistoryIndex(prev => prev + 1);
-      setElements(JSON.parse(JSON.stringify(history[historyIndex + 1].elements)));
-    }
-  }, [history, historyIndex]);
+    setRedoStack(prev => {
+      if (prev.length === 0) return prev;
+      
+      const stateToRestore = prev[prev.length - 1];
+      const newRedoStack = prev.slice(0, -1);
+      
+      // Push current state to undo stack before restoring
+      const currentViewElements = getCurrentViewElements();
+      const currentState: HistoryState = {
+        elements: JSON.parse(JSON.stringify(currentViewElements)),
+        view: currentView,
+        timestamp: Date.now()
+      };
+      
+      setUndoStack(prevUndo => [...prevUndo, currentState]);
+      
+      // Restore the state
+      isRestoringHistoryRef.current = true;
+      
+      // Merge restored elements with elements from other views
+      setElements(prevElements => {
+        const otherViewElements = prevElements.filter(el => el.view && el.view !== stateToRestore.view);
+        const restoredElements = stateToRestore.elements.map((el: CanvasElement) => ({
+          ...el,
+          view: stateToRestore.view
+        }));
+        return [...otherViewElements, ...restoredElements];
+      });
+      
+      setTimeout(() => {
+        isRestoringHistoryRef.current = false;
+      }, 0);
+      
+      return newRedoStack;
+    });
+  }, [currentView, getCurrentViewElements]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -931,7 +1058,8 @@ const DesignEditor: React.FC = () => {
         setDirtyViewsForDesign(prev => new Set([...prev, ...allViewKeys]));
       }
     }
-    saveToHistory();
+    // Save immediately for add action
+    setTimeout(() => saveToHistory(true), 0);
     return newElement.id;
   };
 
@@ -1023,7 +1151,7 @@ const DesignEditor: React.FC = () => {
     return updates;
   };
 
-  const updateElement = (id: string, updates: Partial<CanvasElement>) => {
+  const updateElement = (id: string, updates: Partial<CanvasElement>, saveHistory = true) => {
     setElements(prev => {
       const updated = prev.map(el => {
         if (el.id === id) {
@@ -1047,6 +1175,11 @@ const DesignEditor: React.FC = () => {
       return updated;
     });
     setHasUnsavedChanges(true); // Mark as having unsaved changes
+    
+    // Save to history (debounced for rapid updates like dragging)
+    if (saveHistory) {
+      saveToHistory(false); // Use debounced save for property updates
+    }
     
     // Force transformer to update when text changes (for proper bounding box)
     if (updates.text !== undefined && selectedIds.includes(id) && transformerRef.current) {
@@ -1082,7 +1215,7 @@ const DesignEditor: React.FC = () => {
       });
       setSelectedIds([]);
       setHasUnsavedChanges(true); // Mark as having unsaved changes
-      saveToHistory();
+      setTimeout(() => saveToHistory(true), 0); // Immediate save for delete
     }
   };
 
@@ -1107,7 +1240,7 @@ const DesignEditor: React.FC = () => {
     }));
     setElements(prev => [...prev, ...newElements]);
     setSelectedIds(newElements.map(el => el.id));
-    saveToHistory();
+    setTimeout(() => saveToHistory(true), 0); // Immediate save for duplicate
   };
 
   const selectAll = () => {
@@ -2002,10 +2135,10 @@ const DesignEditor: React.FC = () => {
             <X className="w-5 h-5" />
           </Button>
           <div className="w-px h-6 bg-border mx-2" />
-          <Button variant="ghost" size="icon" onClick={undo} disabled={historyIndex <= 0}>
+          <Button variant="ghost" size="icon" onClick={undo} disabled={undoStack.length === 0}>
             <Undo2 className="w-5 h-5" />
           </Button>
-          <Button variant="ghost" size="icon" onClick={redo} disabled={historyIndex >= history.length - 1}>
+          <Button variant="ghost" size="icon" onClick={redo} disabled={redoStack.length === 0}>
             <Redo2 className="w-5 h-5" />
           </Button>
           <div className="w-px h-6 bg-border mx-2" />
@@ -2428,7 +2561,12 @@ const DesignEditor: React.FC = () => {
                                   element={el}
                                   isSelected={selectedIds.includes(el.id)}
                                   onSelect={() => setSelectedIds([el.id])}
-                                  onUpdate={(updates) => updateElement(el.id, updates)}
+                                  onUpdate={(updates, saveImmediately = false) => {
+                                    updateElement(el.id, updates, !saveImmediately);
+                                    if (saveImmediately) {
+                                      setTimeout(() => saveToHistory(true), 0);
+                                    }
+                                  }}
                                   printArea={elPrintArea}
                                   isEditMode={!previewMode && !el.locked}
                                 />
@@ -2441,7 +2579,12 @@ const DesignEditor: React.FC = () => {
                                   element={el}
                                   isSelected={selectedIds.includes(el.id)}
                                   onSelect={() => setSelectedIds([el.id])}
-                                  onUpdate={(updates) => updateElement(el.id, updates)}
+                                  onUpdate={(updates, saveImmediately = false) => {
+                                    updateElement(el.id, updates, !saveImmediately);
+                                    if (saveImmediately) {
+                                      setTimeout(() => saveToHistory(true), 0);
+                                    }
+                                  }}
                                   printArea={elPrintArea}
                                   isEditMode={!previewMode && !el.locked}
                                 />
@@ -2667,14 +2810,14 @@ const DesignEditor: React.FC = () => {
                   selectedElementIds={selectedIds}
                   elements={elements}
                   onElementUpdate={(updates) => {
-                    selectedIds.forEach(id => updateElement(id, updates));
-                    saveToHistory();
+                    selectedIds.forEach(id => updateElement(id, updates, false));
+                    setTimeout(() => saveToHistory(true), 0); // Immediate save for property updates
                   }}
                   onElementDelete={(id) => {
                     setElements(prev => prev.filter(el => el.id !== id));
                     setSelectedIds(prev => prev.filter(selectedId => selectedId !== id));
                     setHasUnsavedChanges(true);
-                    saveToHistory();
+                    setTimeout(() => saveToHistory(true), 0); // Immediate save for delete
                   }}
                   PX_PER_INCH={PX_PER_INCH}
                   canvasPadding={canvasPadding}
@@ -2706,12 +2849,12 @@ const DesignEditor: React.FC = () => {
                     setElements(prev => prev.filter(el => el.id !== id));
                     setSelectedIds(prev => prev.filter(selectedId => selectedId !== id));
                     setHasUnsavedChanges(true); // Mark as having unsaved changes
-                    saveToHistory();
+                    setTimeout(() => saveToHistory(true), 0); // Immediate save for delete
                   }}
                   onReorder={(newOrder) => {
                     setElements(newOrder);
                     setHasUnsavedChanges(true); // Mark as having unsaved changes
-                    saveToHistory();
+                    setTimeout(() => saveToHistory(true), 0); // Immediate save for reorder
                   }}
                 />
               </TabsContent>
@@ -2815,7 +2958,7 @@ const ImageElement: React.FC<{
   element: CanvasElement;
   isSelected: boolean;
   onSelect: () => void;
-  onUpdate: (updates: Partial<CanvasElement>) => void;
+  onUpdate: (updates: Partial<CanvasElement>, saveImmediately?: boolean) => void;
   printArea?: { x: number; y: number; width: number; height: number; isPolygon?: boolean; polygonPointsPx?: number[] };
   isEditMode?: boolean;
 }> = ({ element, isSelected, onSelect, onUpdate, printArea, isEditMode = true }) => {
@@ -2837,7 +2980,7 @@ const ImageElement: React.FC<{
     onUpdate({
       x: newX,
       y: newY
-    });
+    }, true); // Save immediately for drag end
   };
 
   // Constrain image size and position when transforming
@@ -2864,7 +3007,9 @@ const ImageElement: React.FC<{
       width: newWidth,
       height: newHeight,
       rotation: node.rotation(),
-    });
+      scaleX: 1,
+      scaleY: 1
+    }, true); // Save immediately for transform end
     node.scaleX(1);
     node.scaleY(1);
   };
@@ -3022,7 +3167,7 @@ const TextElement: React.FC<{
   element: CanvasElement;
   isSelected: boolean;
   onSelect: () => void;
-  onUpdate: (updates: Partial<CanvasElement>) => void;
+  onUpdate: (updates: Partial<CanvasElement>, saveImmediately?: boolean) => void;
   printArea?: { x: number; y: number; width: number; height: number; isPolygon?: boolean; polygonPointsPx?: number[] };
   isEditMode?: boolean;
 }> = ({ element, isSelected, onSelect, onUpdate, printArea, isEditMode = true }) => {
@@ -3075,7 +3220,7 @@ const TextElement: React.FC<{
     onUpdate({
       x: newX,
       y: newY
-    });
+    }, true); // Save immediately for drag end
   };
 
   // Constrain text position when transforming
@@ -3108,7 +3253,9 @@ const TextElement: React.FC<{
       y: newY,
       rotation: newRotation,
       fontSize: (node.fontSize?.() || element.fontSize || 24) * node.scaleY(),
-    });
+      scaleX: 1,
+      scaleY: 1
+    }, true); // Save immediately for transform end
     node.scaleX(1);
     node.scaleY(1);
   };
