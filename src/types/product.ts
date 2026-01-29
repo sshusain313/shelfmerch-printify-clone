@@ -1,5 +1,39 @@
 export type ViewKey = 'front' | 'back' | 'left' | 'right';
 
+/**
+ * Normalized design placement within a print area.
+ * All values are normalized to 0-1 range relative to the print area bounds.
+ * This allows the same placement to work across different mockup resolutions.
+ */
+export interface DesignPlacement {
+  /** View this placement belongs to */
+  view: ViewKey;
+  /** Placeholder ID this design is placed in */
+  placeholderId: string;
+  /** X position of design's top-left corner relative to print area (0-1) */
+  x: number;
+  /** Y position of design's top-left corner relative to print area (0-1) */
+  y: number;
+  /** Width of design relative to print area width (0-1) */
+  w: number;
+  /** Height of design relative to print area height (0-1) */
+  h: number;
+  /** Rotation in degrees (optional, default 0) */
+  rotationDeg?: number;
+  /** Original aspect ratio of the design image (for reference) */
+  aspectRatio?: number;
+}
+
+/**
+ * Design data stored per placeholder, including URL and normalized placement
+ */
+export interface DesignWithPlacement {
+  /** URL of the design image */
+  designUrl: string;
+  /** Normalized placement within the print area */
+  placement: DesignPlacement;
+}
+
 // Print placeholder stored in INCHES (design data)
 export interface Placeholder {
   id: string;

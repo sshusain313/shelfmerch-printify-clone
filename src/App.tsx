@@ -73,6 +73,9 @@ import ContentGuidelinesPage from "./pages/rem-pgs/support/ContentGuidelinesPage
 import ContactUsPage from "./pages/rem-pgs/support/ContactUsPage";
 
 
+//DEVELOPERS
+import Causes from "./pages/Causes";
+
 // Root route component that conditionally renders Index or StoreRoutes
 // On subdomains, StoreRoutes handles all routing including root path
 const RootRoute = () => {
@@ -99,6 +102,9 @@ const App = () => (
                 {/* Main site routes - only render when NOT on a tenant subdomain */}
                 {!isTenantSubdomain() && (
                   <>
+                    {/* DEVELOPERS */}
+                    <Route path="/causes" element={<Causes />} />
+
                     <Route path="/platform" element={<PlatformPage />} />
                     <Route path="/products" element={<Products />} />
                     <Route path="/categories" element={<AllCategories />} />

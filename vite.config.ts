@@ -11,6 +11,14 @@ export default defineConfig(({ mode }) => {
     server: {
       host: "::",
       port: 8080,
+      proxy: {
+        // Dev-only: avoids browser CORS by proxying through Vite (same-origin)
+        "/api/partner": {
+          target: "http://localhost:5000",
+          changeOrigin: true,
+          secure: false,
+        },
+      },
       allowedHosts: TUNNEL_HOST 
         ? [TUNNEL_HOST, 'localhost', '127.0.0.1', '.localhost']
         : ['localhost', '127.0.0.1', '.localhost'],

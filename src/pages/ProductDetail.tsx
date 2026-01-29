@@ -685,15 +685,15 @@ const ProductDetail = () => {
           <CareInstructions />
 
           {/* Print Areas Section */}
-          <PrintAreas 
+          {/* <PrintAreas 
             design={product.design}
-            placeholderImage={product.galleryImages?.find((img: any) => img.isPrimary)?.url || product.galleryImages?.[0]?.url}
-          />
+            // placeholderImage={product.galleryImages?.find((img: any) => img.isPrimary)?.url || product.galleryImages?.[0]?.url}
+          /> */}
         </div>
 
         {/* You May Also Like */}
         {relatedProducts.length > 0 && (
-          <div className="space-y-4">
+          <div className="space-y-4 mt-6">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl lg:text-3xl font-bold flex items-center gap-2">
                 <TrendingUp className="w-6 h-6 text-primary" />

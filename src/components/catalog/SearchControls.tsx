@@ -20,7 +20,7 @@ const SearchControls = ({ searchQuery, onSearchChange, onSearchSubmit }: SearchC
     <header className="sticky top-0 z-50 w-full bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b border-border py-3">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between gap-4">
         {/* Search Bar */}
-        <div className="relative flex-1 max-w-2xl">
+        <div className="relative flex-1 max-w-4xl">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
           <input
             type="text"
@@ -37,10 +37,10 @@ const SearchControls = ({ searchQuery, onSearchChange, onSearchSubmit }: SearchC
         </div>
 
         {/* Right Controls */}
-        <div className="flex items-center gap-4 md:gap-6 flex-shrink-0">
+        {/* <div className="flex items-center gap-4 md:gap-6 flex-shrink-0"> */}
 
           {/* Currency Dropdown */}
-          <div className="relative hidden md:block">
+          {/* <div className="relative hidden md:block">
             <button
               onClick={() => {
                 setCurrencyOpen(!currencyOpen);
@@ -67,10 +67,10 @@ const SearchControls = ({ searchQuery, onSearchChange, onSearchSubmit }: SearchC
                 ))}
               </div>
             )}
-          </div>
+          </div> */}
 
           {/* Region Dropdown */}
-          <div className="relative hidden md:block">
+          {/* <div className="relative hidden md:block">
             <button
               onClick={() => {
                 setRegionOpen(!regionOpen);
@@ -97,7 +97,7 @@ const SearchControls = ({ searchQuery, onSearchChange, onSearchSubmit }: SearchC
                 ))}
               </div>
             )}
-          </div>
+          </div> */}
 
           
           {/* <button className="text-sm font-semibold text-foreground hover:text-primary transition-colors hidden sm:block">
@@ -109,7 +109,7 @@ const SearchControls = ({ searchQuery, onSearchChange, onSearchSubmit }: SearchC
             <User className="w-4 h-4" />
             <span>My Store</span>
           </button> */}
-        </div>
+        {/* </div> */}
       </div>
     </header>
   );

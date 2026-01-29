@@ -27,8 +27,9 @@ import { ProductInfoPanel } from '@/components/designer/ProductsInfoPanel';
 import { RealisticWebGLPreview } from '@/components/admin/RealisticWebGLPreview';
 import { UploadPanel } from '@/components/designer/UploadPanel';
 import { DisplacementSettingsPanel } from '@/components/designer/DisplacementSettingsPanel';
-import type { DisplacementSettings } from '@/types/product';
+import type { DisplacementSettings, DesignPlacement, ViewKey } from '@/types/product';
 import { API_BASE_URL, RAW_API_URL } from '@/config';
+import { pixelsToNormalized, createDefaultPlacement, type PrintAreaPixels } from '@/lib/placementUtils';
 
 // Types
 interface CanvasElement {
@@ -225,6 +226,10 @@ const DesignEditor: React.FC = () => {
 
   // Design URLs by placeholder ID for WebGL preview - stored per view
   const [designUrlsByPlaceholder, setDesignUrlsByPlaceholder] = useState<Record<string, Record<string, string>>>({});
+  
+  // Design placements by placeholder ID - stores normalized (0-1) positions within print areas
+  // Structure: { viewKey: { placeholderId: DesignPlacement } }
+  const [placementsByView, setPlacementsByView] = useState<Record<string, Record<string, DesignPlacement>>>({});
 
   // Helper functions for view-specific designUrlsByPlaceholder
   const getDesignUrlsForView = useCallback((view: string): Record<string, string> => {
@@ -264,8 +269,72 @@ const DesignEditor: React.FC = () => {
         [view]: updated,
       };
     });
+    // Also remove placement
+    setPlacementsByView(prev => {
+      const viewPlacements = prev[view] || {};
+      const updated = { ...viewPlacements };
+      delete updated[placeholderId];
+      return {
+        ...prev,
+        [view]: updated,
+      };
+    });
     setHasUnsavedChanges(true); // Mark as having unsaved changes
   }, []);
+  
+  // Get placements for a specific view
+  const getPlacementsForView = useCallback((view: string): Record<string, DesignPlacement> => {
+    return placementsByView[view] || {};
+  }, [placementsByView]);
+  
+  // Set placement for a specific placeholder in a view
+  const setPlacementForView = useCallback((view: string, placeholderId: string, placement: DesignPlacement) => {
+    setPlacementsByView(prev => ({
+      ...prev,
+      [view]: {
+        ...(prev[view] || {}),
+        [placeholderId]: placement,
+      },
+    }));
+    setHasUnsavedChanges(true);
+  }, []);
+  
+  // Compute normalized placement from an element's pixel coordinates
+  // This is called whenever an image element is added or transformed
+  const computePlacementFromElement = useCallback((
+    element: CanvasElement,
+    viewPlaceholders: Array<{ id: string; x: number; y: number; width: number; height: number }>
+  ): DesignPlacement | null => {
+    if (!element.placeholderId || !element.width || !element.height) {
+      return null;
+    }
+    
+    const placeholder = viewPlaceholders.find(p => p.id === element.placeholderId);
+    if (!placeholder) {
+      return null;
+    }
+    
+    // Print area in pixels
+    const printArea: PrintAreaPixels = {
+      x: placeholder.x,
+      y: placeholder.y,
+      w: placeholder.width,
+      h: placeholder.height,
+    };
+    
+    // Element bounds in pixels
+    const designBounds = {
+      x: element.x,
+      y: element.y,
+      width: element.width,
+      height: element.height,
+      rotation: element.rotation || 0,
+    };
+    
+    // Convert to normalized placement
+    const viewKey = (element.view || currentView) as ViewKey;
+    return pixelsToNormalized(designBounds, printArea, viewKey, element.placeholderId);
+  }, [currentView]);
 
   // Product state
   const [product, setProduct] = useState<Product | null>(null);
@@ -1152,6 +1221,9 @@ const DesignEditor: React.FC = () => {
   };
 
   const updateElement = (id: string, updates: Partial<CanvasElement>, saveHistory = true) => {
+    // Track the updated element for placement calculation
+    let updatedElement: CanvasElement | null = null;
+    
     setElements(prev => {
       const updated = prev.map(el => {
         if (el.id === id) {
@@ -1168,6 +1240,7 @@ const DesignEditor: React.FC = () => {
               setDirtyViewsForDesign(prevDirty => new Set([...prevDirty, ...allViewKeys]));
             }
           }
+          updatedElement = updatedEl;
           return updatedEl;
         }
         return el;
@@ -1175,6 +1248,49 @@ const DesignEditor: React.FC = () => {
       return updated;
     });
     setHasUnsavedChanges(true); // Mark as having unsaved changes
+
+    // Update placement if this is an image element with a placeholderId and position/size changed
+    const positionOrSizeChanged = 
+      updates.x !== undefined || updates.y !== undefined ||
+      updates.width !== undefined || updates.height !== undefined ||
+      updates.rotation !== undefined;
+    
+    // Use updatedElement which was captured during the state update
+    if (updatedElement && positionOrSizeChanged) {
+      const el = updatedElement;
+      if (el.type === 'image' && el.placeholderId && el.width && el.height) {
+        const placeholder = placeholders.find(p => p.id === el.placeholderId);
+        if (placeholder) {
+          const printAreaPx: PrintAreaPixels = {
+            x: placeholder.x,
+            y: placeholder.y,
+            w: placeholder.width,
+            h: placeholder.height,
+          };
+          const placement = pixelsToNormalized(
+            { 
+              x: el.x, 
+              y: el.y, 
+              width: el.width, 
+              height: el.height, 
+              rotation: el.rotation || 0 
+            },
+            printAreaPx,
+            (el.view || currentView) as ViewKey,
+            el.placeholderId
+          );
+          // Preserve aspect ratio from original
+          placement.aspectRatio = el.width / el.height;
+          setPlacementForView(el.view || currentView, el.placeholderId, placement);
+          
+          console.log('📐 Updated placement after element transform:', {
+            elementId: el.id,
+            placeholderId: el.placeholderId,
+            placement,
+          });
+        }
+      }
+    }
 
     // Save to history (debounced for rapid updates like dragging)
     if (saveHistory) {
@@ -1377,6 +1493,29 @@ const DesignEditor: React.FC = () => {
         view: currentView // Store which view this image belongs to
       });
 
+      // Compute and store normalized placement if adding to a placeholder
+      if (targetPlaceholder?.id) {
+        const printAreaPx: PrintAreaPixels = {
+          x: targetArea.x,
+          y: targetArea.y,
+          w: targetArea.width,
+          h: targetArea.height,
+        };
+        const placement = pixelsToNormalized(
+          { x, y, width: finalWidth, height: finalHeight, rotation },
+          printAreaPx,
+          currentView as ViewKey,
+          targetPlaceholder.id
+        );
+        placement.aspectRatio = imageAspect;
+        setPlacementForView(currentView, targetPlaceholder.id, placement);
+        console.log('📐 Stored normalized placement for image:', {
+          placeholderId: targetPlaceholder.id,
+          view: currentView,
+          placement,
+        });
+      }
+
       // Select the newly added image and open properties tab
       setSelectedIds([elementId]);
       setRightPanelTab('properties');
@@ -1388,7 +1527,7 @@ const DesignEditor: React.FC = () => {
       toast.error('Failed to load image');
     };
     img.src = imageUrl;
-  }, [placeholders, printArea, addElement]);
+  }, [placeholders, printArea, addElement, currentView, setPlacementForView]);
 
   // Toggle color selection
   const handleColorToggle = useCallback((color: string) => {
@@ -2002,6 +2141,7 @@ const DesignEditor: React.FC = () => {
       const designPayload = {
         views: product.design?.views || [],
         designUrlsByPlaceholder,
+        placementsByView, // Include normalized placements
         elements: elements.map(el => ({
           ...el,
           // Include only serializable properties
@@ -2038,6 +2178,7 @@ const DesignEditor: React.FC = () => {
         designData: {
           elements: elements, // Save entire elements array (do not rename fields)
           designUrlsByPlaceholder,
+          placementsByView, // Include normalized placements for accurate mockup rendering
           views: product.design?.views || [],
           savedPreviewImages,
           displacementSettings,
@@ -2114,7 +2255,7 @@ const DesignEditor: React.FC = () => {
     } finally {
       setIsPublishing(false);
     }
-  }, [user, product, elements, currentView, selectedColors, selectedSizes, selectedSizesByColor, placeholders, PX_PER_INCH, stageSize, canvasPadding, navigate, savedPreviewImages, designUrlsByPlaceholder, displacementSettings]);
+  }, [user, product, elements, currentView, selectedColors, selectedSizes, selectedSizesByColor, placeholders, PX_PER_INCH, stageSize, canvasPadding, navigate, savedPreviewImages, designUrlsByPlaceholder, placementsByView, displacementSettings]);
 
   const handleSave = async () => {
     try {
@@ -2488,6 +2629,15 @@ const DesignEditor: React.FC = () => {
                       setDesignUrlForView(currentView, placeholderId, designUrl);
                     }}
                     designUrlsByPlaceholder={getDesignUrlsForView(currentView)}
+                    designPlacements={getPlacementsForView(currentView)}
+                    onPlacementChange={(placeholderId, placement) => {
+                      setPlacementForView(currentView, placeholderId, placement);
+                      console.log('📐 Placement updated from WebGL preview:', {
+                        view: currentView,
+                        placeholderId,
+                        placement,
+                      });
+                    }}
                     onSelectPlaceholder={(id) => {
                       if (id) {
                         console.log('Placeholder selected via WebGL:', id);

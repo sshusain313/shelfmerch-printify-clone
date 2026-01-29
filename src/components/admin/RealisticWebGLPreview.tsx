@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Application, Assets, ColorMatrixFilter, Container, DisplacementFilter, Graphics, Rectangle, Sprite } from 'pixi.js';
-import type { DisplacementSettings, Placeholder } from '@/types/product';
+import type { DisplacementSettings, Placeholder, DesignPlacement } from '@/types/product';
 import { createDisplacementTextureFromGarment } from '@/lib/displacementMap';
+import { placementToPixi, type PrintAreaPixels } from '@/lib/placementUtils';
 // Removed UI imports - this component is now a pure canvas renderer
 
 interface CanvasElement {
@@ -18,8 +19,6 @@ interface CanvasElement {
   zIndex: number;
   view?: string;
   imageUrl?: string;
-  // Optional placeholder affinity so we can render per-placeholder designs
-  placeholderId?: string;
   flipX?: boolean;
   flipY?: boolean;
   blendMode?: string;
@@ -37,6 +36,12 @@ interface RealisticWebGLPreviewProps {
   onDesignUpload?: (placeholderId: string, designUrl: string) => void;
   // Design URLs by placeholder ID (external state)
   designUrlsByPlaceholder?: Record<string, string>;
+  // Design placements by placeholder ID (normalized 0-1 positions from DesignEditor)
+  // When provided, these are used instead of auto-fit to match editor placement exactly
+  designPlacements?: Record<string, DesignPlacement>;
+  // Callback when design placement changes (drag, resize, or initial load)
+  // This sends normalized placement back to parent for persistence
+  onPlacementChange?: (placeholderId: string, placement: DesignPlacement) => void;
   // Overlay integration hooks - expose design transforms and bounds
   onDesignTransformChange?: (placeholderId: string, transform: { x: number; y: number; scale: number }) => void;
   // Read-only hooks for overlay to query current state
@@ -58,6 +63,8 @@ interface RealisticWebGLPreviewProps {
   enableGarmentTint?: boolean;
   // Callback when all content (garment + designs) is loaded and rendered
   onLoad?: () => void;
+  // Debug mode - show print area outlines for debugging placement issues
+  showDebugOverlay?: boolean;
 }
 
 /**
@@ -78,6 +85,8 @@ export const RealisticWebGLPreview: React.FC<RealisticWebGLPreviewProps> = ({
   onSettingsChange,
   onDesignUpload,
   designUrlsByPlaceholder: externalDesignUrls = {},
+  designPlacements = {},
+  onPlacementChange,
   onDesignTransformChange,
   getDesignTransform,
   getDesignBounds,
@@ -90,6 +99,7 @@ export const RealisticWebGLPreview: React.FC<RealisticWebGLPreviewProps> = ({
   PX_PER_INCH = 72,
   enableGarmentTint = false, // Default: disabled - use real variant images as-is
   onLoad,
+  showDebugOverlay = false,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const appRef = useRef<Application | null>(null);
@@ -769,29 +779,6 @@ export const RealisticWebGLPreview: React.FC<RealisticWebGLPreviewProps> = ({
       return;
     }
 
-    // CRITICAL: When full canvas elements are provided from the editor,
-    // they already represent the true per-layer design state (including
-    // multiple logos per placeholder, exact x/y, width/height, rotation, etc).
-    // In that case we MUST NOT also render the legacy single-design-per-placeholder
-    // pipeline based on designUrlsByPlaceholder, because it:
-    // - Only supports one design per placeholder
-    // - Auto-centers and auto-fits the design
-    // - Ignores the editor's per-layer transforms
-    //
-    // Skipping this effect when canvasElements are present ensures:
-    // - All designs come from the same source of truth as the editor canvas
-    // - Multiple layers per placeholder are rendered correctly by the
-    //   canvasElements effect below
-    if (canvasElements && canvasElements.length > 0) {
-      if (DEBUG_LOGGING) {
-        console.log('[RealisticWebGLPreview] Skipping legacy placeholder design pipeline because canvasElements are present', {
-          currentView,
-          totalCanvasElements: canvasElements.length,
-        });
-      }
-      return;
-    }
-
     let cancelled = false;
 
     const loadDesigns = async () => {
@@ -867,12 +854,73 @@ export const RealisticWebGLPreview: React.FC<RealisticWebGLPreviewProps> = ({
           phScreenH = placeholder.heightIn * pxPerInch;
         }
 
-        // Scale design to fit inside placeholder bounds while preserving aspect ratio.
-        const initialScale = Math.min(phScreenW / designTex.width, phScreenH / designTex.height);
-        designSprite.scale.set(initialScale);
+        // Set anchor to center for proper rotation/scaling
         designSprite.anchor.set(0.5);
-        designSprite.x = phScreenX + phScreenW / 2;
-        designSprite.y = phScreenY + phScreenH / 2;
+        
+        // Check if we have a normalized placement from DesignEditor
+        const placement = designPlacements[placeholder.id];
+        
+        if (placement && typeof placement.x === 'number' && typeof placement.w === 'number') {
+          // Use exact placement from DesignEditor (normalized 0-1 coordinates)
+          const printArea: PrintAreaPixels = {
+            x: phScreenX,
+            y: phScreenY,
+            w: phScreenW,
+            h: phScreenH,
+          };
+          
+          // Convert normalized placement to Pixi coordinates
+          const pixiCoords = placementToPixi(placement, printArea);
+          
+          designSprite.width = pixiCoords.width;
+          designSprite.height = pixiCoords.height;
+          designSprite.x = pixiCoords.centerX;
+          designSprite.y = pixiCoords.centerY;
+          designSprite.rotation = pixiCoords.rotation;
+          
+          if (DEBUG_LOGGING) {
+            console.log('[RealisticWebGLPreview] Applied placement from DesignEditor:', {
+              placeholderId: placeholder.id,
+              placement,
+              pixiCoords,
+              printArea,
+            });
+          }
+        } else {
+          // Fallback: Scale design to fit inside placeholder bounds while preserving aspect ratio
+          const initialScale = Math.min(phScreenW / designTex.width, phScreenH / designTex.height);
+          designSprite.scale.set(initialScale);
+          designSprite.x = phScreenX + phScreenW / 2;
+          designSprite.y = phScreenY + phScreenH / 2;
+          
+          // Compute and report the auto-fit placement back to parent
+          const designWidthPx = designTex.width * initialScale;
+          const designHeightPx = designTex.height * initialScale;
+          const autoPlacement: DesignPlacement = {
+            view: currentView as any,
+            placeholderId: placeholder.id,
+            x: (designSprite.x - designWidthPx / 2 - phScreenX) / phScreenW,
+            y: (designSprite.y - designHeightPx / 2 - phScreenY) / phScreenH,
+            w: designWidthPx / phScreenW,
+            h: designHeightPx / phScreenH,
+            rotationDeg: 0,
+            aspectRatio: designTex.width / designTex.height,
+          };
+          
+          // Report placement to parent for persistence
+          if (onPlacementChange) {
+            onPlacementChange(placeholder.id, autoPlacement);
+          }
+          
+          if (DEBUG_LOGGING) {
+            console.log('[RealisticWebGLPreview] Auto-fit placement computed and reported:', {
+              placeholderId: placeholder.id,
+              initialScale,
+              position: { x: designSprite.x, y: designSprite.y },
+              normalizedPlacement: autoPlacement,
+            });
+          }
+        }
 
         // SAFE blend mode: checks if garment background exists to prevent black designs
         // Without background, multiply/screen causes black/invisible rendering
@@ -970,11 +1018,44 @@ export const RealisticWebGLPreview: React.FC<RealisticWebGLPreviewProps> = ({
             event.stopPropagation();
           });
 
+          // Helper to compute and report placement after drag/resize
+          const reportPlacementChange = () => {
+            if (!onPlacementChange) return;
+            
+            const designWidthPx = designTex.width * designSprite.scale.x;
+            const designHeightPx = designTex.height * designSprite.scale.y;
+            const updatedPlacement: DesignPlacement = {
+              view: currentView as any,
+              placeholderId: placeholder.id,
+              x: (designSprite.x - designWidthPx / 2 - phScreenX) / phScreenW,
+              y: (designSprite.y - designHeightPx / 2 - phScreenY) / phScreenH,
+              w: designWidthPx / phScreenW,
+              h: designHeightPx / phScreenH,
+              rotationDeg: (designSprite.rotation * 180) / Math.PI,
+              aspectRatio: designTex.width / designTex.height,
+            };
+            
+            onPlacementChange(placeholder.id, updatedPlacement);
+            
+            if (DEBUG_LOGGING) {
+              console.log('[RealisticWebGLPreview] Placement updated after drag/resize:', {
+                placeholderId: placeholder.id,
+                updatedPlacement,
+              });
+            }
+          };
+
           designSprite.on('pointerup', () => {
+            if (isDragging) {
+              reportPlacementChange(); // Report final position after drag
+            }
             isDragging = false;
           });
 
           designSprite.on('pointerupoutside', () => {
+            if (isDragging) {
+              reportPlacementChange(); // Report final position after drag
+            }
             isDragging = false;
           });
 
@@ -1008,6 +1089,7 @@ export const RealisticWebGLPreview: React.FC<RealisticWebGLPreviewProps> = ({
             designSprite.x = x;
             designSprite.y = y;
             updateMetrics();
+            reportPlacementChange(); // Report placement after resize
           });
         } else {
           // Preview mode: disable interactions
@@ -1040,7 +1122,7 @@ export const RealisticWebGLPreview: React.FC<RealisticWebGLPreviewProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [appReady, externalDesignUrls, placeholders, mockupImageUrl, activePlaceholder, filterToken, onSelectPlaceholder, previewMode, garmentTintHex, currentView, canvasElements]);
+  }, [appReady, externalDesignUrls, designPlacements, placeholders, mockupImageUrl, activePlaceholder, filterToken, onSelectPlaceholder, onPlacementChange, previewMode, garmentTintHex, currentView]);
 
   // Garment tint changes are already handled by the design loading effect
   // No additional blend mode updates needed with soft-light approach
@@ -1068,6 +1150,99 @@ export const RealisticWebGLPreview: React.FC<RealisticWebGLPreviewProps> = ({
       sceneRef.current.placeholderDesignLayer.children.forEach(updateInteractions);
     }
   }, [previewMode, appReady]);
+
+  // Debug overlay - draw print area rectangles for debugging placement issues
+  useEffect(() => {
+    if (!appReady || !appRef.current || !showDebugOverlay) return;
+    
+    const app = appRef.current;
+    const pxPerInch = sceneRef.current.pxPerInch || 1;
+    
+    // Create or get debug layer
+    let debugLayer = app.stage.getChildByName('debugLayer') as Container;
+    if (!debugLayer) {
+      debugLayer = new Container();
+      debugLayer.name = 'debugLayer';
+      debugLayer.zIndex = 9999; // Always on top
+      app.stage.addChild(debugLayer);
+    }
+    
+    // Clear previous debug graphics
+    debugLayer.removeChildren();
+    
+    // Draw print area rectangles for each placeholder
+    placeholders.forEach((placeholder) => {
+      const isPolygon =
+        placeholder.shapeType === 'polygon' &&
+        placeholder.polygonPoints &&
+        placeholder.polygonPoints.length >= 3;
+      
+      const graphics = new Graphics();
+      
+      if (isPolygon && placeholder.polygonPoints) {
+        const polygonPointsPx = placeholder.polygonPoints.map((pt) => ({
+          x: CANVAS_PADDING + pt.xIn * pxPerInch,
+          y: CANVAS_PADDING + pt.yIn * pxPerInch,
+        }));
+        
+        const [first, ...rest] = polygonPointsPx;
+        graphics.moveTo(first.x, first.y);
+        rest.forEach(p => graphics.lineTo(p.x, p.y));
+        graphics.closePath();
+        graphics.stroke({ color: 0x00ff00, width: 2, alpha: 0.8 });
+      } else {
+        const phScreenX = CANVAS_PADDING + placeholder.xIn * pxPerInch;
+        const phScreenY = CANVAS_PADDING + placeholder.yIn * pxPerInch;
+        const phScreenW = placeholder.widthIn * pxPerInch;
+        const phScreenH = placeholder.heightIn * pxPerInch;
+        
+        // Draw print area outline (green)
+        graphics.rect(phScreenX, phScreenY, phScreenW, phScreenH);
+        graphics.stroke({ color: 0x00ff00, width: 2, alpha: 0.8 });
+        
+        // Draw center crosshair
+        const centerX = phScreenX + phScreenW / 2;
+        const centerY = phScreenY + phScreenH / 2;
+        graphics.moveTo(centerX - 10, centerY);
+        graphics.lineTo(centerX + 10, centerY);
+        graphics.moveTo(centerX, centerY - 10);
+        graphics.lineTo(centerX, centerY + 10);
+        graphics.stroke({ color: 0x00ff00, width: 1, alpha: 0.5 });
+        
+        // If there's a placement, draw the design bounds (magenta)
+        const placement = designPlacements[placeholder.id];
+        if (placement) {
+          const designX = phScreenX + placement.x * phScreenW;
+          const designY = phScreenY + placement.y * phScreenH;
+          const designW = placement.w * phScreenW;
+          const designH = placement.h * phScreenH;
+          
+          graphics.rect(designX, designY, designW, designH);
+          graphics.stroke({ color: 0xff00ff, width: 2, alpha: 0.8 });
+          
+          // Draw design center
+          const designCenterX = designX + designW / 2;
+          const designCenterY = designY + designH / 2;
+          graphics.moveTo(designCenterX - 8, designCenterY);
+          graphics.lineTo(designCenterX + 8, designCenterY);
+          graphics.moveTo(designCenterX, designCenterY - 8);
+          graphics.lineTo(designCenterX, designCenterY + 8);
+          graphics.stroke({ color: 0xff00ff, width: 1, alpha: 0.5 });
+        }
+      }
+      
+      debugLayer.addChild(graphics);
+    });
+    
+    // Sort stage so debug layer is on top
+    app.stage.sortChildren();
+    
+    return () => {
+      if (debugLayer) {
+        debugLayer.removeChildren();
+      }
+    };
+  }, [appReady, showDebugOverlay, placeholders, designPlacements]);
 
   // Render canvas elements (images added via graphics tab)
   useEffect(() => {
@@ -1109,10 +1284,7 @@ export const RealisticWebGLPreview: React.FC<RealisticWebGLPreviewProps> = ({
       // Normalize view matching: case-insensitive and handle !el.view as "all views"
       const normalizedCurrentView = currentView?.toLowerCase() || '';
 
-      // Get all placeholder IDs for the current view
-      const currentPlaceholderIds = new Set(placeholders.map(p => p.id));
-
-      // Filter canvas elements for current view, visible image elements, AND matching placeholder
+      // Filter canvas elements for current view and visible image elements
       const imageElements = canvasElements.filter(
         (el) => {
           if (el.type !== 'image' || !el.imageUrl || el.visible === false) return false;
@@ -1120,19 +1292,8 @@ export const RealisticWebGLPreview: React.FC<RealisticWebGLPreviewProps> = ({
           // Normalize element view for comparison
           const elView = el.view?.toLowerCase() || '';
 
-          // Match view: no view (appears on all), or view matches (case-insensitive)
-          const viewMatches = !el.view || elView === normalizedCurrentView;
-          if (!viewMatches) return false;
-
-          // CRITICAL: Filter by placeholderId - only render elements that belong to placeholders in current view
-          if (el.placeholderId) {
-            // Element has a placeholderId - only render if it matches a placeholder in current view
-            return currentPlaceholderIds.has(el.placeholderId);
-          } else {
-            // Element has no placeholderId - this is legacy behavior, skip it to avoid rendering in wrong placeholders
-            // Only render elements that explicitly belong to a placeholder
-            return false;
-          }
+          // Match if: no view (appears on all), or view matches (case-insensitive)
+          return !el.view || elView === normalizedCurrentView;
         }
       );
 

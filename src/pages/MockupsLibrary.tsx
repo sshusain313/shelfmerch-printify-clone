@@ -7,7 +7,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { AlertTriangle, ArrowLeft, Image as ImageIcon, Save, Check, Loader2 } from 'lucide-react';
 import { RealisticWebGLPreview } from '@/components/admin/RealisticWebGLPreview';
-import type { DisplacementSettings } from '@/types/product';
+import type { DisplacementSettings, DesignPlacement } from '@/types/product';
 import { toast } from 'sonner';
 import { RAW_API_URL } from '@/config';
 
@@ -373,6 +373,21 @@ const MockupsLibrary = () => {
     }, [storeProduct?.catalogProductId]);
 
     const designData = storeProduct?.designData || {};
+    
+    // Extract placements from designData for accurate mockup rendering
+    const placementsByView: Record<string, Record<string, DesignPlacement>> = 
+        (designData.placementsByView && typeof designData.placementsByView === 'object')
+            ? designData.placementsByView
+            : {};
+    
+    // Debug: Log placements received from database
+    useEffect(() => {
+        console.log('📐 MockupsLibrary: Placements loaded from database:', {
+            hasPlacementsByView: Object.keys(placementsByView).length > 0,
+            placementsByView,
+            designDataKeys: Object.keys(designData),
+        });
+    }, [placementsByView, designData]);
 
     // Extract selected colors, sizes, and primary color from designData
     useEffect(() => {
@@ -1221,40 +1236,37 @@ const MockupsLibrary = () => {
                                                             const mockupDisplacement: DisplacementSettings =
                                                                 mockup.displacementSettings || displacementSettings || defaultDisplacementSettings;
 
-                                                            // Build per-mockup canvas elements from persisted designData.elements.
-                                                            // CRITICAL: This preserves the full multi-layer design (all graphics per placeholder)
-                                                            // with exact x/y/width/height/rotation as set in the DesignEditor.
-                                                            const allElements: any[] = Array.isArray(designData.elements)
-                                                                ? designData.elements
-                                                                : [];
-
-                                                            const placeholderIdsForMockup = new Set(
-                                                                (mockup.placeholders || [])
-                                                                    .map((p: any) => p.id)
-                                                                    .filter(Boolean),
-                                                            );
-
-                                                            const mockupCanvasElements = allElements
-                                                                .filter((el: any) => {
-                                                                    if (!el || el.type !== 'image' || !el.imageUrl || el.visible === false) {
-                                                                        return false;
-                                                                    }
-                                                                    const elView = (el.view || 'front').toLowerCase();
-                                                                    if (elView !== viewKey) return false;
-                                                                    if (!el.placeholderId) return false;
-                                                                    return placeholderIdsForMockup.has(el.placeholderId);
-                                                                })
-                                                                // Respect stacking order exactly as stored
-                                                                .sort((a: any, b: any) => (a.zIndex || 0) - (b.zIndex || 0));
-
-                                                            // Legacy single-image-per-placeholder mapping kept for backward compatibility,
-                                                            // but RealisticWebGLPreview will ignore this when canvasElements are present.
+                                                            // Build designUrlsByPlaceholder for this mockup's view
                                                             const mockupDesignUrls: Record<string, string> = {};
-                                                            if (hasDesignForView && hasPlaceholder && !mockupCanvasElements.length) {
-                                                                mockup.placeholders.forEach((ph: any) => {
+                                                            // Build placements mapping for this mockup's placeholders
+                                                            const mockupPlacements: Record<string, DesignPlacement> = {};
+                                                            
+                                                            if (hasDesignForView && hasPlaceholder) {
+                                                                // Get all placements for this view from designData
+                                                                const viewPlacements = placementsByView[viewKey] || {};
+                                                                const viewPlacementValues = Object.values(viewPlacements);
+                                                                
+                                                                mockup.placeholders.forEach((ph: any, idx: number) => {
                                                                     if (ph.id && designImagesByView[viewKey]) {
                                                                         mockupDesignUrls[ph.id] = designImagesByView[viewKey];
+                                                                        
+                                                                        // Map placement from DesignEditor to this mockup's placeholder
+                                                                        // If there's a matching placement by index, use it
+                                                                        if (viewPlacementValues[idx]) {
+                                                                            mockupPlacements[ph.id] = {
+                                                                                ...viewPlacementValues[idx],
+                                                                                placeholderId: ph.id, // Update placeholder ID to match mockup
+                                                                            };
+                                                                        }
                                                                     }
+                                                                });
+                                                                
+                                                                console.log('📐 MockupsLibrary: Mapped placements for mockup:', {
+                                                                    viewKey,
+                                                                    mockupId: mockup.id,
+                                                                    originalPlacements: viewPlacements,
+                                                                    mappedPlacements: mockupPlacements,
+                                                                    mockupPlaceholderIds: mockup.placeholders.map((p: any) => p.id),
                                                                 });
                                                             }
 
@@ -1314,9 +1326,8 @@ const MockupsLibrary = () => {
                                                                                     });
                                                                                 }}
                                                                                 designUrlsByPlaceholder={mockupDesignUrls}
+                                                                                designPlacements={mockupPlacements}
                                                                                 previewMode={true}
-                                                                                // Pass full per-layer design so WebGL preview matches the editor exactly
-                                                                                canvasElements={mockupCanvasElements}
                                                                                 currentView={viewKey}
                                                                                 canvasPadding={40}
                                                                                 PX_PER_INCH={Math.min(720 / catalogPhysicalDimensions.width, 520 / catalogPhysicalDimensions.height)}
