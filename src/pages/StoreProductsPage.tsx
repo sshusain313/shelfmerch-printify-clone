@@ -90,6 +90,100 @@ const StoreProductsPage: React.FC = () => {
 
   const { isAuthenticated, checkAuth } = useStoreAuth();
 
+  // Restore persisted filters (including category) from sessionStorage on mount
+  useEffect(() => {
+    if (!subdomain) return;
+    try {
+      const raw = sessionStorage.getItem(`store_filters_${subdomain}`);
+      if (!raw) return;
+      const data = JSON.parse(raw);
+      if (Array.isArray(data.selectedCategories)) {
+        setSelectedCategories(new Set<string>(data.selectedCategories));
+      }
+      if (Array.isArray(data.selectedSubcategories)) {
+        setSelectedSubcategories(new Set<string>(data.selectedSubcategories));
+      }
+      if (Array.isArray(data.selectedMaterials)) {
+        setSelectedMaterials(data.selectedMaterials);
+      }
+      if (Array.isArray(data.selectedColors)) {
+        setSelectedColors(data.selectedColors);
+      }
+      if (Array.isArray(data.selectedSizes)) {
+        setSelectedSizes(data.selectedSizes);
+      }
+    } catch (e) {
+      console.error('Failed to restore store filters from sessionStorage', e);
+    }
+  }, [subdomain]);
+
+  // Helper to persist current filter state for this store
+  const persistFilters = useCallback(
+    (overrides?: {
+      selectedCategories?: Set<string>;
+      selectedSubcategories?: Set<string>;
+      selectedMaterials?: string[];
+      selectedColors?: string[];
+      selectedSizes?: string[];
+    }) => {
+      if (!subdomain) return;
+      const categories = overrides?.selectedCategories ?? selectedCategories;
+      const subcats = overrides?.selectedSubcategories ?? selectedSubcategories;
+      const materials = overrides?.selectedMaterials ?? selectedMaterials;
+      const colors = overrides?.selectedColors ?? selectedColors;
+      const sizes = overrides?.selectedSizes ?? selectedSizes;
+
+      const payload = {
+        selectedCategories: Array.from(categories),
+        selectedSubcategories: Array.from(subcats),
+        selectedMaterials: materials,
+        selectedColors: colors,
+        selectedSizes: sizes,
+      };
+      sessionStorage.setItem(`store_filters_${subdomain}`, JSON.stringify(payload));
+    },
+    [subdomain, selectedCategories, selectedSubcategories, selectedMaterials, selectedColors, selectedSizes]
+  );
+
+  // Handle category/subcategory selection from sidebar without changing route path
+  const handleCategorySelect = useCallback(
+    (slug: string) => {
+      // Map slug to category/subcategory IDs using shared CATEGORIES/getSubcategories
+      const matchingCategoryIds: string[] = [];
+      const matchingSubcategoryIds: string[] = [];
+
+      (Object.keys(CATEGORIES) as CategoryId[]).forEach((catId) => {
+        const subcats = getSubcategories(catId);
+        subcats.forEach((subcat) => {
+          const computedSlug =
+            subcat.slug ||
+            subcat.name
+              .toLowerCase()
+              .replace(/&/g, 'and')
+              .replace(/[^a-z0-9\s-]/g, '')
+              .replace(/\s+/g, '-')
+              .replace(/-+/g, '-');
+          if (computedSlug === slug) {
+            matchingCategoryIds.push(catId);
+            if (subcat.id) {
+              matchingSubcategoryIds.push(subcat.id.toString());
+            }
+          }
+        });
+      });
+
+      const nextCategories = new Set<string>(matchingCategoryIds);
+      const nextSubcats = new Set<string>(matchingSubcategoryIds);
+      setSelectedCategories(nextCategories);
+      setSelectedSubcategories(nextSubcats);
+      persistFilters({
+        selectedCategories: nextCategories,
+        selectedSubcategories: nextSubcats,
+      });
+    },
+    [persistFilters]
+  );
+
   // Load store data
   const loadStoreData = useCallback(async () => {
     if (!subdomain) return;
@@ -569,7 +663,7 @@ const StoreProductsPage: React.FC = () => {
         <div className="flex gap-8">
           {/* Desktop Sidebar - Category + Filters (stacked like CategoryProducts) */}
           <div className="hidden lg:flex lg:flex-col w-64 flex-shrink-0 gap-6">
-            <CategorySidebar />
+            <CategorySidebar onSelectSlug={handleCategorySelect} />
             <FilterSidebar
               availableMaterials={availableMaterials}
               availableColors={availableColors}
@@ -634,7 +728,7 @@ const StoreProductsPage: React.FC = () => {
                         </SheetTitle>
                       </SheetHeader>
                       <div className="space-y-6">
-                        <CategorySidebar />
+                        <CategorySidebar onSelectSlug={handleCategorySelect} />
                         <FilterSidebar
                           availableMaterials={availableMaterials}
                           availableColors={availableColors}
@@ -646,6 +740,11 @@ const StoreProductsPage: React.FC = () => {
                             setSelectedMaterials(materials);
                             setSelectedColors(colors);
                             setSelectedSizes(sizes);
+                            persistFilters({
+                              selectedMaterials: materials,
+                              selectedColors: colors,
+                              selectedSizes: sizes,
+                            });
                           }}
                         />
                       </div>

@@ -289,7 +289,12 @@ const StoreCheckoutPage: React.FC = () => {
             const order = verifyResp.data;
             setCart([]);
             toast.success('Payment successful! Order placed.');
-            navigate('/order-confirmation', { state: { order } });
+            navigate('/order-confirmation', {
+              state: {
+                order,
+                storeSlug: store?.subdomain || subdomain,
+              },
+            });
           } catch (err) {
             console.error('Order placement error after payment:', err);
             toast.error('Payment verification failed. Please contact support with your payment ID.');
@@ -352,7 +357,12 @@ const StoreCheckoutPage: React.FC = () => {
       setCart([]);
       toast.success('Order placed successfully!');
 
-      navigate('/order-confirmation', { state: { order } });
+      navigate('/order-confirmation', {
+        state: {
+          order,
+          storeSlug: store.subdomain,
+        },
+      });
     } catch (error: any) {
       console.error('Checkout error:', error);
       toast.error(error?.message || 'Failed to place order');

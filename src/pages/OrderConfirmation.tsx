@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -8,6 +8,17 @@ const OrderConfirmation = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const orderData = location.state?.order;
+  const storeSlugFromState = location.state?.storeSlug || location.state?.storeSubdomain;
+
+  // Derive storeSlug from order data or navigation state
+  const storeSlug = useMemo(() => {
+    if (!orderData) return storeSlugFromState || null;
+    // Prefer explicit store/subdomain fields if backend includes them
+    if (orderData.store?.subdomain) return orderData.store.subdomain;
+    if (orderData.storeSlug) return orderData.storeSlug;
+    if (orderData.storeSubdomain) return orderData.storeSubdomain;
+    return storeSlugFromState || null;
+  }, [orderData, storeSlugFromState]);
 
   useEffect(() => {
     // If no order data, redirect to home
@@ -97,11 +108,30 @@ const OrderConfirmation = () => {
         </div>
 
         <div className="flex gap-3">
-          <Button variant="outline" className="flex-1" onClick={() => navigate(-1)}>
+          <Button
+            variant="outline"
+            className="flex-1"
+            onClick={() => {
+              if (storeSlug) {
+                navigate(`/store/${storeSlug}/products`);
+              } else {
+                navigate(-1);
+              }
+            }}
+          >
             <Home className="mr-2 h-4 w-4" />
             Continue Shopping
           </Button>
-          <Button className="flex-1" onClick={() => navigate('/')}>
+          <Button
+            className="flex-1"
+            onClick={() => {
+              if (storeSlug) {
+                navigate(`/store/${storeSlug}`);
+              } else {
+                navigate('/');
+              }
+            }}
+          >
             Back to Home
           </Button>
         </div>
